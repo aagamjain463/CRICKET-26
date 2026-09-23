@@ -8,6 +8,8 @@ namespace CricketBatting
 	constexpr float ToeLength = 0.17f;    // sweet spot to toe
 	constexpr float HandleLength = 0.45f; // sweet spot to the top of the blade / gloves
 	constexpr float MissWindow = 0.12f;   // |timing| beyond which the bat is not in the ball's path
+	constexpr float BladeSlip = 2.f;      // m along the blade per second of timing error: late finds the toe, early the splice
+	constexpr float TimingWindow = 0.07f; // timing error (s) at which the swing has lost all its own pace
 
 	FShotProfile Make(EShotType Shot, EFootwork Foot, bool bCross, float MinZ, float MaxZ, float RMin, float RMax,
 		float Speed, float Loft, float DMin, float DMax, float Swing)
@@ -144,8 +146,9 @@ FContactResult CricketBatting::ResolveContact(const FBallState& Ball, const FVec
 	// Off-time swings meet the ball with the blade rotated away from square-on.
 	const float CosPhi = FMath::Max(FMath::Cos(FMath::Clamp(Tau * 9.f, -1.2f, 1.2f)), 0.25f);
 
-	// A: along the blade (+ toward toe), B: across the face.
-	const float A = P.bCrossBat ? (BallLat - AimLat) / CosPhi : (AimZ - Ball.Pos.Z) / CosPhi;
+	// A: along the blade (+ toward toe), B: across the face. A mistimed swing meets the ball on the wrong part
+	// of the blade: late, the bat is still coming down and the ball finds the toe; early, it takes the splice.
+	const float A = (P.bCrossBat ? BallLat - AimLat : AimZ - Ball.Pos.Z) / CosPhi + Tau * BladeSlip;
 	const float B = P.bCrossBat ? Ball.Pos.Z - AimZ : BallLat - AimLat;
 	const bool bAlongBlade = A <= ToeLength + CricketGeo::BallRadius && A >= -HandleLength;
 	if (!bAlongBlade) return R;
@@ -188,7 +191,7 @@ FContactResult CricketBatting::ResolveContact(const FBallState& Ball, const FVec
 	// outweighs a deadened bat and carries on through the face towards the keeper.
 	if (P.bSoftHands) E = FMath::Min(E, 0.3f);
 
-	const float TimingQuality = FMath::Max(0.25f, 1.f - FMath::Square(Tau / 0.1f));
+	const float TimingQuality = FMath::Max(0.25f, 1.f - FMath::Square(Tau / TimingWindow));
 	const float Speed = P.BatSpeed * (0.75f + 0.5f * FMath::Clamp(Batter.Power, 0.f, 1.f)) * TimingQuality;
 	R.Quality = TimingQuality * M / 0.65f;
 

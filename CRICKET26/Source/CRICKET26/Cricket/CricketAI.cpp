@@ -134,18 +134,18 @@ void CricketAI::ShotValue(EBallClass Class, bool bSpin, EBatIntent Intent, float
 	struct FV { float Runs, Out; };
 	static const FV Table[2][5][3] = {
 		{ // pace
-			{ { 0.23f, 0.038f }, { 2.27f, 0.019f }, { 3.89f, 0.119f } }, // full toss
-			{ { 0.31f, 0.045f }, { 1.45f, 0.009f }, { 1.59f, 0.039f } }, // block hole
-			{ { 0.60f, 0.018f }, { 2.06f, 0.008f }, { 3.53f, 0.145f } }, // slot
-			{ { 0.61f, 0.019f }, { 1.85f, 0.017f }, { 3.54f, 0.140f } }, // length
-			{ { 0.61f, 0.018f }, { 3.09f, 0.030f }, { 3.92f, 0.071f } }, // short
+			{ { 0.23f, 0.050f }, { 1.96f, 0.031f }, { 3.88f, 0.046f } }, // full toss
+			{ { 0.35f, 0.061f }, { 1.31f, 0.009f }, { 1.98f, 0.040f } }, // block hole
+			{ { 0.60f, 0.028f }, { 1.80f, 0.014f }, { 3.70f, 0.047f } }, // slot
+			{ { 0.58f, 0.043f }, { 1.64f, 0.027f }, { 3.61f, 0.064f } }, // length
+			{ { 0.60f, 0.038f }, { 2.77f, 0.025f }, { 4.23f, 0.034f } }, // short
 		},
 		{ // spin
-			{ { 0.03f, 0.021f }, { 2.12f, 0.002f }, { 3.60f, 0.123f } }, // full toss
-			{ { 0.01f, 0.007f }, { 1.56f, 0.007f }, { 1.61f, 0.031f } }, // block hole
-			{ { 0.07f, 0.042f }, { 1.33f, 0.034f }, { 2.12f, 0.181f } }, // slot
-			{ { 0.08f, 0.063f }, { 1.52f, 0.050f }, { 2.70f, 0.207f } }, // length
-			{ { 0.29f, 0.003f }, { 2.92f, 0.030f }, { 3.33f, 0.035f } }, // short
+			{ { 0.02f, 0.021f }, { 1.89f, 0.009f }, { 2.95f, 0.111f } }, // full toss
+			{ { 0.01f, 0.007f }, { 1.29f, 0.009f }, { 1.49f, 0.084f } }, // block hole
+			{ { 0.06f, 0.078f }, { 1.19f, 0.035f }, { 1.85f, 0.163f } }, // slot
+			{ { 0.08f, 0.080f }, { 1.30f, 0.058f }, { 2.29f, 0.180f } }, // length
+			{ { 0.29f, 0.031f }, { 2.65f, 0.032f }, { 3.03f, 0.060f } }, // short
 		},
 	};
 	const int32 I = FMath::Clamp(int32(Intent) - int32(EBatIntent::Defend), 0, 2);
@@ -180,7 +180,7 @@ namespace
 		if (bShort) { Lo = Line > 0.2f ? 70.f : -130.f; Hi = Line > 0.2f ? 130.f : -40.f; }
 		else if (bCharge) { Lo = -45.f; Hi = 45.f; }
 		else if (Line > 0.3f) { Lo = 10.f; Hi = 80.f; }
-		else if (Line < 0.f) { Lo = -80.f; Hi = -5.f; }
+		else if (Line < 0.f) { Lo = -130.f; Hi = -5.f; }
 		float BestDir = 0.f, BestGap = -1.f;
 		for (float D = Lo; D <= Hi; D += 5.f)
 		{
@@ -188,6 +188,8 @@ namespace
 			for (const FFielder& F : Field)
 			{
 				if (F.bKeeper || F.bBowler) continue;
+				// A lofted shot clears the ring: only the fielders out deep can catch it or cut it off.
+				if (Intent == EBatIntent::Loft && F.Home.Size() < 35.f) continue;
 				Gap = FMath::Min(Gap, FMath::Abs(FMath::FindDeltaAngleDegrees(D, AngleOf(F, Off))));
 			}
 			Gap += FMath::Lerp(16.f, 0.f, Skill) * Rng.GetFraction(); // a weaker batter picks a gap less precisely
