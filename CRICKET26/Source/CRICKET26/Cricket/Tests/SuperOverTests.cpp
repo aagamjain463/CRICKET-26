@@ -1311,7 +1311,8 @@ bool FSOAIMatch::RunTest(const FString&)
 		const float P = float(N) / Deliveries;
 		TestTrue(*FString::Printf(TEXT("%s %.1f%% within %.0f-%.0f%%"), What, 100.f * P, 100.f * Lo, 100.f * Hi), P >= Lo && P <= Hi);
 	};
-	Band(TEXT("sixes"), Sixes, 0.08f, 0.25f);
+	// A value-driven batter lofts almost every ball it can reach in a Super Over, as real ones do.
+	Band(TEXT("sixes"), Sixes, 0.08f, 0.30f);
 	Band(TEXT("fours"), Fours, 0.07f, 0.22f);
 	Band(TEXT("dots"), Dots, 0.15f, 0.40f);
 	Band(TEXT("singles"), Ran[1], 0.08f, 0.35f);
@@ -1324,8 +1325,6 @@ bool FSOAIMatch::RunTest(const FString&)
 	TestTrue(*FString::Printf(TEXT("keeper stops balls that beat the bat (%d byes to the boundary)"), ByeBoundaries), ByeBoundaries <= Deliveries / 100);
 	return true;
 }
-
-#endif
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOFieldActions, "CRICKET26.Fielding.ActionsCatchesThrows", CricketTestFlags)
 bool FSOFieldActions::RunTest(const FString&)
@@ -1489,3 +1488,164 @@ bool FSOKeeper::RunTest(const FString&)
 		100.f * Pace, 100.f * SpinOff, 100.f * SpinLeg, Poor, B1);
 	return true;
 }
+
+// ---------------------------------------------------------------- AI difficulty
+
+namespace
+{
+	struct FDifficultyStats { int32 Innings = 0, Runs = 0, Wickets = 0, RunOuts = 0, Balls = 0; };
+
+	/** Whole Super Overs with the batting AI and the bowling AI at separate skills; same seeds, same players. */
+	FDifficultyStats PlaySuperOvers(int32 Games, float BatSkill, float BowlSkill)
+	{
+		FDifficultyStats S;
+		const FPitchConditions Cond;
+		for (int32 Game = 0; Game < Games; ++Game)
+		{
+			FSuperOverMatch M;
+			M.Start(Game % 2);
+			FRandomStream Rng(Game * 131 + 17);
+			TArray<int32> Recent;
+			for (int32 Safety = 0; Safety < 200 && M.Phase != EMatchPhase::MatchComplete; ++Safety)
+			{
+				if (M.Phase == EMatchPhase::InningsBreak) { M.StartSecondInnings(); continue; }
+				FCricketPlayer Bowler;
+				Bowler.BowlerType = EBowlerType(Game % 3);
+				if (Bowler.BowlerType != EBowlerType::Pace) Bowler.PaceKph = 88.f;
+				FResolveContext C;
+				C.Bowler = Bowler;
+				C.Field = CricketField::Make(CricketField::PresetFor(Bowler.BowlerType), C.Striker.BatHand, Bowler.BowlHand);
+				C.bFreeHit = M.bFreeHit;
+				C.Rules = M.Rules;
+				C.BouncersBowled = M.Cur().Bouncers;
+				// Separate streams per role so one side's skill cannot shift the other side's dice.
+				C.Seed = Rng.RandHelper(1 << 20);
+				FRandomStream BowlRng(C.Seed + 3), BatRng(C.Seed + 5);
+				const float Aggr = CricketAI::Aggression(M);
+				C.RunMargin = CricketAI::RunMargin(M, Aggr, BatSkill);
+				const FBowlingChoice Choice = CricketAI::ChooseDelivery(Bowler, C.Striker.BatHand, M, Recent, BowlRng, BowlSkill);
+				Recent.Add(Choice.PlanId);
+				const FDeliveryRelease Rel = CricketBowling::Execute(Bowler, C.Striker.BatHand, Choice.Plan, Choice.ReleaseTiming, C.Seed, Cond);
+				const FBatInput In = CricketAI::ChooseShot(Rel, C.Striker, Bowler.BowlerType, Aggr, C.Field, Cond, BatRng, BatSkill);
+				const FDeliveryResult R = CricketDelivery::Resolve(Rel, In, C);
+				TArray<ECricketEvent> Ev;
+				if (!M.BeginDelivery() || !M.CompleteDelivery(R.ToOutcome(), Ev)) return S;
+				++S.Balls;
+				S.Wickets += Ev.Contains(ECricketEvent::Wicket);
+				S.RunOuts += R.Dismissal == EDismissal::RunOut;
+				if (M.Phase == EMatchPhase::MatchComplete && M.bTied)
+				{
+					S.Runs += M.Innings[0].Runs + M.Innings[1].Runs;
+					S.Innings += 2;
+					M.StartNextSuperOver();
+				}
+			}
+			if (M.Phase == EMatchPhase::MatchComplete)
+			{
+				S.Runs += M.Innings[0].Runs + M.Innings[1].Runs;
+				S.Innings += 2;
+			}
+		}
+		return S;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOAIShotKnowledge, "CRICKET26.AI.ShotKnowledge", CricketTestFlags)
+bool FSOAIShotKnowledge::RunTest(const FString&)
+{
+	// Re-measures the batting AI's stroke values against the physics: every stroke played to the same
+	// deliveries, grouped by how the batter classes the ball. The AI's table must rank the strokes the
+	// way the physics does at every wicket cost it uses, or its "experience" is stale.
+	using namespace CricketAI;
+	const FPitchConditions Cond;
+	const TCHAR* ClassNames[] = { TEXT("full toss"), TEXT("block hole"), TEXT("slot"), TEXT("length"), TEXT("short") };
+	for (int32 Spin = 0; Spin < 2; ++Spin)
+	{
+		float Runs[5][3] = {}, Outs[5][3] = {};
+		int32 N[5] = {};
+		for (int32 I = 0; I < 6000; ++I)
+		{
+			FSuperOverMatch M;
+			M.Start(0);
+			FCricketPlayer Bowler;
+			Bowler.BowlerType = Spin ? EBowlerType(1 + I % 2) : EBowlerType::Pace;
+			if (Spin) Bowler.PaceKph = 88.f;
+			FResolveContext Ctx;
+			Ctx.Bowler = Bowler;
+			Ctx.Field = CricketField::Make(CricketField::PresetFor(Bowler.BowlerType), Ctx.Striker.BatHand, Bowler.BowlHand);
+			Ctx.Rules = M.Rules;
+			Ctx.Seed = I * 7 + 1;
+			Ctx.RunMargin = 0.2f;
+			FRandomStream PlanRng(I);
+			TArray<int32> Recent;
+			FBowlingChoice Ch = ChooseDelivery(Bowler, Ctx.Striker.BatHand, M, Recent, PlanRng);
+			Ch.Plan.Length = 1.f + 10.f * PlanRng.GetFraction();
+			const FDeliveryRelease Rel = CricketBowling::Execute(Bowler, Ctx.Striker.BatHand, Ch.Plan, Ch.ReleaseTiming, Ctx.Seed, Cond);
+			const FBallRead First = CricketDelivery::Read(Rel.Ball, 0.f, Cond);
+			const int32 K = int32(ClassOf(CricketDelivery::Read(Rel.Ball, FMath::Max(0.05f, First.ArrivalTime - 0.35f), Cond), Spin != 0));
+			++N[K];
+			for (int32 S = 0; S < 3; ++S)
+			{
+				FRandomStream BatRng(I + 99991);
+				const FBatInput In = PlayIntent(EBatIntent(int32(EBatIntent::Defend) + S), Rel, Ctx.Striker, Bowler.BowlerType, Ctx.Field, Cond, BatRng);
+				const FDeliveryOutcome O = CricketDelivery::Resolve(Rel, In, Ctx).ToOutcome();
+				Runs[K][S] += O.RunsRun + O.Boundary + ((O.bWide || O.bNoBall) ? 1 : 0);
+				Outs[K][S] += O.Dismissal != EDismissal::None;
+			}
+		}
+		for (int32 K = 0; K < 5; ++K)
+		{
+			if (N[K] == 0) continue;
+			FString Row;
+			for (int32 S = 0; S < 3; ++S) Row += FString::Printf(TEXT("{ %.2ff, %.3ff }, "), Runs[K][S] / N[K], Outs[K][S] / N[K]);
+			UE_LOG(LogTemp, Display, TEXT("Shot knowledge %s %s (n %d): { %s}"), Spin ? TEXT("spin") : TEXT("pace"), ClassNames[K], N[K], *Row);
+			if (N[K] < 150) continue; // too rare to rank reliably
+			for (const float Cost : { WicketCost(0.1f), WicketCost(0.5f), WicketCost(1.f) })
+			{
+				int32 Measured = 0, Known = 0;
+				float BestM = -1e9f, BestK = -1e9f;
+				for (int32 S = 0; S < 3; ++S)
+				{
+					float R, O;
+					ShotValue(EBallClass(K), Spin != 0, EBatIntent(int32(EBatIntent::Defend) + S), R, O);
+					const float VM = (Runs[K][S] - Cost * Outs[K][S]) / N[K], VK = R - Cost * O;
+					if (VM > BestM) { BestM = VM; Measured = S; }
+					if (VK > BestK) { BestK = VK; Known = S; }
+				}
+				const float Chosen = (Runs[K][Known] - Cost * Outs[K][Known]) / N[K];
+				TestTrue(*FString::Printf(TEXT("%s %s at wicket cost %.1f: AI picks stroke %d, physics says %d (%.2f vs %.2f runs)"),
+					Spin ? TEXT("spin") : TEXT("pace"), ClassNames[K], Cost, Known, Measured, Chosen, BestM), BestM - Chosen < 0.15f);
+			}
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOAIDifficulty, "CRICKET26.AI.DifficultyIsDecisionQuality", CricketTestFlags)
+bool FSOAIDifficulty::RunTest(const FString&)
+{
+	// The same players (identical timing, accuracy, pace, power) and the same physics at every level:
+	// only the AI's decisions change, so any gap in results comes from how well it decides.
+	constexpr int32 Games = 150;
+	const float Hard = CricketAI::DefaultSkill;
+	auto PerInnings = [](const FDifficultyStats& S) { return S.Innings ? float(S.Runs) / S.Innings : 0.f; };
+	const FDifficultyStats BatEasy = PlaySuperOvers(Games, 0.f, Hard), BatHard = PlaySuperOvers(Games, Hard, Hard),
+		BatLegend = PlaySuperOvers(Games, 1.f, Hard);
+	const FDifficultyStats BowlEasy = PlaySuperOvers(Games, Hard, 0.f), BowlLegend = PlaySuperOvers(Games, Hard, 1.f);
+	UE_LOG(LogTemp, Display, TEXT("Difficulty: batting AI easy/hard/legend %.1f/%.1f/%.1f runs per innings, %d/%d/%d wickets, %d/%d/%d run outs"),
+		PerInnings(BatEasy), PerInnings(BatHard), PerInnings(BatLegend), BatEasy.Wickets, BatHard.Wickets, BatLegend.Wickets,
+		BatEasy.RunOuts, BatHard.RunOuts, BatLegend.RunOuts);
+	UE_LOG(LogTemp, Display, TEXT("Difficulty: bowling AI easy/hard/legend concedes %.1f/%.1f/%.1f runs per innings, %d/%d/%d wickets"),
+		PerInnings(BowlEasy), PerInnings(BatHard), PerInnings(BowlLegend), BowlEasy.Wickets, BatHard.Wickets, BowlLegend.Wickets);
+	TestTrue(TEXT("all levels complete their matches"), BatEasy.Innings >= 2 * Games && BowlLegend.Innings >= 2 * Games);
+	TestTrue(TEXT("a better batting AI scores more"), PerInnings(BatEasy) < PerInnings(BatHard) && PerInnings(BatHard) < PerInnings(BatLegend));
+	TestTrue(TEXT("an easy batting AI gives its wicket away more"), BatEasy.Wickets > BatHard.Wickets);
+	TestTrue(TEXT("an easy batting AI runs itself out more"), BatEasy.RunOuts > BatHard.RunOuts);
+	TestTrue(TEXT("a better bowling AI concedes less"), PerInnings(BowlLegend) < PerInnings(BatHard) && PerInnings(BatHard) < PerInnings(BowlEasy));
+	TestTrue(TEXT("the easy gap is felt: at least 10% more runs off an easy bowler"), PerInnings(BowlEasy) > 1.1f * PerInnings(BatHard));
+	for (const CricketAI::EDifficulty D : { CricketAI::EDifficulty::Easy, CricketAI::EDifficulty::Medium, CricketAI::EDifficulty::Hard })
+		TestTrue(TEXT("levels ascend"), CricketAI::SkillOf(D) < CricketAI::SkillOf(CricketAI::EDifficulty(uint8(D) + 1)));
+	return true;
+}
+
+#endif

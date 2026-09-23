@@ -85,6 +85,9 @@ void ASuperOverGameMode::StartPlay()
 	Rng.Initialize(MatchSeed);
 	bAutoPlay = FParse::Param(FCommandLine::Get(), TEXT("CricketAutoPlay")); // soak/smoke runs
 	FParse::Value(FCommandLine::Get(), TEXT("CricketShotBall="), ShotBall);
+	int32 Level = int32(Difficulty);
+	FParse::Value(FCommandLine::Get(), TEXT("CricketDifficulty="), Level);
+	Difficulty = CricketAI::EDifficulty(FMath::Clamp(Level, 0, 3));
 	BuildScene();
 	Match.Start(HumanTeam);
 	PlaceForDelivery();
@@ -290,6 +293,7 @@ void ASuperOverGameMode::HandleInput(APlayerController* PC, float Dt)
 	if (Pressed(EKeys::F1)) bDebug = !bDebug;
 	if (Pressed(EKeys::F4)) bTrajectory = !bTrajectory;
 	if (Pressed(EKeys::F5)) bForceWicket = true;
+	if (Pressed(EKeys::F6)) Difficulty = CricketAI::EDifficulty((uint8(Difficulty) + 1) % 4);
 	if (Pressed(EKeys::F8)) bAutoPlay = !bAutoPlay;
 	if (DPhase == EDeliveryPhase::Waiting && Match.Phase == EMatchPhase::ReadyForDelivery)
 	{
@@ -368,10 +372,10 @@ void ASuperOverGameMode::BeginRunUp()
 	PlaceForDelivery();
 	Ctx.Seed = Rng.RandHelper(1 << 30);
 	const float Aggr = CricketAI::Aggression(Match);
-	Ctx.RunMargin = HumanBats() ? HumanRunMargin : CricketAI::RunMargin(Match, Aggr);
+	Ctx.RunMargin = HumanBats() ? HumanRunMargin : CricketAI::RunMargin(Match, Aggr, AiSkill());
 	if (!HumanBowls())
 	{
-		const FBowlingChoice Choice = CricketAI::ChooseDelivery(BowlerPlayer(), StrikerPlayer().BatHand, Match, RecentPlans, Rng);
+		const FBowlingChoice Choice = CricketAI::ChooseDelivery(BowlerPlayer(), StrikerPlayer().BatHand, Match, RecentPlans, Rng, AiSkill());
 		RecentPlans.Add(Choice.PlanId);
 		HumanPlan = Choice.Plan; // the plan being executed, whoever chose it
 		ReleaseTiming = Choice.ReleaseTiming;
@@ -391,7 +395,7 @@ void ASuperOverGameMode::DoRelease(float Timing)
 	if (!HumanBats())
 	{
 		FRandomStream AiRng(Ctx.Seed + 1);
-		BatInput = CricketAI::ChooseShot(Release, Batter, BowlerPlayer().BowlerType, CricketAI::Aggression(Match), Ctx.Field, Ctx.Conditions, AiRng);
+		BatInput = CricketAI::ChooseShot(Release, Batter, BowlerPlayer().BowlerType, CricketAI::Aggression(Match), Ctx.Field, Ctx.Conditions, AiRng, AiSkill());
 	}
 	Result = CricketDelivery::Resolve(Release, BatInput, Ctx);
 	DPhase = EDeliveryPhase::BallInPlay;

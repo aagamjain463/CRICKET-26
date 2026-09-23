@@ -55,6 +55,8 @@ public:
 	float HumanRunMargin = 0.35f;
 	float ShotDirection = 0.f;
 	bool bDebug = false, bTrajectory = false, bAutoPlay = false, bForceWicket = false;
+	CricketAI::EDifficulty Difficulty = CricketAI::EDifficulty::Hard; // F6 or -CricketDifficulty=0..3
+	float AiSkill() const { return CricketAI::SkillOf(Difficulty); }
 	int32 BallsPlayed = 0, ShotBall = 0; // -CricketShotBall=N: save the game view while delivery N is live
 	float ShotClock = 0.f;
 

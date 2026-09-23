@@ -45,20 +45,22 @@ const FShotProfile& CricketBatting::Profile(EShotType Shot, EFootwork Foot)
 {
 	using F = EFootwork;
 	static const FShotProfile Leave = Make(EShotType::Leave, F::Back, false, 0, 0, 0, 0, 0, 0, 0, 0, 0.2f);
-	static const FShotProfile DefendF = Make(EShotType::Defend, F::Front, false, 0.03f, 0.95f, -0.35f, 0.7f, 3.f, -6.f, -40.f, 40.f, 0.22f);
+	// Straight-bat MinZ is the lowest the sweet spot gets with the toe on the ground and the bat angled
+	// forward (~0.17 m up the blade): anything lower comes off the toe or goes under it - the block hole.
+	static const FShotProfile DefendF = Make(EShotType::Defend, F::Front, false, 0.1f, 0.95f, -0.35f, 0.7f, 3.f, -6.f, -40.f, 40.f, 0.22f);
 	static const FShotProfile DefendB = Make(EShotType::Defend, F::Back, false, 0.35f, 1.4f, -0.3f, 0.7f, 3.f, -6.f, -40.f, 40.f, 0.2f);
-	static const FShotProfile Drive = Make(EShotType::Drive, F::Front, false, 0.03f, 0.85f, -0.35f, 0.75f, 24.f, 3.f, -50.f, 75.f, 0.28f);
+	static const FShotProfile Drive = Make(EShotType::Drive, F::Front, false, 0.12f, 0.85f, -0.35f, 0.75f, 24.f, 3.f, -50.f, 75.f, 0.28f);
 	static const FShotProfile Loft = Make(EShotType::Loft, F::Front, false, 0.25f, 1.0f, -0.45f, 0.8f, 26.f, 30.f, -70.f, 80.f, 0.3f);
 	static const FShotProfile Punch = Make(EShotType::Punch, F::Back, false, 0.5f, 1.3f, -0.2f, 0.7f, 20.f, 2.f, -35.f, 70.f, 0.24f);
 	static const FShotProfile Cut = Make(EShotType::Cut, F::Back, true, 0.45f, 1.3f, 0.15f, 1.05f, 22.f, 3.f, 70.f, 135.f, 0.24f);
 	static const FShotProfile Pull = Make(EShotType::Pull, F::Back, true, 0.75f, 1.75f, -0.4f, 0.55f, 26.f, 14.f, -135.f, -35.f, 0.26f);
 	// Down the track: the walk adds to the swing time, and the body still moving into the shot adds
 	// ~2 m/s to the bat.
-	static const FShotProfile DriveA = Make(EShotType::Drive, F::Advance, false, 0.03f, 0.85f, -0.35f, 0.75f, 26.f, 3.f, -50.f, 75.f, 0.58f);
+	static const FShotProfile DriveA = Make(EShotType::Drive, F::Advance, false, 0.12f, 0.85f, -0.35f, 0.75f, 26.f, 3.f, -50.f, 75.f, 0.58f);
 	static const FShotProfile LoftA = Make(EShotType::Loft, F::Advance, false, 0.1f, 1.0f, -0.45f, 0.8f, 28.f, 30.f, -70.f, 80.f, 0.6f);
 	static const FShotProfile Sweep = Make(EShotType::Sweep, F::Front, true, 0.0f, 0.65f, -0.35f, 0.6f, 20.f, 6.f, -150.f, -55.f, 0.3f);
 	// Wrists through the leg side off a full ball on the pads; fine enough it is a glance.
-	static const FShotProfile Flick = Make(EShotType::Flick, F::Front, false, 0.03f, 0.9f, -0.45f, 0.3f, 20.f, 2.f, -150.f, -20.f, 0.26f);
+	static const FShotProfile Flick = Make(EShotType::Flick, F::Front, false, 0.12f, 0.9f, -0.45f, 0.3f, 20.f, 2.f, -150.f, -20.f, 0.26f);
 	// Cross-bat strokes. Loft intent adds 20 deg to all but the lofted drive, so these start low.
 	static const FShotProfile Hook = Make(EShotType::Hook, F::Back, true, 1.1f, 2.1f, -0.5f, 0.5f, 25.f, 4.f, -170.f, -60.f, 0.24f);
 	static const FShotProfile SlogSweep = Make(EShotType::SlogSweep, F::Front, true, 0.0f, 0.8f, -0.4f, 0.6f, 25.f, 10.f, -110.f, -30.f, 0.3f);
@@ -168,13 +170,18 @@ FContactResult CricketBatting::ResolveContact(const FBallState& Ball, const FVec
 	const float OffLength = FMath::Min(1.f, FMath::Square(A > 0.f ? A / 0.13f : -A / 0.22f));
 	const float OffWidth = FMath::Clamp((FMath::Abs(B) - 0.015f) / (BladeHalfWidth - 0.015f), 0.f, 1.f); // flat middle, then twist grows with the moment arm
 	Loft += A > 0.f ? -10.f * OffLength : 15.f * OffLength; // toe keeps it down, the splice pops it up
+	// Below the sweet spot's lowest reach the straight blade has to be angled forward over the ball,
+	// closing the face: a ball dug out of the block hole goes into the pitch.
+	if (!P.bCrossBat && Ball.Pos.Z < P.MinZ) Loft -= FMath::RadiansToDegrees(FMath::Atan((P.MinZ - Ball.Pos.Z) / ToeLength));
 
 	Loft = FMath::Clamp(Loft, -25.f, 60.f);
 
 	// Effective bat mass (kg) and restitution fall off smoothly with that distance.
 	float M = FMath::Max(0.2f, 0.65f - 0.4f * OffLength - 0.35f * OffWidth);
 	float E = FMath::Max(0.25f, 0.5f - 0.2f * OffLength - 0.15f * OffWidth);
-	if (P.bSoftHands) { E = FMath::Min(E, 0.3f); M = FMath::Min(M, 0.3f); }
+	// Soft hands deaden the blade (restitution), they do not make it lighter: below ~0.5 kg the ball
+	// outweighs a deadened bat and carries on through the face towards the keeper.
+	if (P.bSoftHands) E = FMath::Min(E, 0.3f);
 
 	const float TimingQuality = FMath::Max(0.25f, 1.f - FMath::Square(Tau / 0.1f));
 	const float Speed = P.BatSpeed * (0.75f + 0.5f * FMath::Clamp(Batter.Power, 0.f, 1.f)) * TimingQuality;
@@ -183,10 +190,11 @@ FContactResult CricketBatting::ResolveContact(const FBallState& Ball, const FVec
 	// The batter angles the face so a sweet-spot hit would travel the intended way.
 	const FVector Want = Dir3(ShotDir, Loft, Off);
 	FVector Face = Want;
-	for (int32 I = 0; I < 4; ++I)
+	// Damped: off a dead bat the ball mostly slides along the face, so an undamped correction overshoots.
+	for (int32 I = 0; I < 8; ++I)
 	{
-		const FVector Got = Collide(Ball.Vel, Face, Speed, 0.5f, 0.65f).GetSafeNormal();
-		Face = (Face + (Want - Got)).GetSafeNormal();
+		const FVector Got = Collide(Ball.Vel, Face, Speed, P.bSoftHands ? 0.3f : 0.5f, 0.65f).GetSafeNormal();
+		Face = (Face + 0.6f * (Want - Got)).GetSafeNormal();
 	}
 
 	FVector Normal = Face;

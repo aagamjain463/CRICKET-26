@@ -9,6 +9,8 @@ namespace
 	constexpr float SetOff = 0.3f;      // leaving the crease after the stroke (s)
 	constexpr float Turn = 0.6f;        // ground the bat, stop, push back off (s)
 	// ponytail: one misjudgement spread for every pair; per-batter running judgement belongs with the attribute curves.
+	constexpr float ArmsLength = 0.5f;  // taken without moving the feet
+	constexpr float LungeSpeed = 6.f;   // m/s the hands travel reaching or diving beyond arm's length
 	constexpr float JudgeSigma = 0.3f;  // error (s) in the batters' read of how soon the ball is gathered
 
 	// Batter-relative polar placement. Ring fielders are measured from the striker's stumps,
@@ -243,11 +245,19 @@ FFieldingOutcome CricketField::Intercept(const TArray<FBallState>& Samples, floa
 			const float DiveReach = F.bKeeper ? 2.8f : 2.3f;
 			const float D = FVector2D::Distance(P, F.Home);
 			const float Lead = F.bKeeper ? KeeperLead : 0.f;
-			const float Need = Reaction + TimeToCover(FMath::Max(0.f, D - (bDiveAllowed ? DiveReach : Reach)), Skill.RunSpeed) - Lead;
+			// Stretching or diving takes time too: a full-length dive is ~0.4 s from the push-off. A keeper
+			// who read a beaten ball off the pitch is already moving across; only a deflection surprises them.
+			const float Lunge = F.bKeeper && !bContact ? 0.f : 1.f / LungeSpeed;
+			auto NeedWith = [&](float Stretch)
+			{
+				return Reaction + TimeToCover(FMath::Max(0.f, D - Stretch), Skill.RunSpeed)
+					+ FMath::Max(0.f, FMath::Min(D, Stretch) - ArmsLength) * Lunge - Lead;
+			};
+			const float Need = bDiveAllowed ? FMath::Min(NeedWith(Reach), NeedWith(DiveReach)) : NeedWith(Reach);
 			if (Need > T || T - Need <= Take.Slack) continue;
 			Take.Who = I;
 			Take.Slack = T - Need;
-			Take.bDive = Reaction + TimeToCover(FMath::Max(0.f, D - Reach), Skill.RunSpeed) - Lead > T;
+			Take.bDive = NeedWith(Reach) > T;
 			Take.Run = FMath::Max(0.f, D - Reach);
 		}
 		return Take;
@@ -422,7 +432,10 @@ FRunningOutcome CricketField::SolveRunning(const FFieldingOutcome& Fd, const FCr
 	R.RelayMove = To.Relay;
 	R.RelayCatch = To.RelayCatch;
 	R.RelayRelease = To.RelayRelease;
-	const float Expected = To.Expected;
+	// The batters' yardstick is not the probability-weighted break time: a run that is only safe if the
+	// throw misses is a gamble, and the likelier the direct hit, the more they judge against it.
+	const float MissBreak = FMath::Max(To.Arrive, Fd.CoverTime[R.bThrowToStrikerEnd ? 0 : 1]) + 0.4f;
+	const float Expected = To.Arrive + FMath::Square(1.f - To.PDirect) * (MissBreak - To.Arrive);
 
 	R.bDirectHit = Rng.GetFraction() < To.PDirect;
 	R.BreakTime = R.bDirectHit ? R.ThrowArrive : FMath::Max(R.ThrowArrive, Fd.CoverTime[R.bThrowToStrikerEnd ? 0 : 1]) + 0.4f;
