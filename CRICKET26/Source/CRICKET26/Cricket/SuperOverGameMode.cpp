@@ -10,6 +10,11 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Animation/AnimSequence.h"
+#include "AudioMixerBlueprintLibrary.h"
+#include "Components/AudioComponent.h"
+#include "CricketCommentary.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundWaveProcedural.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/DirectionalLight.h"
 #include "Engine/ExponentialHeightFog.h"
@@ -90,7 +95,9 @@ void ASuperOverGameMode::StartPlay()
 	int32 Level = int32(Difficulty);
 	FParse::Value(FCommandLine::Get(), TEXT("CricketDifficulty="), Level);
 	Difficulty = CricketAI::EDifficulty(FMath::Clamp(Level, 0, 3));
+	bRecordAudio = FParse::Param(FCommandLine::Get(), TEXT("CricketRecordAudio")) && ShotBall > 0;
 	BuildScene();
+	SetupAudio();
 	Match.Start(HumanTeam);
 	PlaceForDelivery();
 }
@@ -141,6 +148,32 @@ void ASuperOverGameMode::AddBody(AStaticMeshActor* Marker)
 	Body->RegisterComponent();
 	Body->PlayAnimation(IdleAnim, true);
 	Marker->GetStaticMeshComponent()->SetVisibility(false);
+}
+
+void ASuperOverGameMode::SetupAudio()
+{
+	for (int32 I = 0; I < int32(CricketAudio::ECue::Count); ++I) CuePcm[I] = CricketAudio::Synthesize(CricketAudio::ECue(I));
+	auto Channel = [this](TObjectPtr<USoundWaveProcedural>& Wave, TObjectPtr<UAudioComponent>& Comp)
+	{
+		Wave = NewObject<USoundWaveProcedural>(this);
+		Wave->SetSampleRate(CricketAudio::SampleRate);
+		Wave->NumChannels = 1;
+		Wave->bLooping = false;
+		Comp = UGameplayStatics::CreateSound2D(this, Wave, 1.f, 1.f, 0.f, nullptr, true); // null with -nosound
+		if (Comp) Comp->Play();
+	};
+	Channel(FieldWave, FieldAudio);
+	Channel(CrowdWave, CrowdAudio);
+}
+
+void ASuperOverGameMode::PlayCue(CricketAudio::ECue Cue, float Volume)
+{
+	if (!FieldAudio) return;
+	// ponytail: one ball channel, a new cue cuts the tail of the last; mix on separate channels if cues overlap audibly.
+	FieldWave->ResetAudio();
+	FieldAudio->SetVolumeMultiplier(Volume);
+	const TArray<int16>& Pcm = CuePcm[int32(Cue)];
+	FieldWave->QueueAudio(reinterpret_cast<const uint8*>(Pcm.GetData()), Pcm.Num() * sizeof(int16));
 }
 
 void ASuperOverGameMode::UpdateFigures(float Dt)
@@ -335,8 +368,14 @@ void ASuperOverGameMode::Tick(float Dt)
 		ShotClock = 0.f;
 		static int32 Shot = 0;
 		FScreenshotRequest::RequestScreenshot(FPaths::ScreenShotDir() / FString::Printf(TEXT("Ball%d_%03d.png"), ShotBall, Shot++), true, false);
+		// -CricketRecordAudio: also write the mixed game audio of the delivery to Saved/BallN.wav.
+		if (bRecordAudio && !bRecording) { UAudioMixerBlueprintLibrary::StartRecordingOutput(this, 30.f); bRecording = true; }
 	}
-	if (ShotBall > 0 && BallsPlayed >= ShotBall && DPhase == EDeliveryPhase::Waiting) FPlatformMisc::RequestExit(false); // capture done
+	if (ShotBall > 0 && BallsPlayed >= ShotBall && DPhase == EDeliveryPhase::Waiting)
+	{
+		if (bRecording) UAudioMixerBlueprintLibrary::StopRecordingOutput(this, EAudioRecordingExportType::WavFile, FString::Printf(TEXT("Ball%d"), ShotBall), FPaths::ProjectSavedDir());
+		FPlatformMisc::RequestExit(false); // capture done
+	}
 
 	switch (DPhase)
 	{
@@ -474,6 +513,7 @@ void ASuperOverGameMode::BeginRunUp()
 	// ball's follow, and retire the last ball's result from the HUD.
 	bCutCamera = true;
 	LastSummary.Reset();
+	Commentary.Reset();
 }
 
 void ASuperOverGameMode::DoRelease(float Timing)
@@ -503,6 +543,8 @@ void ASuperOverGameMode::FinishDelivery()
 		Result.Summary = TEXT("[DEBUG] Forced wicket  >  BOWLED!");
 		bForceWicket = false;
 	}
+	const CricketCommentary::FNames Names{ StrikerPlayer().Name, Teams[Match.BattingTeam()].Batters[Match.Cur().NonStriker].Name, Teams[Match.BattingTeam()].Name };
+	const float OffSign = OffSideSign(StrikerPlayer().BatHand);
 	TArray<ECricketEvent> Events;
 	if (!Match.CompleteDelivery(Outcome, Events))
 	{
@@ -513,6 +555,8 @@ void ASuperOverGameMode::FinishDelivery()
 	FString Err;
 	if (!Match.CheckInvariants(Err)) UE_LOG(LogCRICKET26, Error, TEXT("Match invariant broken: %s"), *Err);
 	LastSummary = Result.Summary;
+	Commentary = CricketCommentary::Describe(Result, Outcome, Match, Names, OffSign, BallsPlayed);
+	UE_LOG(LogCRICKET26, Display, TEXT("Commentary: %s"), *Commentary);
 	++BallsPlayed;
 	UE_LOG(LogCRICKET26, Display, TEXT("%s %d/%d (%d.%d): %s"), *Teams[Match.BattingTeam()].Short, Match.Cur().Runs,
 		Match.Cur().Wickets, Match.Cur().LegalBalls / 6, Match.Cur().LegalBalls % 6, *LastSummary);
@@ -525,7 +569,13 @@ void ASuperOverGameMode::FinishDelivery()
 
 void ASuperOverGameMode::Emit(const TArray<ECricketEvent>& Events)
 {
-	for (ECricketEvent E : Events) OnCricketEvent.Broadcast(E);
+	for (ECricketEvent E : Events)
+	{
+		// The crowd lifts for boundaries and wickets, then settles back to the bed.
+		if (E == ECricketEvent::BoundarySix) CrowdLevel = 1.f;
+		else if (E == ECricketEvent::BoundaryFour || E == ECricketEvent::Wicket) CrowdLevel = FMath::Max(CrowdLevel, 0.8f);
+		OnCricketEvent.Broadcast(E);
+	}
 }
 
 void ASuperOverGameMode::UpdatePresentation(float Dt)
@@ -539,6 +589,24 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	bWasReplaying = bReplay;
 	const float ReplayFrom = FMath::Max(0.f, Result.ContactTime - ReplayLead);
 	const float T = bReplay ? ReplayFrom + (PhaseTime - ReplayDelay) * ReplaySpeed : DPhase == EDeliveryPhase::DeadBall ? Result.DeadTime : PhaseTime;
+
+	// Ball sounds when the presented ball passes each moment, so a replay plays them again.
+	if (T < PrevCueT) PrevCueT = T; // a new ball or a replay rewinds the clock
+	if (bLive)
+	{
+		using CricketAudio::ECue;
+		auto Crossed = [&](float At) { return At > PrevCueT && At <= T; };
+		const EContactZone Z = Result.Contact.Zone;
+		const bool bEdge = Z == EContactZone::InsideEdge || Z == EContactZone::OutsideEdge || Z == EContactZone::TopEdge || Z == EContactZone::BottomEdge;
+		if (Result.PitchTime > 0.f && Crossed(Result.PitchTime)) PlayCue(ECue::Bounce, 0.5f);
+		if (Result.Contact.HasContact() && Crossed(Result.ContactTime)) PlayCue(bEdge ? ECue::EdgeTick : ECue::BatCrack, 0.4f + 0.6f * Result.Contact.Quality);
+		if (Result.bStumpsHit && Crossed(Result.StumpsTime)) PlayCue(ECue::Stumps, 1.f);
+	}
+	PrevCueT = T;
+	CrowdLevel = FMath::FInterpTo(CrowdLevel, 0.3f, Dt, 0.4f);
+	if (CrowdAudio) CrowdAudio->SetVolumeMultiplier(CrowdLevel);
+	if (CrowdWave && CrowdWave->GetAvailableAudioByteCount() < CricketAudio::SampleRate * 2)
+		CrowdWave->QueueAudio(reinterpret_cast<const uint8*>(CuePcm[int32(CricketAudio::ECue::Crowd)].GetData()), CuePcm[int32(CricketAudio::ECue::Crowd)].Num() * sizeof(int16));
 	const float Post = T - Result.ContactTime; // seconds after contact (or after passing the batter)
 
 	// Bowler: run-up, delivery stride, follow-through.

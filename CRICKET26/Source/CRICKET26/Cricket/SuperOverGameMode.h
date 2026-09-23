@@ -10,6 +10,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
 #include "CricketAI.h"
+#include "CricketAudio.h"
 #include "SuperOverGameMode.generated.h"
 
 class AStaticMeshActor;
@@ -18,6 +19,8 @@ class UStaticMesh;
 class UMaterialInterface;
 class USkeletalMesh;
 class UAnimSequence;
+class UAudioComponent;
+class USoundWaveProcedural;
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnCricketEvent, ECricketEvent);
 
@@ -53,7 +56,8 @@ public:
 	FBatInput BatInput;
 	FResolveContext Ctx;
 	FString BowlerIntent;          // AI plan label (debug only: a human batter should not see it)
-	FString LastSummary;
+	FString LastSummary;           // the simulation's technical summary (debug overlay and log)
+	FString Commentary;            // caption for the last delivery
 	float HumanRunMargin = 0.35f;
 	float ShotDirection = 0.f;
 	bool bDebug = false, bTrajectory = false, bAutoPlay = false, bForceWicket = false;
@@ -92,6 +96,15 @@ private:
 	UPROPERTY() TArray<TObjectPtr<AStaticMeshActor>> Figures; // everyone who stands on the field
 	struct FFigureState { FVector Last = FVector::ZeroVector; float Speed = 0.f; bool bJogging = false; };
 	TMap<TObjectPtr<AStaticMeshActor>, FFigureState> FigureStates;
+	// Sound: one channel for the ball's cues (bat, edge, pitching, stumps) and a looping crowd bed whose
+	// level swells on boundaries and wickets.
+	UPROPERTY() TObjectPtr<UAudioComponent> FieldAudio;
+	UPROPERTY() TObjectPtr<UAudioComponent> CrowdAudio;
+	UPROPERTY() TObjectPtr<USoundWaveProcedural> FieldWave;
+	UPROPERTY() TObjectPtr<USoundWaveProcedural> CrowdWave;
+	TArray<int16> CuePcm[int32(CricketAudio::ECue::Count)];
+	float CrowdLevel = 0.3f, PrevCueT = 0.f;
+	bool bRecordAudio = false, bRecording = false;
 
 	FRandomStream Rng;
 	TArray<int32> RecentPlans;
@@ -110,4 +123,6 @@ private:
 	void UpdatePresentation(float Dt);
 	void AddBody(AStaticMeshActor* Marker);
 	void UpdateFigures(float Dt);
+	void SetupAudio();
+	void PlayCue(CricketAudio::ECue Cue, float Volume);
 };

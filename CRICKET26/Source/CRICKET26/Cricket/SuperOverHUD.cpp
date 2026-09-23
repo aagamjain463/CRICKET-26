@@ -147,7 +147,8 @@ void ASuperOverHUD::DrawHUD()
 	}
 
 	// Last ball.
-	if (!GM->LastSummary.IsEmpty()) Text(GM->LastSummary, W * 0.5f, H - 100 * S, FLinearColor(1, 0.9f, 0.5f), 1.f * S, true);
+	if (!GM->Commentary.IsEmpty()) Text(GM->Commentary, W * 0.5f, H - 100 * S, FLinearColor(1, 0.9f, 0.5f), 1.f * S, true);
+	if (GM->bDebug && !GM->LastSummary.IsEmpty()) Text(GM->LastSummary, W * 0.5f, H - 80 * S, FLinearColor(0.7f, 0.7f, 0.7f), 0.8f * S, true);
 
 	if (GM->IsReplaying())
 	{
