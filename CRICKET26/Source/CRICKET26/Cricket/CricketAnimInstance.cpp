@@ -45,7 +45,8 @@ bool FCricketAnimProxy::Evaluate(FPoseContext& Output)
 	return true;
 }
 
-namespace
+// Named rather than anonymous: unity builds merge this file with others that have their own helpers.
+namespace CricketIK
 {
 	using FCS = FCSPose<FCompactPose>;
 
@@ -75,6 +76,7 @@ namespace
 
 void FCricketAnimProxy::ApplyActions(FPoseContext& Output) const
 {
+	using namespace CricketIK;
 	const bool bPelvis = !Pose.PelvisOffset.IsNearlyZero(0.5f);
 	const bool bChest = !Pose.ChestFacing.IsNearlyZero() || Pose.ChestBend != 0.f;
 	const bool bHands = Pose.HandWeight[0] > 0.f || Pose.HandWeight[1] > 0.f;

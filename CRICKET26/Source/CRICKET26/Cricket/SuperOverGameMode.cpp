@@ -2,6 +2,7 @@
 #include "SuperOverHUD.h"
 #include "CricketAnimInstance.h"
 #include "CricketPose.h"
+#include "CricketStadium.h"
 #include "CRICKET26.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -376,15 +377,7 @@ void ASuperOverGameMode::BuildScene()
 		AStaticMeshActor* Seg = Spawn(CubeMesh, P, FVector(0.08f, 2.f * PI * BoundaryRadius / 96.f, 0.08f), White);
 		Seg->SetActorRotation(FRotator(0.f, FMath::RadiansToDegrees(A), 0.f));
 	}
-	// ponytail: stands are raked slabs so the follow camera never sees past the ground; swap for a stadium mesh.
-	for (int32 I = 0; I < 48; ++I)
-	{
-		const float A = 2.f * PI * I / 48.f;
-		const float R = BoundaryRadius + 22.f;
-		AStaticMeshActor* Stand = Spawn(CubeMesh, FVector(C.X + R * FMath::Cos(A), R * FMath::Sin(A), 8.f),
-			FVector(28.f, 2.f * PI * R / 48.f + 0.5f, 1.f), FLinearColor(0.18f, 0.2f, 0.26f));
-		Stand->SetActorRotation(FRotator(35.f, FMath::RadiansToDegrees(A), 0.f));
-	}
+	BuildStadium();
 	for (int32 I = 0; I < 72; ++I)
 	{
 		const float A = 2.f * PI * I / 72.f;
@@ -422,6 +415,51 @@ void ASuperOverGameMode::BuildScene()
 	Camera->GetCameraComponent()->SetConstraintAspectRatio(false);
 }
 
+void ASuperOverGameMode::BuildStadium()
+{
+	// A lit material that takes its base colour from the vertex colours (the modeling plugin's; Epic, UE EULA).
+	VertexColourMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/MeshModelingToolset/Materials/M_DynamicMeshComponentVtxColor.M_DynamicMeshComponentVtxColor"));
+	if (!VertexColourMaterial) return;
+	CricketStadium::FStadiumSpec Spec;
+	Spec.Home = Teams[0].Colour;
+	Spec.Away = Teams[1].Colour;
+	const CricketStadium::FStadium Stadium = CricketStadium::Build(Spec);
+	auto Place = [&](const CricketStadium::FColouredMesh& Mesh, float Z, UMaterialInterface* Material)
+	{
+		AStaticMeshActor* A = GetWorld()->SpawnActor<AStaticMeshActor>(FVector(0.f, 0.f, Z), FRotator::ZeroRotator);
+		UStaticMeshComponent* C = A->GetStaticMeshComponent();
+		C->SetMobility(EComponentMobility::Movable);
+		C->SetStaticMesh(CricketStadium::ToStaticMesh(A, Mesh, Material));
+		C->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		return A;
+	};
+	Place(Stadium.Structure, 0.f, VertexColourMaterial);
+	// The grass keeps the shape material: the vertex colour material's sheen washes out a flat field seen
+	// at a grazing angle.
+	for (int32 I = 0; I < 2; ++I) Paint(Place(Stadium.Outfield[I], -0.8f, ShapeMaterial), CricketStadium::StripeColours[I]); // under the strip's top and the creases
+	for (const CricketStadium::FColouredMesh& Section : Stadium.Crowd)
+	{
+		AStaticMeshActor* A = Place(Section, 0.f, VertexColourMaterial);
+		A->GetStaticMeshComponent()->SetCastShadow(false); // ponytail: the stand's own shadow reads fine; a crowd's is thousands of tiny casters
+		CrowdSections.Add(A);
+	}
+	int32 Tris = Stadium.Structure.NumTriangles() + Stadium.Outfield[0].NumTriangles() + Stadium.Outfield[1].NumTriangles();
+	for (const CricketStadium::FColouredMesh& Section : Stadium.Crowd) Tris += Section.NumTriangles();
+	UE_LOG(LogCRICKET26, Display, TEXT("Stadium: %d spectators, %d triangles, %d meshes"), Stadium.Spectators, Tris, 3 + Stadium.Crowd.Num());
+}
+
+void ASuperOverGameMode::UpdateCrowd()
+{
+	// The crowd gets up and jumps as the noise swells on a boundary or wicket, and sits back down with it.
+	const float Excitement = FMath::Clamp((CrowdLevel - 0.4f) / 0.4f, 0.f, 1.f);
+	const float T = GetWorld()->GetTimeSeconds();
+	for (int32 I = 0; I < CrowdSections.Num(); ++I)
+	{
+		const float Z = CricketStadium::JumpHeight(T, Excitement, I / CricketStadium::NumGroups, I % CricketStadium::NumGroups);
+		CrowdSections[I]->SetActorLocation(FVector(0.f, 0.f, Z * 100.f));
+	}
+}
+
 FString ASuperOverGameMode::DirectionName() const
 {
 	const float D = ShotDirection;
@@ -456,7 +494,7 @@ void ASuperOverGameMode::PlaceForDelivery()
 	// Umpires: behind the bowler's stumps on the side away from the bowling arm, and at square leg.
 	Umpires[0]->SetActorLocation(ToWorld(FVector(CricketGeo::PitchLength + 1.8f, -0.9f * Arm, 0.9f)));
 	Umpires[1]->SetActorLocation(ToWorld(FVector(0.5f, -26.f * Off, 0.9f)));
-	for (AStaticMeshActor* U : Umpires) Paint(U, FLinearColor(0.85f, 0.85f, 0.8f));
+	for (AStaticMeshActor* U : Umpires) Paint(U, FLinearColor(0.05f, 0.05f, 0.06f)); // umpires in black: white picked up the grass green
 	Paint(Striker, BatCol);
 	Paint(NonStriker, BatCol);
 	Paint(Bowler, FieldCol);
@@ -1199,6 +1237,7 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	bCutCamera = false;
 	UpdateFigures(Dt);
 	UpdatePoses(T, bLive, Post, Off, Arm);
+	UpdateCrowd();
 
 	if (bTrajectory && Result.BallPath.Num() > 1)
 	{

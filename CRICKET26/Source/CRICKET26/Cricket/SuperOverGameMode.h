@@ -103,6 +103,8 @@ private:
 	UPROPERTY() TObjectPtr<UStaticMesh> SphereMesh;
 	UPROPERTY() TObjectPtr<UStaticMesh> CylinderMesh;
 	UPROPERTY() TObjectPtr<UMaterialInterface> ShapeMaterial;
+	UPROPERTY() TObjectPtr<UMaterialInterface> VertexColourMaterial;
+	UPROPERTY() TArray<TObjectPtr<AStaticMeshActor>> CrowdSections; // CricketStadium::Build's crowd meshes, in order
 	UPROPERTY() TObjectPtr<AStaticMeshActor> Ball;
 	UPROPERTY() TObjectPtr<AStaticMeshActor> Bat;
 	UPROPERTY() TObjectPtr<AStaticMeshActor> NonStrikerBat;
@@ -158,6 +160,8 @@ private:
 	void UpdatePresentation(float Dt);
 	void AddBody(AStaticMeshActor* Marker);
 	void UpdateFigures(float Dt);
+	void BuildStadium();
+	void UpdateCrowd();
 	void UpdatePoses(float T, bool bLive, float Post, float Off, float Arm);
 	class UCricketAnimInstance* AnimOf(AActor* Figure) const;
 	void CheckFigures();
