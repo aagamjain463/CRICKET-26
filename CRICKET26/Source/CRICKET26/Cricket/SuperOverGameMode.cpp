@@ -240,7 +240,7 @@ void ASuperOverGameMode::PlayCue(CricketAudio::ECue Cue, float Volume)
 	if (!FieldAudio) return;
 	// ponytail: one ball channel, a new cue cuts the tail of the last; mix on separate channels if cues overlap audibly.
 	FieldWave->ResetAudio();
-	FieldAudio->SetVolumeMultiplier(Volume);
+	FieldAudio->SetVolumeMultiplier(Volume * CricketAudio::MixGain);
 	const TArray<int16>& Pcm = CuePcm[int32(Cue)];
 	FieldWave->QueueAudio(reinterpret_cast<const uint8*>(Pcm.GetData()), Pcm.Num() * sizeof(int16));
 }
@@ -1134,7 +1134,7 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	}
 	PrevCueT = T;
 	CrowdLevel = FMath::FInterpTo(CrowdLevel, 0.3f, Dt, 0.4f);
-	if (CrowdAudio) CrowdAudio->SetVolumeMultiplier(CrowdLevel);
+	if (CrowdAudio) CrowdAudio->SetVolumeMultiplier(CrowdLevel * CricketAudio::MixGain);
 	if (CrowdWave && CrowdWave->GetAvailableAudioByteCount() < CricketAudio::SampleRate * 2)
 		CrowdWave->QueueAudio(reinterpret_cast<const uint8*>(CuePcm[int32(CricketAudio::ECue::Crowd)].GetData()), CuePcm[int32(CricketAudio::ECue::Crowd)].Num() * sizeof(int16));
 	const float Post = T - Result.ContactTime; // seconds after contact (or after passing the batter)

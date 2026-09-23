@@ -10,6 +10,11 @@ namespace CricketAudio
 {
 	/** Mono 16-bit at a mobile-friendly rate. */
 	constexpr int32 SampleRate = 22050;
+	/**
+	 * Gain on every channel. The mixer's platform headroom and the mono-to-stereo pan take about 9 dB off a
+	 * full-scale cue; with this a middled bat crack peaks at about -7 dBFS in the recorded game mix, unclipped.
+	 */
+	constexpr float MixGain = 2.f;
 
 	enum class ECue : uint8 { BatCrack, EdgeTick, Bounce, Stumps, Crowd, Count };
 
