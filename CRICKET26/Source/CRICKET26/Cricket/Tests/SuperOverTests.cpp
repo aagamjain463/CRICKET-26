@@ -1314,7 +1314,7 @@ bool FSOAIMatch::RunTest(const FString&)
 	// A value-driven batter lofts almost every ball it can reach in a Super Over, as real ones do.
 	Band(TEXT("sixes"), Sixes, 0.08f, 0.30f);
 	Band(TEXT("fours"), Fours, 0.07f, 0.22f);
-	Band(TEXT("dots"), Dots, 0.15f, 0.40f);
+	Band(TEXT("dots"), Dots, 0.10f, 0.40f); // Super Over batters swing at everything: 0 dots in 12 balls in the 2019 World Cup final
 	Band(TEXT("singles"), Ran[1], 0.08f, 0.35f);
 	Band(TEXT("twos"), Ran[2], 0.005f, 0.12f);
 	Band(TEXT("wickets"), Wickets, 0.06f, 0.18f);
@@ -1719,6 +1719,216 @@ bool FSOAttributeCurves::RunTest(const FString&)
 	TestTrue(TEXT("fast batters score more runs"), Runs[1] > Runs[0] * 1.1f);
 	TestTrue(TEXT("fast batters are not run out more often per run attempted"), Outs[1] * Attempts[0] <= Outs[0] * Attempts[1] * 1.2f + Attempts[1] * 0.002f);
 	TestTrue(TEXT("a strong arm stops runs"), Runs[3] < Runs[2] * 0.95f);
+	return true;
+}
+
+// ---------------------------------------------------------------- Acceptance scenarios
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOAcceptance, "CRICKET26.Acceptance.ScenariosAToL", CricketTestFlags)
+bool FSOAcceptance::RunTest(const FString&)
+{
+	// The slice's twelve acceptance scenarios, each a real delivery through the full resolver (ball flight,
+	// the stroke, umpiring, fielding and running) scored by the match rules. Where a scenario needs a
+	// particular field placing or call, the test searches deliveries for one that produces it, so a failure
+	// means the simulation can no longer produce that piece of cricket at all.
+	auto Legal = [this](const TCHAR* Name, const FDeliveryResult& R)
+	{
+		FSuperOverMatch M;
+		M.Start(0);
+		TestTrue(*FString::Printf(TEXT("%s: the match accepts it (%s)"), Name, *R.Summary), Bowl(M, R.ToOutcome()));
+		UE_LOG(LogTemp, Display, TEXT("Scenario %s: %s"), Name, *R.Summary);
+	};
+	auto Angle = [](const FDeliveryResult& R) { return FMath::RadiansToDegrees(FMath::Atan2(R.Contact.ExitVel.Y, R.Contact.ExitVel.X)); };
+	auto Rise = [](const FDeliveryResult& R) { return FMath::RadiansToDegrees(FMath::Atan2(R.Contact.ExitVel.Z, FVector2D(R.Contact.ExitVel).Size())); };
+
+	// A: cover drive. Full outside off, driven along the ground into the covers.
+	const FDeliveryRelease DriveBall = Release(EDeliveryType::Stock, 3.5f, 0.25f);
+	const FDeliveryResult A = CricketDelivery::Resolve(DriveBall, Perfect(DriveBall, EBatIntent::Ground, 60.f), Ctx());
+	TestTrue(*FString::Printf(TEXT("A: middled into the covers (%.0f deg, %.0f up, quality %.2f)"), Angle(A), Rise(A), A.Contact.Quality),
+		A.Contact.HasContact() && A.Dismissal == EDismissal::None && Angle(A) > 35.f && Angle(A) < 90.f && Rise(A) < 15.f && A.Contact.Quality > 0.7f);
+	Legal(TEXT("A"), A);
+
+	// B: yorker dug out. On the stumps at the toes, blocked in time: bat on ball, not out, no power.
+	const FDeliveryRelease Yorker = Release(EDeliveryType::Stock, 1.f, 0.f);
+	const FDeliveryResult B = CricketDelivery::Resolve(Yorker, Perfect(Yorker, EBatIntent::Defend, 0.f), Ctx());
+	TestTrue(*FString::Printf(TEXT("B: dug out (%s, %.1f m/s)"), *B.Summary, B.Contact.ExitVel.Size()),
+		B.Contact.HasContact() && B.Dismissal == EDismissal::None && B.Contact.ExitVel.Size() < 25.f);
+	Legal(TEXT("B"), B);
+
+	// C: pull. Short, pulled in front of square on the leg side.
+	const FDeliveryRelease Short = Release(EDeliveryType::Stock, 8.f, 0.f);
+	const FDeliveryResult C = CricketDelivery::Resolve(Short, Perfect(Short, EBatIntent::Ground, -80.f), Ctx());
+	TestTrue(*FString::Printf(TEXT("C: pulled to the leg side (%s, %.0f deg)"), *C.Summary, Angle(C)), // in the air, so it may be caught
+		C.Shot.Shot == EShotType::Pull && C.Contact.HasContact() && Angle(C) < -35.f && Angle(C) > -135.f);
+	Legal(TEXT("C"), C);
+
+	// D: a late outswinger finds the outside edge that the same stock ball would not.
+	{
+		FResolveContext Tail = Ctx();
+		Tail.Striker.Technique = 0.f;
+		bool bFound = false;
+		for (float Line = 0.05f; Line <= 0.3f && !bFound; Line += 0.05f)
+		{
+			FCricketPlayer Swinger;
+			Swinger.Accuracy = 1.f;
+			Swinger.Movement = 1.f;
+			FDeliveryPlan Plan;
+			Plan.Length = 4.5f;
+			Plan.Line = Line;
+			Plan.Type = EDeliveryType::Stock;
+			const FDeliveryRelease Stock = CricketBowling::Execute(Swinger, ECricketHand::Right, Plan, 0.f, 3, Tail.Conditions);
+			Plan.Type = EDeliveryType::Outswing;
+			const FDeliveryRelease Away = CricketBowling::Execute(Swinger, ECricketHand::Right, Plan, 0.f, 3, Tail.Conditions);
+			const FDeliveryResult S = CricketDelivery::Resolve(Stock, Perfect(Stock, EBatIntent::Defend, 0.f), Tail);
+			const FDeliveryResult D = CricketDelivery::Resolve(Away, Perfect(Away, EBatIntent::Defend, 0.f), Tail);
+			if (S.Contact.Zone == EContactZone::OutsideEdge || D.Contact.Zone != EContactZone::OutsideEdge) continue;
+			bFound = true;
+			Legal(TEXT("D"), D);
+		}
+		TestTrue(TEXT("D: some line finds the edge with late swing only"), bFound);
+	}
+
+	// E: a leg break beats the bat and the keeper, standing up, gathers it.
+	{
+		FResolveContext Spin = Ctx(EBowlerType::LegSpin);
+		Spin.Striker.Technique = 0.f;
+		bool bFound = false;
+		for (float Line = 0.1f; Line <= 0.6f && !bFound; Line += 0.05f)
+		{
+			const FDeliveryRelease R = Release(EDeliveryType::LegBreak, 4.5f, Line, 0.f, EBowlerType::LegSpin);
+			const FDeliveryResult E = CricketDelivery::Resolve(R, Perfect(R, EBatIntent::Defend, 0.f, EBowlerType::LegSpin), Spin);
+			if (E.Contact.HasContact() || E.bWide || E.Dismissal != EDismissal::None) continue;
+			bFound = true;
+			TestTrue(*FString::Printf(TEXT("E: the keeper takes it (%s)"), *E.Summary), E.Fielding.Fielder >= 0 && Spin.Field[E.Fielding.Fielder].bKeeper);
+			Legal(TEXT("E"), E);
+		}
+		TestTrue(TEXT("E: some line beats the bat"), bFound);
+	}
+
+	// F: stumped. The batter charges a wide leg break, is beaten, and the keeper breaks the wicket.
+	{
+		bool bFound = false;
+		const FDeliveryRelease R = Release(EDeliveryType::LegBreak, 4.5f, 1.3f, 0.f, EBowlerType::LegSpin);
+		FBatInput Charge;
+		Charge.Intent = EBatIntent::Loft;
+		Charge.PressTime = CricketDelivery::Read(R.Ball, 0.f, FPitchConditions()).ArrivalTime - 0.62f;
+		for (int32 Seed = 1; Seed <= 5 && !bFound; ++Seed) // the keeper fumbles about one take in ten
+		{
+			const FDeliveryResult F = CricketDelivery::Resolve(R, Charge, Ctx(EBowlerType::LegSpin, Seed));
+			if (F.Dismissal != EDismissal::Stumped) continue;
+			bFound = true;
+			Legal(TEXT("F"), F);
+		}
+		TestTrue(TEXT("F: stumped"), bFound);
+	}
+
+	// G, H: pushed and punched strokes round the ground, under normal and aggressive running. G wants a
+	// quick single (completed with the throw close behind); H a second run that is lost by a whisker.
+	TOptional<FDeliveryResult> G, H;
+	for (float Dir = -150.f; Dir <= 150.f && !(G && H); Dir += 10.f)
+	{
+		for (const float Length : { 3.5f, 5.f, 7.f })
+		{
+			const FDeliveryRelease R = Release(EDeliveryType::Stock, Length, 0.1f);
+			for (const EBatIntent Intent : { EBatIntent::Defend, EBatIntent::Ground })
+			{
+				for (int32 Seed = 1; Seed <= 6; ++Seed)
+				{
+					FResolveContext Run = Ctx(EBowlerType::Pace, Seed);
+					Run.RunMargin = Seed % 2 ? 0.25f : -0.1f; // normal and aggressive running
+					const FDeliveryResult X = CricketDelivery::Resolve(R, Perfect(R, Intent, Dir), Run);
+					const FRunningOutcome& Rn = X.Running;
+					if (X.Fielding.Boundary || X.Fielding.bCaught || !X.Contact.HasContact()) continue;
+					if (!G && Rn.Completed == 1 && Rn.Attempted == 1 && !Rn.bRunOut && !Rn.bSentBack && Rn.RunTimes.Num() == 1
+						&& Rn.BreakTime - Rn.RunTimes[0] < 0.5f && X.Fielding.FieldPos.Size() < 30.f) G = X;
+					if (!H && Rn.Attempted == 2 && Rn.Completed == 1 && Rn.bRunOut && Rn.RunTimes.Num() == 2
+						&& Rn.RunTimes[1] - Rn.BreakTime < 0.3f) H = X;
+				}
+			}
+		}
+	}
+	if (TestTrue(TEXT("G: a quick single"), G.IsSet()))
+	{
+		TestEqual(TEXT("G: one run, nobody out"), G->ToOutcome().RunsRun, 1);
+		Legal(TEXT("G"), *G);
+	}
+	if (TestTrue(TEXT("H: run out by a whisker going for two"), H.IsSet()))
+	{
+		TestEqual(TEXT("H: run out"), H->Dismissal, EDismissal::RunOut);
+		TestEqual(TEXT("H: the first run counts"), H->ToOutcome().RunsRun, 1);
+		Legal(TEXT("H"), *H);
+	}
+
+	// I: a mistimed loft goes up and gives a catch chance.
+	{
+		const FDeliveryRelease R = Release(EDeliveryType::Stock, 4.f, 0.f);
+		TOptional<FDeliveryResult> I;
+		for (float Off = 0.02f; Off <= 0.1f && !I; Off += 0.01f)
+		{
+			for (const float Sign : { 1.f, -1.f })
+			{
+				for (const float Dir : { 0.f, -40.f, 40.f })
+				{
+					FBatInput In = Perfect(R, EBatIntent::Loft, Dir);
+					In.PressTime += Sign * Off;
+					const FDeliveryResult X = CricketDelivery::Resolve(R, In, Ctx());
+					if (!I && X.Fielding.bCatchChance && X.Contact.Quality < 0.8f) I = X;
+				}
+			}
+		}
+		if (TestTrue(TEXT("I: a mistimed loft offers a catch"), I.IsSet()))
+		{
+			TestTrue(*FString::Printf(TEXT("I: caught or put down (%s)"), *I->Summary), I->Dismissal == EDismissal::Caught || I->Dismissal == EDismissal::None);
+			Legal(TEXT("I"), *I);
+		}
+	}
+
+	// J: six. A half-volley lofted straight, perfectly timed, clears the rope.
+	TOptional<FDeliveryResult> J;
+	int32 Middled = 0, Sixes = 0;
+	for (float Length = 3.f; Length <= 5.f; Length += 0.5f) // half-volley to good length
+	{
+		const FDeliveryRelease Slot = Release(EDeliveryType::Stock, Length, 0.f);
+		for (int32 Seed = 1; Seed <= 4; ++Seed) // bat placement carries the batter's execution error, so not all are middled
+		{
+			const FDeliveryResult X = CricketDelivery::Resolve(Slot, Perfect(Slot, EBatIntent::Loft, 0.f), Ctx(EBowlerType::Pace, Seed));
+			if (X.Contact.Zone != EContactZone::Middle) continue;
+			++Middled;
+			Sixes += X.Fielding.Boundary == 6;
+			if (!J && X.Fielding.Boundary == 6) J = X;
+		}
+	}
+	TestTrue(*FString::Printf(TEXT("J: every middled straight loft clears the rope (%d of %d)"), Sixes, Middled), Middled >= 5 && Sixes == Middled);
+	if (J) Legal(TEXT("J"), *J);
+
+	// K, L: last ball, two to win. The six wins it; the quick single ties it and a second Super
+	// Over starts with the side that batted second going in first.
+	auto LastBall = [this](const FDeliveryResult& R, TArray<ECricketEvent>& Ev)
+	{
+		FSuperOverMatch M;
+		M.Start(0);
+		for (const FDeliveryOutcome& O : { Four(), Four(), Runs(0), Runs(0), Runs(0), Runs(0) }) Bowl(M, O);
+		M.StartSecondInnings(); // target 9
+		for (const FDeliveryOutcome& O : { Four(), Runs(2), Runs(1), Runs(0), Runs(0) }) Bowl(M, O);
+		TestTrue(TEXT("K: two needed off the last ball"), M.Target - M.Cur().Runs == 2 && M.Cur().LegalBalls == 5);
+		Bowl(M, R.ToOutcome(), &Ev);
+		return M;
+	};
+	TArray<ECricketEvent> Ev;
+	if (J)
+	{
+		const FSuperOverMatch Won = LastBall(*J, Ev);
+		TestTrue(TEXT("K: the six wins it"), Won.Phase == EMatchPhase::MatchComplete && Won.Winner == 1 && Ev.Contains(ECricketEvent::MatchWon));
+	}
+	if (G)
+	{
+		Ev.Reset();
+		FSuperOverMatch Tied = LastBall(*G, Ev);
+		TestTrue(TEXT("L: the single ties it"), Tied.Phase == EMatchPhase::MatchComplete && Tied.bTied && Ev.Contains(ECricketEvent::MatchTied));
+		TestTrue(TEXT("L: another Super Over"), Tied.StartNextSuperOver() && Tied.SuperOverNumber == 2 && Tied.BattingTeam() == 1);
+		FString Err;
+		TestTrue(TEXT("L: invariants hold"), Tied.CheckInvariants(Err));
+	}
 	return true;
 }
 

@@ -256,14 +256,16 @@ void ASuperOverGameMode::UpdateFigures(float Dt)
 		FFigureState& S = FigureStates.FindOrAdd(A);
 		const FVector Pos = A->GetActorLocation();
 		FVector Vel = Dt > 0.f && !S.Last.IsZero() ? (Pos - S.Last) / Dt : FVector::ZeroVector;
-		if (Vel.Size() > 1500.f) { Vel = FVector::ZeroVector; S.Speed = 0.f; } // faster than anyone runs: a reset or replay jump
+		const bool bJumped = Vel.Size() > 1500.f; // faster than anyone runs: a reset or replay jump
+		if (bJumped) { Vel = FVector::ZeroVector; S.Speed = 0.f; }
 		S.Last = Pos;
 		S.Speed = FMath::Lerp(S.Speed, FVector2D(Vel).Size() / 100.f, FMath::Clamp(Dt * 8.f, 0.f, 1.f));
 		if (A->IsHidden()) continue;
 		UCricketAnimInstance* Anim = AnimOf(A);
 		const USkeletalMeshComponent* Body = A->FindComponentByClass<USkeletalMeshComponent>();
-		// How far the striker's hands ended up from last frame's bat targets (the IK's reach), for the log.
-		for (int32 H = 0; H < 2 && Anim && A == Striker && Anim->Pose.HandWeight[0] >= 1.f && Anim->Pose.HandWeight[1] >= 1.f; ++H)
+		// How far the striker's hands ended up from last frame's bat targets (the IK's reach), for the log. After a
+		// jump those targets are where the body was, not where it is; UpdatePoses replaces them before the body poses.
+		for (int32 H = 0; H < 2 && Anim && A == Striker && !bJumped && Anim->Pose.HandWeight[0] >= 1.f && Anim->Pose.HandWeight[1] >= 1.f; ++H)
 		{
 			const float Miss = FVector::Dist(Body->GetSocketLocation(H == 0 ? TEXT("hand_l") : TEXT("hand_r")), Anim->Pose.Hand[H]);
 			HandMiss.Add(Miss);

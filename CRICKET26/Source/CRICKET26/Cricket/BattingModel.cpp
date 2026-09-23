@@ -52,7 +52,9 @@ const FShotProfile& CricketBatting::Profile(EShotType Shot, EFootwork Foot)
 	static const FShotProfile DefendF = Make(EShotType::Defend, F::Front, false, 0.1f, 0.95f, -0.35f, 0.7f, 3.f, -6.f, -40.f, 40.f, 0.22f);
 	static const FShotProfile DefendB = Make(EShotType::Defend, F::Back, false, 0.35f, 1.4f, -0.3f, 0.7f, 3.f, -6.f, -40.f, 40.f, 0.2f);
 	static const FShotProfile Drive = Make(EShotType::Drive, F::Front, false, 0.12f, 0.85f, -0.35f, 0.75f, 24.f, 3.f, -50.f, 75.f, 0.28f);
-	static const FShotProfile Loft = Make(EShotType::Loft, F::Front, false, 0.25f, 1.0f, -0.45f, 0.8f, 26.f, 30.f, -70.f, 80.f, 0.3f);
+	// Lofting, the blade comes through upright with the face open rather than angled forward, so its sweet spot
+	// bottoms out a little higher - but still low enough to get under a half-volley, the ball to hit straight for six.
+	static const FShotProfile Loft = Make(EShotType::Loft, F::Front, false, 0.15f, 1.0f, -0.45f, 0.8f, 26.f, 30.f, -70.f, 80.f, 0.3f);
 	static const FShotProfile Punch = Make(EShotType::Punch, F::Back, false, 0.5f, 1.3f, -0.2f, 0.7f, 20.f, 2.f, -35.f, 70.f, 0.24f);
 	static const FShotProfile Cut = Make(EShotType::Cut, F::Back, true, 0.45f, 1.3f, 0.15f, 1.05f, 22.f, 3.f, 70.f, 135.f, 0.24f);
 	static const FShotProfile Pull = Make(EShotType::Pull, F::Back, true, 0.75f, 1.75f, -0.4f, 0.55f, 26.f, 14.f, -135.f, -35.f, 0.26f);
