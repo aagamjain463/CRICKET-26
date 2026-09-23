@@ -7,7 +7,9 @@
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/SkyAtmosphereComponent.h"
 #include "Components/SkyLightComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Animation/AnimSequence.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/DirectionalLight.h"
 #include "Engine/ExponentialHeightFog.h"
@@ -110,6 +112,69 @@ void ASuperOverGameMode::Paint(AStaticMeshActor* A, const FLinearColor& Colour)
 	UMaterialInstanceDynamic* M = UMaterialInstanceDynamic::Create(ShapeMaterial, A);
 	M->SetVectorParameterValue(TEXT("Color"), Colour);
 	A->GetStaticMeshComponent()->SetMaterial(0, M);
+	// A player's mannequin is painted in the team colour (its own material's tint).
+	if (USkeletalMeshComponent* Body = A->FindComponentByClass<USkeletalMeshComponent>())
+	{
+		for (int32 I = 0; I < Body->GetNumMaterials(); ++I)
+		{
+			if (UMaterialInstanceDynamic* Kit = Body->CreateDynamicMaterialInstance(I))
+			{
+				Kit->SetVectorParameterValue(TEXT("Paint Tint"), Colour);
+				Kit->SetVectorParameterValue(TEXT("LogoTint"), Colour);
+			}
+		}
+	}
+}
+
+void ASuperOverGameMode::AddBody(AStaticMeshActor* Marker)
+{
+	Figures.Add(Marker);
+	if (!BodyMesh) return;
+	// The marker cylinder stays the authoritative position (centred 0.9 m up); the mannequin stands in it.
+	USkeletalMeshComponent* Body = NewObject<USkeletalMeshComponent>(Marker);
+	Body->SetSkeletalMesh(BodyMesh);
+	Body->SetUsingAbsoluteScale(true);
+	Body->SetupAttachment(Marker->GetRootComponent());
+	Body->SetRelativeLocationAndRotation(FVector(0.f, 0.f, -0.5f), FRotator(0.f, -90.f, 0.f)); // cylinder is 1.8 units tall: -0.5 = feet
+	Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Body->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+	Body->RegisterComponent();
+	Body->PlayAnimation(IdleAnim, true);
+	Marker->GetStaticMeshComponent()->SetVisibility(false);
+}
+
+void ASuperOverGameMode::UpdateFigures(float Dt)
+{
+	// Everyone faces the ball when standing and their direction of travel when moving, and plays idle or a
+	// jog paced to their speed. A player tipped over for a dive keeps the dive.
+	const FVector BallAt = Ball->GetActorLocation();
+	const float Off = OffSideSign(StrikerPlayer().BatHand);
+	for (AStaticMeshActor* A : Figures)
+	{
+		FFigureState& S = FigureStates.FindOrAdd(A);
+		const FVector Pos = A->GetActorLocation();
+		FVector Vel = Dt > 0.f && !S.Last.IsZero() ? (Pos - S.Last) / Dt : FVector::ZeroVector;
+		if (Vel.Size() > 1500.f) { Vel = FVector::ZeroVector; S.Speed = 0.f; } // faster than anyone runs: a reset or replay jump
+		S.Last = Pos;
+		S.Speed = FMath::Lerp(S.Speed, FVector2D(Vel).Size() / 100.f, FMath::Clamp(Dt * 8.f, 0.f, 1.f));
+		if (A->IsHidden()) continue;
+		if (A->GetActorUpVector().Z > 0.95f)
+		{
+			// The striker holds a side-on stance, chest to the off side, until they set off for a run.
+			const FVector Look = S.Speed > 0.8f ? Vel : A == Striker ? FVector(0.f, Off, 0.f) : BallAt - Pos;
+			if (!FVector2D(Look).IsNearlyZero()) A->SetActorRotation(FRotator(0.f, Look.Rotation().Yaw, 0.f));
+		}
+		USkeletalMeshComponent* Body = A->FindComponentByClass<USkeletalMeshComponent>();
+		if (!Body || !JogAnim) continue;
+		const bool bJog = S.Speed > 0.8f;
+		if (bJog != S.bJogging)
+		{
+			S.bJogging = bJog;
+			Body->PlayAnimation(bJog ? JogAnim : IdleAnim, true);
+		}
+		// ponytail: one jog cycle time-scaled to speed (template jog ~4 m/s); a run/sprint blend when real locomotion lands.
+		Body->SetPlayRate(bJog ? FMath::Clamp(S.Speed / 4.f, 0.6f, 2.f) : 1.f);
+	}
 }
 
 void ASuperOverGameMode::BuildScene()
@@ -172,14 +237,28 @@ void ASuperOverGameMode::BuildScene()
 		Spawn(CylinderMesh, FVector(C.X + 27.4f * FMath::Cos(A), 27.4f * FMath::Sin(A), 0.01f), FVector(0.25f, 0.25f, 0.02f), White);
 	}
 
+	// Sightscreens behind both ends on the line of the pitch, so the batter (and the viewer) sees the ball
+	// against white.
+	for (const float Dir : { -1.f, 1.f })
+	{
+		Spawn(CubeMesh, FVector(C.X + Dir * (BoundaryRadius + 4.f), 0.f, 2.5f), FVector(1.f, 16.f, 5.f), FLinearColor(0.95f, 0.95f, 0.95f));
+	}
+
 	// ponytail: ball drawn at 2x size so it reads on a telephoto view; replace with a streak/trail when real assets land.
 	Ball = Spawn(SphereMesh, FVector(0.f, 0.f, -5.f), FVector(2.f * 2.f * BallRadius), FLinearColor(0.85f, 0.85f, 0.8f));
 	Bat = Spawn(CubeMesh, FVector::ZeroVector, FVector(0.11f, 0.05f, 0.85f), Wood);
+	// Epic's template mannequin (UE EULA, ships with the project template) when present; plain markers otherwise.
+	BodyMesh = LoadObject<USkeletalMesh>(nullptr, TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple"));
+	IdleAnim = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle.MM_Idle"));
+	JogAnim = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd.MF_Unarmed_Jog_Fwd"));
 	Striker = Spawn(CylinderMesh, FVector::ZeroVector, FVector(0.45f, 0.45f, 1.8f), FLinearColor::White);
 	NonStriker = Spawn(CylinderMesh, FVector::ZeroVector, FVector(0.45f, 0.45f, 1.8f), FLinearColor::White);
 	Bowler = Spawn(CylinderMesh, FVector::ZeroVector, FVector(0.45f, 0.45f, 1.85f), FLinearColor::White);
 	TargetMarker = Spawn(CylinderMesh, FVector::ZeroVector, FVector(0.3f, 0.3f, 0.004f), FLinearColor(1.f, 0.85f, 0.f));
 	for (int32 I = 0; I < 11; ++I) Fielders.Add(Spawn(CylinderMesh, FVector::ZeroVector, FVector(0.45f, 0.45f, 1.8f), FLinearColor::White));
+	for (int32 I = 0; I < 2; ++I) Umpires.Add(Spawn(CylinderMesh, FVector::ZeroVector, FVector(0.45f, 0.45f, 1.8f), FLinearColor::White));
+	for (AStaticMeshActor* P : { Striker.Get(), NonStriker.Get(), Bowler.Get(), Umpires[0].Get(), Umpires[1].Get() }) AddBody(P);
+	for (AStaticMeshActor* P : Fielders) AddBody(P);
 
 	Camera = W->SpawnActor<ACameraActor>(FVector::ZeroVector, FRotator::ZeroRotator);
 	Camera->GetCameraComponent()->SetConstraintAspectRatio(false);
@@ -216,6 +295,10 @@ void ASuperOverGameMode::PlaceForDelivery()
 	Striker->SetActorLocation(ToWorld(FVector(0.9f, -0.35f * Off, 0.9f)));
 	NonStriker->SetActorLocation(ToWorld(FVector(CricketGeo::PitchLength - 1.3f, -1.1f * Arm, 0.9f)));
 	Bowler->SetActorLocation(ToWorld(FVector(CricketGeo::PitchLength + 14.f, 0.5f * Arm, 0.925f)));
+	// Umpires: behind the bowler's stumps on the side away from the bowling arm, and at square leg.
+	Umpires[0]->SetActorLocation(ToWorld(FVector(CricketGeo::PitchLength + 1.8f, -0.9f * Arm, 0.9f)));
+	Umpires[1]->SetActorLocation(ToWorld(FVector(0.5f, -26.f * Off, 0.9f)));
+	for (AStaticMeshActor* U : Umpires) Paint(U, FLinearColor(0.85f, 0.85f, 0.8f));
 	Paint(Striker, BatCol);
 	Paint(NonStriker, BatCol);
 	Paint(Bowler, FieldCol);
@@ -246,12 +329,14 @@ void ASuperOverGameMode::Tick(float Dt)
 	if (PC) HandleInput(PC, Dt);
 	PhaseTime += Dt;
 	// Dev capture of the game view alone, 5 times a second (the desktop is never recorded).
-	if (ShotBall == BallsPlayed + 1 && DPhase != EDeliveryPhase::Waiting && (ShotClock += Dt) >= 0.2f)
+	const int32 LiveBall = DPhase == EDeliveryPhase::DeadBall ? BallsPlayed : BallsPlayed + 1; // dead ball: the one just finished
+	if (ShotBall == LiveBall && DPhase != EDeliveryPhase::Waiting && (ShotClock += Dt) >= 0.2f)
 	{
 		ShotClock = 0.f;
 		static int32 Shot = 0;
 		FScreenshotRequest::RequestScreenshot(FPaths::ScreenShotDir() / FString::Printf(TEXT("Ball%d_%03d.png"), ShotBall, Shot++), true, false);
 	}
+	if (ShotBall > 0 && BallsPlayed >= ShotBall && DPhase == EDeliveryPhase::Waiting) FPlatformMisc::RequestExit(false); // capture done
 
 	switch (DPhase)
 	{
@@ -274,7 +359,8 @@ void ASuperOverGameMode::Tick(float Dt)
 		if (PhaseTime >= Result.DeadTime) FinishDelivery();
 		break;
 	case EDeliveryPhase::DeadBall:
-		if (PhaseTime > 1.8f)
+		if (IsReplaying() && PC && PC->WasInputKeyJustPressed(EKeys::Enter)) PhaseTime = ReplayDelay + ReplayAction / ReplaySpeed; // skip
+		if (PhaseTime > 1.8f + (bReplayThis ? ReplayAction / ReplaySpeed : 0.f))
 		{
 			DPhase = EDeliveryPhase::Waiting;
 			PhaseTime = 0.f;
@@ -384,6 +470,10 @@ void ASuperOverGameMode::BeginRunUp()
 	DPhase = EDeliveryPhase::RunUp;
 	PhaseTime = 0.f;
 	Meter = -1.f;
+	// A new delivery is a new shot: cut back to the bowler's-end camera instead of easing from the last
+	// ball's follow, and retire the last ball's result from the HUD.
+	bCutCamera = true;
+	LastSummary.Reset();
 }
 
 void ASuperOverGameMode::DoRelease(float Timing)
@@ -427,6 +517,8 @@ void ASuperOverGameMode::FinishDelivery()
 	UE_LOG(LogCRICKET26, Display, TEXT("%s %d/%d (%d.%d): %s"), *Teams[Match.BattingTeam()].Short, Match.Cur().Runs,
 		Match.Cur().Wickets, Match.Cur().LegalBalls / 6, Match.Cur().LegalBalls % 6, *LastSummary);
 	Emit(Events);
+	bReplayThis = (Events.Contains(ECricketEvent::Wicket) || Events.Contains(ECricketEvent::BoundaryFour) || Events.Contains(ECricketEvent::BoundarySix))
+		&& Result.BallPath.Num() > 1;
 	DPhase = EDeliveryPhase::DeadBall;
 	PhaseTime = 0.f;
 }
@@ -442,7 +534,11 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	const float Arm = BowlerPlayer().BowlHand == ECricketHand::Right ? 1.f : -1.f;
 	const float Off = OffSideSign(StrikerPlayer().BatHand);
 	const bool bLive = DPhase == EDeliveryPhase::BallInPlay || DPhase == EDeliveryPhase::DeadBall;
-	const float T = DPhase == EDeliveryPhase::DeadBall ? Result.DeadTime : PhaseTime;
+	const bool bReplay = IsReplaying();
+	if (bReplay != bWasReplaying) bCutCamera = true; // cut into and out of the replay
+	bWasReplaying = bReplay;
+	const float ReplayFrom = FMath::Max(0.f, Result.ContactTime - ReplayLead);
+	const float T = bReplay ? ReplayFrom + (PhaseTime - ReplayDelay) * ReplaySpeed : DPhase == EDeliveryPhase::DeadBall ? Result.DeadTime : PhaseTime;
 	const float Post = T - Result.ContactTime; // seconds after contact (or after passing the batter)
 
 	// Bowler: run-up, delivery stride, follow-through.
@@ -546,16 +642,28 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	Bat->SetActorLocationAndRotation(Hands + Along * 45.f, FRotationMatrix::MakeFromZ(-Along).Rotator());
 
 	// Camera: broadcast telephoto from behind the bowler, then pull wide and follow the ball after the shot.
-	const bool bFollow = bLive && T > Result.ContactTime + 0.15f && (Result.Contact.HasContact() || Result.Fielding.Fielder >= 0);
-	const FVector WantLoc = bFollow ? ToWorld(FVector(PitchLength + 32.f, 0.f, 20.f)) : ToWorld(FVector(PitchLength + 42.f, 0.f, 6.5f));
-	const FVector LookAt = bFollow ? BallPos : ToWorld(FVector(1.5f, 0.f, 1.2f));
-	const float WantFov = bFollow ? 42.f : 15.f;
+	const bool bFollow = bLive && !bReplay && T > Result.ContactTime + 0.15f && (Result.Contact.HasContact() || Result.Fielding.Fielder >= 0);
+	// Delivery shot: a long lens high in the stand behind the bowler, framing the striker and keeper about
+	// 11 m across so the batter reads large and the flight is compressed, as on a broadcast.
+	FVector WantLoc = bFollow ? ToWorld(FVector(PitchLength + 32.f, 0.f, 20.f)) : ToWorld(FVector(PitchLength + 62.f, 0.f, 12.f));
+	FVector LookAt = bFollow ? BallPos : ToWorld(FVector(0.5f, 0.f, 1.3f));
+	float WantFov = bFollow ? 42.f : 8.f;
+	if (bReplay)
+	{
+		// Side-on from the off side at batter height (facing the stance, clear of the square-leg umpire):
+		// the stroke, then the ball's flight on a wider lens.
+		WantLoc = ToWorld(FVector(Result.Shot.ContactX() + 2.f, 38.f * Off, 2.2f));
+		LookAt = T < Result.ContactTime + 0.3f ? ToWorld(FVector(Result.Shot.ContactX(), 0.f, 1.f)) : BallPos;
+		WantFov = T < Result.ContactTime + 0.3f ? 12.f : 35.f;
+	}
 	const float K = FMath::Clamp(Dt * 3.f, 0.f, 1.f);
 	UCameraComponent* Cam = Camera->GetCameraComponent();
-	const FVector Loc = FMath::Lerp(Camera->GetActorLocation(), WantLoc, bViewSet ? K : 1.f);
+	const FVector Loc = bCutCamera ? WantLoc : FMath::Lerp(Camera->GetActorLocation(), WantLoc, bViewSet ? K : 1.f);
 	const FRotator Want = (LookAt - Loc).Rotation();
-	Camera->SetActorLocationAndRotation(Loc, FMath::RInterpTo(Camera->GetActorRotation(), Want, Dt, bFollow ? 5.f : 8.f));
-	Cam->SetFieldOfView(FMath::Lerp(Cam->FieldOfView, WantFov, K));
+	Camera->SetActorLocationAndRotation(Loc, bCutCamera ? Want : FMath::RInterpTo(Camera->GetActorRotation(), Want, Dt, bFollow ? 5.f : 8.f));
+	Cam->SetFieldOfView(bCutCamera ? WantFov : FMath::Lerp(Cam->FieldOfView, WantFov, K));
+	bCutCamera = false;
+	UpdateFigures(Dt);
 
 	if (bTrajectory && Result.BallPath.Num() > 1)
 	{

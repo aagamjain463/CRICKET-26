@@ -16,6 +16,8 @@ class AStaticMeshActor;
 class ACameraActor;
 class UStaticMesh;
 class UMaterialInterface;
+class USkeletalMesh;
+class UAnimSequence;
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnCricketEvent, ECricketEvent);
 
@@ -59,6 +61,10 @@ public:
 	float AiSkill() const { return CricketAI::SkillOf(Difficulty); }
 	int32 BallsPlayed = 0, ShotBall = 0; // -CricketShotBall=N: save the game view while delivery N is live
 	float ShotClock = 0.f;
+	/** Action replay of the key moment after a wicket or boundary, from side-on at half speed. */
+	static constexpr float ReplayDelay = 1.2f, ReplaySpeed = 0.5f, ReplayLead = 0.8f, ReplayAction = 1.6f;
+	bool bReplayThis = false;
+	bool IsReplaying() const { return bReplayThis && DPhase == EDeliveryPhase::DeadBall && PhaseTime >= ReplayDelay && PhaseTime < ReplayDelay + ReplayAction / ReplaySpeed; }
 
 	bool HumanBats() const { return !bAutoPlay && Match.BattingTeam() == HumanTeam; }
 	bool HumanBowls() const { return !bAutoPlay && Match.BowlingTeam() == HumanTeam; }
@@ -78,12 +84,19 @@ private:
 	UPROPERTY() TObjectPtr<AStaticMeshActor> Bowler;
 	UPROPERTY() TObjectPtr<AStaticMeshActor> TargetMarker;
 	UPROPERTY() TArray<TObjectPtr<AStaticMeshActor>> Fielders;
+	UPROPERTY() TArray<TObjectPtr<AStaticMeshActor>> Umpires;
 	UPROPERTY() TObjectPtr<ACameraActor> Camera;
+	UPROPERTY() TObjectPtr<USkeletalMesh> BodyMesh;
+	UPROPERTY() TObjectPtr<UAnimSequence> IdleAnim;
+	UPROPERTY() TObjectPtr<UAnimSequence> JogAnim;
+	UPROPERTY() TArray<TObjectPtr<AStaticMeshActor>> Figures; // everyone who stands on the field
+	struct FFigureState { FVector Last = FVector::ZeroVector; float Speed = 0.f; bool bJogging = false; };
+	TMap<TObjectPtr<AStaticMeshActor>, FFigureState> FigureStates;
 
 	FRandomStream Rng;
 	TArray<int32> RecentPlans;
 	float ReleaseTiming = 0.f;
-	bool bViewSet = false;
+	bool bViewSet = false, bCutCamera = true, bWasReplaying = false;
 
 	AStaticMeshActor* Spawn(UStaticMesh* Mesh, const FVector& PosM, const FVector& SizeM, const FLinearColor& Colour);
 	void Paint(AStaticMeshActor* Actor, const FLinearColor& Colour);
@@ -95,4 +108,6 @@ private:
 	void Emit(const TArray<ECricketEvent>& Events);
 	void PlaceForDelivery();
 	void UpdatePresentation(float Dt);
+	void AddBody(AStaticMeshActor* Marker);
+	void UpdateFigures(float Dt);
 };

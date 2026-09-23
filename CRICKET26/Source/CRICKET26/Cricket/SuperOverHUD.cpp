@@ -149,8 +149,14 @@ void ASuperOverHUD::DrawHUD()
 	// Last ball.
 	if (!GM->LastSummary.IsEmpty()) Text(GM->LastSummary, W * 0.5f, H - 100 * S, FLinearColor(1, 0.9f, 0.5f), 1.f * S, true);
 
-	// Event banner.
-	if (GetWorld()->GetTimeSeconds() - BannerAt < 2.2)
+	if (GM->IsReplaying())
+	{
+		DrawRect(FLinearColor(0.7f, 0.05f, 0.05f, 0.85f), W - 150 * S, 20 * S, 130 * S, 30 * S);
+		Text(TEXT("REPLAY"), W - 85 * S, 24 * S, FLinearColor::White, 1.1f * S, true);
+	}
+
+	// Event banner, until the next ball is on its way.
+	if (GetWorld()->GetTimeSeconds() - BannerAt < 2.2 && !GM->IsReplaying() && GM->DPhase != EDeliveryPhase::RunUp && GM->DPhase != EDeliveryPhase::BallInPlay)
 	{
 		DrawRect(FLinearColor(0.02f, 0.02f, 0.05f, 0.7f), 0, H * 0.36f, W, 70 * S);
 		Text(Banner, W * 0.5f, H * 0.36f + 12 * S, FLinearColor(1, 0.85f, 0.2f), 2.5f * S, true);
