@@ -116,22 +116,26 @@ void ASuperOverHUD::DrawHUD()
 
 	// Prompts.
 	FString Prompt;
-	if (M.Phase == EMatchPhase::InningsBreak) Prompt = FString::Printf(TEXT("INNINGS BREAK - %s need %d. Press Enter."), *BowlT.Name, M.Target);
-	else if (M.Phase == EMatchPhase::MatchComplete) Prompt = M.bTied ? TEXT("TIED! Press Enter for another Super Over.")
-		: FString::Printf(TEXT("%s win. Press Enter to play again."), *GM->Teams[M.Winner].Name);
+	const bool bTouch = GM->bTouchUI;
+	const TCHAR* Go = bTouch ? TEXT("Tap") : TEXT("Press Enter");
+	if (M.Phase == EMatchPhase::InningsBreak) Prompt = FString::Printf(TEXT("INNINGS BREAK - %s need %d. %s to continue."), *BowlT.Name, M.Target, Go);
+	else if (M.Phase == EMatchPhase::MatchComplete) Prompt = M.bTied ? FString::Printf(TEXT("TIED! %s for another Super Over."), Go)
+		: FString::Printf(TEXT("%s win. %s to play again."), *GM->Teams[M.Winner].Name, Go);
 	else if (GM->bAutoPlay) Prompt = TEXT("AI vs AI (F8 to take control)");
 	else if (GM->HumanBowls())
 	{
 		const TArray<EDeliveryType> Rep = CricketBowling::Repertoire(GM->BowlerPlayer().BowlerType);
 		FString Types;
 		for (int32 I = 0; I < Rep.Num(); ++I) Types += FString::Printf(TEXT("%s%d %s  "), Rep[I] == GM->HumanPlan.Type ? TEXT(">") : TEXT(""), I + 1, TypeName(Rep[I]));
-		Prompt = FString::Printf(TEXT("YOU BOWL   %s\nWASD/arrows move the target (length %.1f m, line %+.2f m)   Space: run up, Space again: release in the green"),
+		Prompt = bTouch ? FString::Printf(TEXT("YOU BOWL   stick: target (length %.1f m, line %+.2f m)   BOWL, then BOWL again in the green"), GM->HumanPlan.Length, GM->HumanPlan.Line)
+			: FString::Printf(TEXT("YOU BOWL   %s\nWASD/arrows move the target (length %.1f m, line %+.2f m)   Space: run up, Space again: release in the green"),
 			*Types, GM->HumanPlan.Length, GM->HumanPlan.Line);
 	}
 	else if (GM->HumanBats())
 	{
 		const TCHAR* Run = GM->HumanRunMargin > 0.5f ? TEXT("safe") : GM->HumanRunMargin > 0.f ? TEXT("normal") : TEXT("aggressive");
-		Prompt = FString::Printf(TEXT("YOU BAT   hold WASD for direction: %s   J ground  K loft  L defend  (no key = leave)   R running: %s"),
+		Prompt = bTouch ? FString::Printf(TEXT("YOU BAT   stick: %s   running: %s"), *GM->DirectionName(), Run)
+			: FString::Printf(TEXT("YOU BAT   hold WASD for direction: %s   J ground  K loft  L defend  (no key = leave)   R running: %s"),
 			*GM->DirectionName(), Run);
 	}
 	Text(Prompt, W * 0.5f, H - 70 * S, FLinearColor::White, 0.9f * S, true);
@@ -146,8 +150,40 @@ void ASuperOverHUD::DrawHUD()
 		DrawRect(FLinearColor::White, X0 + MW * 0.5f * (GM->Meter + 1.f) - 2 * S, Y0 - 4 * S, 4 * S, 26 * S);
 	}
 
-	// Last ball.
-	if (!GM->Commentary.IsEmpty()) Text(GM->Commentary, W * 0.5f, H - 100 * S, FLinearColor(1, 0.9f, 0.5f), 1.f * S, true);
+	// Touch controls: the same layout the game mode reads, so what is drawn is what is pressed.
+	const CricketTouch::EMode TM = GM->TouchMode();
+	if (TM == CricketTouch::EMode::Batting || TM == CricketTouch::EMode::Bowling)
+	{
+		using CricketTouch::EButton;
+		const TArray<EDeliveryType> Rep = CricketBowling::Repertoire(GM->BowlerPlayer().BowlerType);
+		for (const CricketTouch::FButton& B : CricketTouch::Layout(TM, Rep.Num(), W / H))
+		{
+			FString Label;
+			bool bLit = false;
+			switch (B.Button)
+			{
+			case EButton::Defend: Label = TEXT("DEFEND"); break;
+			case EButton::Ground: Label = TEXT("GROUND"); break;
+			case EButton::Loft: Label = TEXT("LOFT"); break;
+			case EButton::Run: Label = TEXT("RUN"); bLit = GM->HumanRunMargin <= 0.f; break;
+			case EButton::Bowl: Label = GM->DPhase == EDeliveryPhase::RunUp ? TEXT("RELEASE") : TEXT("BOWL"); break;
+			case EButton::Delivery: Label = TypeName(Rep[B.Index]); bLit = Rep[B.Index] == GM->HumanPlan.Type; break;
+			}
+			const FVector2D Size = B.Rect.GetSize() * H, Centre = B.Rect.GetCenter() * H;
+			DrawRect(bLit ? FLinearColor(0.85f, 0.6f, 0.1f, 0.75f) : FLinearColor(0.05f, 0.05f, 0.12f, 0.55f), B.Rect.Min.X * H, B.Rect.Min.Y * H, Size.X, Size.Y);
+			Text(Label, Centre.X, Centre.Y - 9 * S, FLinearColor::White, 0.9f * S, true);
+		}
+		const FVector2D C = CricketTouch::StickCentre() * H;
+		const float R = CricketTouch::StickRadius * H;
+		DrawRect(FLinearColor(0.05f, 0.05f, 0.12f, 0.4f), C.X - R, C.Y - R, 2 * R, 2 * R);
+		Text(TEXT("^"), C.X, C.Y - R + 4 * S, FLinearColor::White, 1.f * S, true);
+		Text(TEXT("v"), C.X, C.Y + R - 22 * S, FLinearColor::White, 1.f * S, true);
+		Text(TEXT("<"), C.X - R + 10 * S, C.Y - 9 * S, FLinearColor::White, 1.f * S, true);
+		Text(TEXT(">"), C.X + R - 10 * S, C.Y - 9 * S, FLinearColor::White, 1.f * S, true);
+	}
+
+	// Last ball (raised clear of the touch buttons when they are shown).
+	if (!GM->Commentary.IsEmpty()) Text(GM->Commentary, W * 0.5f, bTouch ? H * 0.64f : H - 100 * S, FLinearColor(1, 0.9f, 0.5f), 1.f * S, true);
 	if (GM->bDebug && !GM->LastSummary.IsEmpty()) Text(GM->LastSummary, W * 0.5f, H - 80 * S, FLinearColor(0.7f, 0.7f, 0.7f), 0.8f * S, true);
 
 	if (GM->IsReplaying())

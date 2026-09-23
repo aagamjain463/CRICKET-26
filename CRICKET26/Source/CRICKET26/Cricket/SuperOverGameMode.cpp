@@ -13,6 +13,7 @@
 #include "AudioMixerBlueprintLibrary.h"
 #include "Components/AudioComponent.h"
 #include "CricketCommentary.h"
+#include "GenericPlatform/GenericPlatformInputDeviceMapper.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundWaveProcedural.h"
 #include "DrawDebugHelpers.h"
@@ -90,11 +91,13 @@ void ASuperOverGameMode::StartPlay()
 {
 	Super::StartPlay();
 	Rng.Initialize(MatchSeed);
-	bAutoPlay = FParse::Param(FCommandLine::Get(), TEXT("CricketAutoPlay")); // soak/smoke runs
+	bTouchScript = FParse::Param(FCommandLine::Get(), TEXT("CricketTouchScript")); // a human side, played by injected touches
+	bAutoPlay = FParse::Param(FCommandLine::Get(), TEXT("CricketAutoPlay")) && !bTouchScript; // soak/smoke runs
 	FParse::Value(FCommandLine::Get(), TEXT("CricketShotBall="), ShotBall);
 	int32 Level = int32(Difficulty);
 	FParse::Value(FCommandLine::Get(), TEXT("CricketDifficulty="), Level);
 	Difficulty = CricketAI::EDifficulty(FMath::Clamp(Level, 0, 3));
+	bTouchUI = PLATFORM_IOS || PLATFORM_ANDROID || bTouchScript || FParse::Param(FCommandLine::Get(), TEXT("CricketTouch"));
 	bRecordAudio = FParse::Param(FCommandLine::Get(), TEXT("CricketRecordAudio")) && ShotBall > 0;
 	BuildScene();
 	SetupAudio();
@@ -359,6 +362,7 @@ void ASuperOverGameMode::Tick(float Dt)
 		PC->SetViewTarget(Camera);
 		bViewSet = true;
 	}
+	if (PC && bTouchScript) RunTouchScript(PC);
 	if (PC) HandleInput(PC, Dt);
 	PhaseTime += Dt;
 	// Dev capture of the game view alone, 5 times a second (the desktop is never recorded).
@@ -398,7 +402,6 @@ void ASuperOverGameMode::Tick(float Dt)
 		if (PhaseTime >= Result.DeadTime) FinishDelivery();
 		break;
 	case EDeliveryPhase::DeadBall:
-		if (IsReplaying() && PC && PC->WasInputKeyJustPressed(EKeys::Enter)) PhaseTime = ReplayDelay + ReplayAction / ReplaySpeed; // skip
 		if (PhaseTime > 1.8f + (bReplayThis ? ReplayAction / ReplaySpeed : 0.f))
 		{
 			DPhase = EDeliveryPhase::Waiting;
@@ -437,47 +440,62 @@ void ASuperOverGameMode::HandleInput(APlayerController* PC, float Dt)
 			PlaceForDelivery();
 		}
 	}
-	if (Pressed(EKeys::Enter) && DPhase == EDeliveryPhase::Waiting)
+
+	// Keyboard and touch fill the same controls; everything below reads only the controls.
+	FCricketControls C;
+	C.bLeft = Down(EKeys::A) || Down(EKeys::Left);
+	C.bRight = Down(EKeys::D) || Down(EKeys::Right);
+	C.bUp = Down(EKeys::W) || Down(EKeys::Up);
+	C.bDown = Down(EKeys::S) || Down(EKeys::Down);
+	C.bGround = Pressed(EKeys::J);
+	C.bLoft = Pressed(EKeys::K);
+	C.bDefend = Pressed(EKeys::L);
+	C.bRun = Pressed(EKeys::R);
+	C.bAction = Pressed(EKeys::SpaceBar);
+	C.bProgress = Pressed(EKeys::Enter);
+	const FKey Numbers[] = { EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four, EKeys::Five, EKeys::Six, EKeys::Seven };
+	for (int32 I = 0; I < UE_ARRAY_COUNT(Numbers); ++I) if (Pressed(Numbers[I])) C.DeliveryPick = I;
+	const FCricketControls Touch = ReadTouch(PC);
+	C.Merge(Touch);
+
+	if (C.bProgress && IsReplaying()) PhaseTime = ReplayDelay + ReplayAction / ReplaySpeed; // skip the replay
+	if (C.bProgress && DPhase == EDeliveryPhase::Waiting)
 	{
 		if (Match.Phase == EMatchPhase::InningsBreak) Match.StartSecondInnings();
 		else if (Match.Phase == EMatchPhase::MatchComplete) { if (!Match.StartNextSuperOver()) Match.Start(HumanTeam); }
 		PlaceForDelivery();
 	}
 
-	const bool bLeft = Down(EKeys::A) || Down(EKeys::Left), bRight = Down(EKeys::D) || Down(EKeys::Right);
-	const bool bUp = Down(EKeys::W) || Down(EKeys::Up), bDown = Down(EKeys::S) || Down(EKeys::Down);
-
 	if (HumanBowls())
 	{
 		if (DPhase == EDeliveryPhase::Waiting)
 		{
 			const TArray<EDeliveryType> Rep = CricketBowling::Repertoire(BowlerPlayer().BowlerType);
-			const FKey Numbers[] = { EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four, EKeys::Five, EKeys::Six, EKeys::Seven };
-			for (int32 I = 0; I < Rep.Num() && I < UE_ARRAY_COUNT(Numbers); ++I) if (Pressed(Numbers[I])) HumanPlan.Type = Rep[I];
+			if (Rep.IsValidIndex(C.DeliveryPick)) HumanPlan.Type = Rep[C.DeliveryPick];
 			if (!Rep.Contains(HumanPlan.Type)) HumanPlan.Type = Rep[0];
 			// The camera looks down the pitch from behind the bowler: screen left is world +Y.
 			const float Off = OffSideSign(StrikerPlayer().BatHand);
-			HumanPlan.Length = FMath::Clamp(HumanPlan.Length + ((bDown ? 1.f : 0.f) - (bUp ? 1.f : 0.f)) * 4.f * Dt, 0.5f, 13.f);
-			HumanPlan.Line = FMath::Clamp(HumanPlan.Line + ((bLeft ? 1.f : 0.f) - (bRight ? 1.f : 0.f)) * Off * 0.8f * Dt, -1.f, 1.6f);
-			if (Pressed(EKeys::SpaceBar) && Match.Phase == EMatchPhase::ReadyForDelivery) BeginRunUp();
+			HumanPlan.Length = FMath::Clamp(HumanPlan.Length + ((C.bDown ? 1.f : 0.f) - (C.bUp ? 1.f : 0.f)) * 4.f * Dt, 0.5f, 13.f);
+			HumanPlan.Line = FMath::Clamp(HumanPlan.Line + ((C.bLeft ? 1.f : 0.f) - (C.bRight ? 1.f : 0.f)) * Off * 0.8f * Dt, -1.f, 1.6f);
+			if (C.bAction && Match.Phase == EMatchPhase::ReadyForDelivery) BeginRunUp();
 		}
-		else if (DPhase == EDeliveryPhase::RunUp && Pressed(EKeys::SpaceBar))
+		else if (DPhase == EDeliveryPhase::RunUp && C.bAction)
 		{
 			DoRelease(FMath::Min(1.f, -1.f + 2.f * CricketMath::PressTime(PhaseTime, Dt) / RunUpSeconds));
 		}
 	}
 	else if (HumanBats())
 	{
-		if (Pressed(EKeys::R)) HumanRunMargin = HumanRunMargin > 0.5f ? -0.1f : HumanRunMargin + 0.35f;
-		const float Side = (bLeft ? 1.f : 0.f) - (bRight ? 1.f : 0.f);
-		const float Base = bUp ? 40.f : bDown ? 130.f : 85.f;
+		if (C.bRun) HumanRunMargin = HumanRunMargin > 0.5f ? -0.1f : HumanRunMargin + 0.35f;
+		const float Side = (C.bLeft ? 1.f : 0.f) - (C.bRight ? 1.f : 0.f);
+		const float Base = C.bUp ? 40.f : C.bDown ? 130.f : 85.f;
 		ShotDirection = Side == 0.f ? 0.f : Base * Side * OffSideSign(StrikerPlayer().BatHand);
 		if (DPhase == EDeliveryPhase::BallInPlay && !BatInput.IsShot() && !Result.bTooLate)
 		{
 			EBatIntent Intent = EBatIntent::Leave;
-			if (Pressed(EKeys::J)) Intent = EBatIntent::Ground;
-			if (Pressed(EKeys::K)) Intent = EBatIntent::Loft;
-			if (Pressed(EKeys::L)) Intent = EBatIntent::Defend;
+			if (C.bGround) Intent = EBatIntent::Ground;
+			if (C.bLoft) Intent = EBatIntent::Loft;
+			if (C.bDefend) Intent = EBatIntent::Defend;
 			if (Intent != EBatIntent::Leave)
 			{
 				BatInput.Intent = Intent;
@@ -486,8 +504,119 @@ void ASuperOverGameMode::HandleInput(APlayerController* PC, float Dt)
 				// Deterministic re-resolve: everything already shown is identical.
 				Ctx.RunMargin = HumanRunMargin;
 				Result = CricketDelivery::Resolve(Release, BatInput, Ctx);
+				UE_LOG(LogCRICKET26, Display, TEXT("Shot input (%s): intent %d, direction %.0f, press %.3f s"),
+					Touch.bGround || Touch.bLoft || Touch.bDefend ? TEXT("touch") : TEXT("keys"), int32(Intent), BatInput.DirectionDeg, BatInput.PressTime);
 			}
 		}
+	}
+}
+
+CricketTouch::EMode ASuperOverGameMode::TouchMode() const
+{
+	using CricketTouch::EMode;
+	if (!bTouchUI) return EMode::None;
+	if (IsReplaying() || (DPhase == EDeliveryPhase::Waiting && Match.Phase != EMatchPhase::ReadyForDelivery)) return EMode::Progress;
+	if (HumanBats()) return EMode::Batting;
+	if (HumanBowls() && (DPhase == EDeliveryPhase::Waiting || DPhase == EDeliveryPhase::RunUp)) return EMode::Bowling;
+	return EMode::None;
+}
+
+FCricketControls ASuperOverGameMode::ReadTouch(APlayerController* PC)
+{
+	if (!bTouchUI) return FCricketControls();
+	int32 VX = 0, VY = 0;
+	PC->GetViewportSize(VX, VY);
+	if (VY <= 0) return FCricketControls();
+	ViewAspect = float(VX) / VY;
+	// Positions in screen-height units, as the layout uses.
+	TArray<FVector2D> Held, New;
+	for (int32 I = 0; I < UE_ARRAY_COUNT(bTouchWasDown); ++I)
+	{
+		float X = 0.f, Y = 0.f;
+		bool bDown = false;
+		PC->GetInputTouchState(ETouchIndex::Type(I), X, Y, bDown);
+		if (bDown) Held.Add(FVector2D(X, Y) / VY);
+		if (bDown && !bTouchWasDown[I]) New.Add(FVector2D(X, Y) / VY);
+		bTouchWasDown[I] = bDown;
+	}
+	// On desktop the mouse stands in for a finger.
+	float MX = 0.f, MY = 0.f;
+	if (PC->IsInputKeyDown(EKeys::LeftMouseButton) && PC->GetMousePosition(MX, MY))
+	{
+		Held.Add(FVector2D(MX, MY) / VY);
+		if (PC->WasInputKeyJustPressed(EKeys::LeftMouseButton)) New.Add(FVector2D(MX, MY) / VY);
+	}
+	return CricketTouch::Read(TouchMode(), CricketBowling::Repertoire(BowlerPlayer().BowlerType).Num(), ViewAspect, Held, New);
+}
+
+void ASuperOverGameMode::InjectTouch(APlayerController* PC, int32 Finger, uint8 Type, const FVector2D& At)
+{
+	int32 VX = 0, VY = 0;
+	PC->GetViewportSize(VX, VY);
+	PC->InputTouch(FTouchId(IPlatformInputDeviceMapper::Get().GetDefaultInputDevice(), ETouchIndex::Type(Finger)), ETouchType::Type(Type), At * VY, 1.f, FPlatformTime::Cycles64());
+}
+
+void ASuperOverGameMode::RunTouchScript(APlayerController* PC)
+{
+	using namespace CricketTouch;
+	// A tap is a finger down one frame and up the next.
+	if (bScriptTapDown) { InjectTouch(PC, 0, ETouchType::Ended, ScriptTapAt); bScriptTapDown = false; return; }
+	const EMode Mode = TouchMode();
+	const int32 NumTypes = CricketBowling::Repertoire(BowlerPlayer().BowlerType).Num();
+	auto Tap = [&](EButton Button, int32 Index, const TCHAR* What)
+	{
+		for (const FButton& B : Layout(Mode, NumTypes, ViewAspect))
+			if (B.Button == Button && B.Index == Index)
+			{
+				ScriptTapAt = B.Rect.GetCenter();
+				InjectTouch(PC, 0, ETouchType::Began, ScriptTapAt);
+				bScriptTapDown = true;
+				UE_LOG(LogCRICKET26, Display, TEXT("Touch script: tap %s at (%.2f, %.2f)"), What, ScriptTapAt.X, ScriptTapAt.Y);
+			}
+	};
+
+	if (Mode == EMode::Progress && PhaseTime > 1.5f)
+	{
+		if (Match.Phase == EMatchPhase::MatchComplete && DPhase == EDeliveryPhase::Waiting) { FPlatformMisc::RequestExit(false); return; } // script done
+		ScriptTapAt = FVector2D(ViewAspect * 0.5f, 0.4f);
+		InjectTouch(PC, 0, ETouchType::Began, ScriptTapAt);
+		bScriptTapDown = true;
+		UE_LOG(LogCRICKET26, Display, TEXT("Touch script: tap to continue"));
+	}
+	else if (Mode == EMode::Batting)
+	{
+		// Bat with the AI's choice for this ball: hold the stick for its direction, tap its shot on time.
+		if (DPhase == EDeliveryPhase::BallInPlay && !bScriptStickDown)
+		{
+			FRandomStream AiRng(Ctx.Seed + 7);
+			ScriptShot = CricketAI::ChooseShot(Release, StrikerPlayer(), BowlerPlayer().BowlerType, CricketAI::Aggression(Match), Ctx.Field, Ctx.Conditions, AiRng, AiSkill());
+			const float Side = FMath::Sign(ScriptShot.DirectionDeg) * OffSideSign(StrikerPlayer().BatHand); // +1: stick left
+			const float Abs = FMath::Abs(ScriptShot.DirectionDeg);
+			const FVector2D Stick = StickCentre() + StickRadius * FVector2D(-Side, Side == 0.f ? 0.f : Abs < 62.f ? -1.f : Abs > 107.f ? 1.f : 0.f);
+			InjectTouch(PC, 1, ETouchType::Began, Stick);
+			bScriptStickDown = true;
+			UE_LOG(LogCRICKET26, Display, TEXT("Touch script: AI would play intent %d, direction %.0f, press %.3f s"), int32(ScriptShot.Intent), ScriptShot.DirectionDeg, ScriptShot.PressTime);
+		}
+		if (DPhase == EDeliveryPhase::BallInPlay && !BatInput.IsShot() && ScriptShot.IsShot() && PhaseTime >= ScriptShot.PressTime)
+		{
+			const EButton B = ScriptShot.Intent == EBatIntent::Loft ? EButton::Loft : ScriptShot.Intent == EBatIntent::Defend ? EButton::Defend : EButton::Ground;
+			Tap(B, 0, B == EButton::Loft ? TEXT("LOFT") : B == EButton::Defend ? TEXT("DEFEND") : TEXT("GROUND"));
+		}
+		if (DPhase == EDeliveryPhase::DeadBall && bScriptStickDown)
+		{
+			InjectTouch(PC, 1, ETouchType::Ended, StickCentre());
+			bScriptStickDown = false;
+			ScriptShot = FBatInput();
+		}
+	}
+	else if (Mode == EMode::Bowling)
+	{
+		// Bowl the second delivery type in the repertoire, releasing near the perfect point of the meter.
+		const EDeliveryType Want = CricketBowling::Repertoire(BowlerPlayer().BowlerType)[1];
+		if (DPhase == EDeliveryPhase::Waiting && PhaseTime > 0.5f)
+			HumanPlan.Type != Want ? Tap(EButton::Delivery, 1, TEXT("delivery 2")) : Tap(EButton::Bowl, 0, TEXT("BOWL (run-up)"));
+		else if (DPhase == EDeliveryPhase::RunUp && -1.f + 2.f * PhaseTime / RunUpSeconds >= -0.05f)
+			Tap(EButton::Bowl, 0, TEXT("BOWL (release)"));
 	}
 }
 

@@ -11,6 +11,7 @@
 #include "GameFramework/GameModeBase.h"
 #include "CricketAI.h"
 #include "CricketAudio.h"
+#include "CricketControls.h"
 #include "SuperOverGameMode.generated.h"
 
 class AStaticMeshActor;
@@ -70,6 +71,11 @@ public:
 	bool bReplayThis = false;
 	bool IsReplaying() const { return bReplayThis && DPhase == EDeliveryPhase::DeadBall && PhaseTime >= ReplayDelay && PhaseTime < ReplayDelay + ReplayAction / ReplaySpeed; }
 
+	/** On-screen touch controls: on for phones and tablets, or -CricketTouch on desktop (the mouse is a finger). */
+	bool bTouchUI = false;
+	CricketTouch::EMode TouchMode() const;
+	float ViewAspect = 16.f / 9.f;
+
 	bool HumanBats() const { return !bAutoPlay && Match.BattingTeam() == HumanTeam; }
 	bool HumanBowls() const { return !bAutoPlay && Match.BowlingTeam() == HumanTeam; }
 	const FCricketPlayer& StrikerPlayer() const { return Teams[Match.BattingTeam()].Batters[Match.Cur().Striker]; }
@@ -105,6 +111,12 @@ private:
 	TArray<int16> CuePcm[int32(CricketAudio::ECue::Count)];
 	float CrowdLevel = 0.3f, PrevCueT = 0.f;
 	bool bRecordAudio = false, bRecording = false;
+	bool bTouchWasDown[10] = {};
+	// -CricketTouchScript: plays a whole match through the touch layer by injecting touches into the
+	// player controller, batting with the AI's shot choices and bowling with a set plan.
+	bool bTouchScript = false, bScriptTapDown = false, bScriptStickDown = false;
+	FVector2D ScriptTapAt = FVector2D::ZeroVector;
+	FBatInput ScriptShot;
 
 	FRandomStream Rng;
 	TArray<int32> RecentPlans;
@@ -124,5 +136,8 @@ private:
 	void AddBody(AStaticMeshActor* Marker);
 	void UpdateFigures(float Dt);
 	void SetupAudio();
+	FCricketControls ReadTouch(class APlayerController* PC);
+	void InjectTouch(class APlayerController* PC, int32 Finger, uint8 Type, const FVector2D& At);
+	void RunTouchScript(class APlayerController* PC);
 	void PlayCue(CricketAudio::ECue Cue, float Volume);
 };

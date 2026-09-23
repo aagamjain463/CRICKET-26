@@ -21,7 +21,7 @@ public class CRICKET26 : ModuleRules
 			"Slate"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "AudioMixer" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "AudioMixer", "ApplicationCore" });
 
 		PublicIncludePaths.AddRange(new string[] {
 			"CRICKET26",
