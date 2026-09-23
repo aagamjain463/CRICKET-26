@@ -26,6 +26,7 @@ struct FFieldingOutcome
 	float ChaseStart = 0.f;         // times are seconds after contact
 	float FieldTime = 0.f;
 	FVector FieldPos = FVector::ZeroVector;
+	bool bDive = false;             // only reached at full stretch: slower to get up and throw
 	bool bCatchChance = false;
 	bool bCaught = false;
 	float CatchDifficulty = 0.f;

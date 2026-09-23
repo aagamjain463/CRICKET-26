@@ -153,7 +153,7 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 	// Shot choice uses the batter's read at the moment the player commits; bat placement uses the
 	// read ReadLead seconds before the ball arrives at the chosen contact plane.
 	FVector Aim = FVector::ZeroVector;
-	float Timing = 0.f;
+	float Timing = 0.f, FaceDir = Input.DirectionDeg;
 	if (Input.IsShot())
 	{
 		const FBallRead Seen = Read(Release.Ball, Input.PressTime, C);
@@ -168,6 +168,13 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 			while (Early.Time < ReadAt) Step(Early, C);
 			float Unused;
 			if (!PredictAtPlane(Early, R.Shot.ContactX(), C, Aim, Unused)) Aim = Probe.Pos;
+			// Judgement and hand-eye error in placing the bat: grows with pace and with the size of the
+			// swing, shrinks with technique. This is what separates middled shots from mistimed ones.
+			const float Swing = Input.Intent == EBatIntent::Defend ? 0.6f : Input.Intent == EBatIntent::Loft ? 1.25f : 1.f;
+			const float Sigma = (0.012f + 0.03f * (1.f - FMath::Clamp(Bat.Technique, 0.f, 1.f))) * Swing * (Probe.Vel.Size() / 33.f);
+			Aim.Y += CricketMath::Gauss(Rng) * Sigma;
+			Aim.Z += CricketMath::Gauss(Rng) * Sigma;
+			FaceDir += CricketMath::Gauss(Rng) * (4.f + 12.f * (1.f - FMath::Clamp(Bat.Technique, 0.f, 1.f))) * Swing;
 		}
 		else
 		{
@@ -202,7 +209,7 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 			const FBallState AtBat = AtPlane(Prev, B, R.Shot.ContactX());
 			PassedBat = AtBat.Time;
 			HeightAtBat = AtBat.Pos.Z;
-			R.Contact = CricketBatting::ResolveContact(AtBat, Aim, R.Shot, Input.DirectionDeg, Timing, Bat, Input.Intent == EBatIntent::Loft);
+			R.Contact = CricketBatting::ResolveContact(AtBat, Aim, R.Shot, FaceDir, Timing, Bat, Input.Intent == EBatIntent::Loft);
 			if (R.Contact.HasContact())
 			{
 				bContact = true;

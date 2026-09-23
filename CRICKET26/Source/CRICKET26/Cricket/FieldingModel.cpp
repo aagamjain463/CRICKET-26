@@ -4,6 +4,8 @@ namespace
 {
 	constexpr float RunLength = 17.68f; // popping crease to popping crease
 	constexpr float Accel = 6.f;
+	constexpr float BatReach = 1.2f;    // a runner grounds the bat this far ahead of their body
+	constexpr float LegLength = RunLength - BatReach;
 
 	// Batter-relative polar placement. Ring fielders are measured from the striker's stumps,
 	// boundary riders from the pitch centre so they sit just inside the rope.
@@ -35,12 +37,12 @@ TArray<FFielder> CricketField::Make(EFieldPreset Preset, ECricketHand BatHand, E
 	{
 		F.Add({ TEXT("Wicketkeeper"), FVector2D(-16.f, 0.5f * Off), true });
 		F.Add({ TEXT("Bowler"), FVector2D(15.f, 1.2f * Arm), false, true });
-		F.Add(Deep(TEXT("Third man"), 140.f, 58.f, Off));
+		F.Add(Deep(TEXT("Deep point"), 100.f, 58.f, Off));
 		F.Add(Deep(TEXT("Long off"), 12.f, 60.f, Off));
 		F.Add(Deep(TEXT("Long on"), -12.f, 60.f, Off));
 		F.Add(Deep(TEXT("Deep midwicket"), -58.f, 60.f, Off));
 		F.Add(Deep(TEXT("Deep square leg"), -100.f, 58.f, Off));
-		F.Add(Ring(TEXT("Point"), 95.f, 22.f, Off));
+		F.Add(Ring(TEXT("Short third man"), 128.f, 24.f, Off));
 		F.Add(Ring(TEXT("Extra cover"), 48.f, 26.f, Off));
 		F.Add(Ring(TEXT("Midwicket"), -50.f, 26.f, Off));
 		F.Add(Ring(TEXT("Short fine leg"), -145.f, 22.f, Off));
@@ -92,12 +94,14 @@ FFieldingOutcome CricketField::SolveFielding(const TArray<FBallState>& Samples, 
 		int32 Best = -1;
 		float BestSlack = -1.f;
 		bool bBestDive = false;
+		float BestRun = 0.f;
 		for (int32 I = 0; I < Field.Num(); ++I)
 		{
 			const FFielder& F = Field[I];
 			const float MaxZ = bAir ? (F.bKeeper ? 2.2f : 2.5f) : (!bContact && F.bKeeper ? 2.2f : 0.9f);
 			if (S.Pos.Z > MaxZ || (bAir && S.Pos.Z < 0.05f)) continue;
-			const float Reaction = F.bKeeper ? 0.15f : 0.25f;
+			// Judging a ball in the air off the bat takes longer than reacting to one along the ground.
+			const float Reaction = F.bKeeper ? 0.15f : bAir ? 0.5f : 0.25f;
 			const float Reach = F.bKeeper ? 1.5f : 1.0f;
 			const float DiveReach = F.bKeeper ? 2.8f : 2.3f;
 			const float D = FVector2D::Distance(P, F.Home);
@@ -110,20 +114,23 @@ FFieldingOutcome CricketField::SolveFielding(const TArray<FBallState>& Samples, 
 				Best = I;
 				BestSlack = Slack;
 				bBestDive = Reaction + TimeToCover(FMath::Max(0.f, D - Reach), Skill.RunSpeed) - Lead > T;
+				BestRun = FMath::Max(0.f, D - Reach);
 			}
 		}
 		if (Best < 0) continue;
 
 		O.Fielder = Best;
-		O.ChaseStart = Field[Best].bKeeper ? 0.15f : 0.25f;
+		O.ChaseStart = Field[Best].bKeeper ? 0.15f : bAir ? 0.5f : 0.25f;
 		O.FieldTime = T;
 		O.FieldPos = S.Pos;
+		O.bDive = bBestDive;
 		if (bAir)
 		{
 			O.bCatchChance = true;
 			const float Speed = S.Vel.Size();
 			float Diff = 0.1f + 0.45f * FMath::Clamp((0.5f - BestSlack) / 0.5f, 0.f, 1.f)
-				+ 0.3f * FMath::Clamp((Speed - 18.f) / 25.f, 0.f, 1.f) + (bBestDive ? 0.25f : 0.f);
+				+ 0.3f * FMath::Clamp((Speed - 18.f) / 25.f, 0.f, 1.f) + (bBestDive ? 0.25f : 0.f)
+				+ 0.2f * FMath::Clamp((BestRun - 10.f) / 15.f, 0.f, 1.f); // taken on the run
 			O.CatchDifficulty = FMath::Clamp(Diff, 0.f, 0.95f);
 			const float Chance = FMath::Clamp(1.f - O.CatchDifficulty * (1.25f - Skill.Catching), 0.03f, 0.99f);
 			O.bCaught = Rng.GetFraction() < Chance;
@@ -141,7 +148,8 @@ FRunningOutcome CricketField::SolveRunning(const FFieldingOutcome& Fd, const FCr
 	if (Fd.bCaught || Fd.Boundary != 0 || Fd.Fielder < 0) return R;
 
 	const float V = FMath::Max(3.f, FMath::Min(Striker.RunSpeed, NonStriker.RunSpeed));
-	auto RunTime = [V](int32 N) { return 0.35f + TimeToCover(RunLength, V) + (N - 1) * (RunLength / V + 0.6f); };
+	// Set off after the stroke, then each turn: ground the bat, stop, push back off.
+	auto RunTime = [V](int32 N) { return 0.3f + TimeToCover(LegLength, V) + (N - 1) * (LegLength / V + 0.6f); };
 
 	const FVector2D From(Fd.FieldPos.X, Fd.FieldPos.Y);
 	const float ToStriker = From.Size();
@@ -149,7 +157,8 @@ FRunningOutcome CricketField::SolveRunning(const FFieldingOutcome& Fd, const FCr
 	R.bThrowToStrikerEnd = ToStriker <= ToBowler;
 	const float Dist = FMath::Min(ToStriker, ToBowler);
 	const float Throw = FMath::Clamp(Skill.Throwing, 0.f, 1.f);
-	R.ThrowRelease = Fd.FieldTime + (bKeeperFielded ? 0.25f : 0.5f - 0.2f * Throw);
+	// Gather and throw; a dive costs the time to get back up.
+	R.ThrowRelease = Fd.FieldTime + (bKeeperFielded ? 0.25f : 0.55f - 0.2f * Throw) + (Fd.bDive && !bKeeperFielded ? 0.5f : 0.f);
 	R.ThrowArrive = R.ThrowRelease + Dist / (24.f + 12.f * Throw);
 	const float PDirect = Dist < 3.f ? 1.f : FMath::Clamp(0.15f + 0.35f * Throw - Dist / 150.f, 0.03f, 0.5f);
 	const float Expected = R.ThrowArrive + 0.4f * (1.f - PDirect);

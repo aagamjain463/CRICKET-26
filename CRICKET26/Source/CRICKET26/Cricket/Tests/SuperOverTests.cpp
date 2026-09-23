@@ -809,6 +809,9 @@ bool FSOFieldBoundaries::RunTest(const FString&)
 	const FRunningOutcome Run = CricketField::SolveRunning(Push, FCricketPlayer(), FCricketPlayer(), FCricketPlayer(), false, 0.3f, Rng);
 	TestTrue(*FString::Printf(TEXT("fielded (%d) and run (%d/%d)"), Push.Fielder, Run.Completed, Run.Attempted), Push.Fielder >= 0 && Push.Boundary == 0);
 	TestFalse(TEXT("cautious running is safe"), Run.bRunOut);
+	TestTrue(TEXT("a push into the ring is a single"), Run.Completed >= 1);
+	// Crease to crease with the bat grounded at the far end: a single takes about 3.0-3.5 s, a two 6-6.5 s.
+	TestTrue(*FString::Printf(TEXT("single in %.2f s"), Run.RunTimes.Num() ? Run.RunTimes[0] : 0.f), Run.RunTimes.Num() > 0 && Run.RunTimes[0] > 3.f && Run.RunTimes[0] < 3.5f);
 	FRandomStream Rng2(1);
 	const FRunningOutcome Mad = CricketField::SolveRunning(Push, FCricketPlayer(), FCricketPlayer(), FCricketPlayer(), false, -3.f, Rng2);
 	TestTrue(TEXT("reckless running gets run out"), Mad.bRunOut && Mad.Attempted > Run.Attempted);
@@ -822,6 +825,9 @@ bool FSOAIMatch::RunTest(const FString&)
 {
 	int32 Fours = 0, Sixes = 0, Wickets = 0, Wides = 0, Edges = 0, Deliveries = 0, Runs1 = 0, Caught = 0, RunOuts = 0, Dots = 0, ByeBoundaries = 0;
 	int32 Ran[4] = {}, Byes = 0, LegByes = 0, NoBalls = 0, Bouncers = 0, PadHits = 0, OtherOuts = 0;
+	int32 Intents[4] = {}, Middled = 0, Contacts = 0, Advances = 0;
+	float ExitSum = 0.f;
+	int32 IntentFours[4] = {}, IntentSixes[4] = {}, IntentOuts[4] = {}, Chances = 0, Taken = 0;
 	for (int32 Game = 0; Game < 40; ++Game)
 	{
 		FSuperOverMatch M;
@@ -860,6 +866,21 @@ bool FSOAIMatch::RunTest(const FString&)
 			Caught += R.Dismissal == EDismissal::Caught;
 			RunOuts += R.Dismissal == EDismissal::RunOut;
 			Dots += Ev.Contains(ECricketEvent::DotBall);
+			const FDeliveryOutcome O = R.ToOutcome();
+			if (O.bBatContact && O.Boundary == 0 && O.RunsRun > 0 && O.Dismissal != EDismissal::Caught) Ran[FMath::Min(O.RunsRun, 3)]++;
+			if (!O.bBatContact && !O.bWide && O.RunsRun + O.Boundary > 0) (O.bLegBye ? LegByes : Byes)++;
+			NoBalls += O.bNoBall;
+			Bouncers += O.bBouncer;
+			PadHits += R.bPadImpact;
+			OtherOuts += R.Dismissal == EDismissal::Stumped || R.Dismissal == EDismissal::HitWicket;
+			Intents[int32(In.Intent)]++;
+			Chances += R.Fielding.bCatchChance;
+			Taken += R.Fielding.bCaught;
+			IntentFours[int32(In.Intent)] += O.bBatContact && O.Boundary == 4;
+			IntentSixes[int32(In.Intent)] += O.Boundary == 6;
+			IntentOuts[int32(In.Intent)] += O.Dismissal != EDismissal::None;
+			Advances += R.Shot.Foot == EFootwork::Advance;
+			if (R.Contact.HasContact()) { ++Contacts; Middled += R.Contact.Zone == EContactZone::Middle; ExitSum += R.Contact.ExitVel.Size(); }
 			if (!R.Contact.HasContact() && R.Fielding.Boundary && !R.bWide)
 			{
 				++ByeBoundaries;
@@ -878,8 +899,25 @@ bool FSOAIMatch::RunTest(const FString&)
 		Deliveries, Runs1 / 40.f, Dots, Fours, Sixes, Wickets, Caught, RunOuts, Wides, Edges);
 	UE_LOG(LogTemp, Display, TEXT("AI stats: off the bat 1s %d, 2s %d, 3s+ %d; byes %d, leg byes %d, no-balls %d, bouncers %d, pad hits %d, stumped/hit wicket %d"),
 		Ran[1], Ran[2], Ran[3], Byes, LegByes, NoBalls, Bouncers, PadHits, OtherOuts);
-	TestTrue(TEXT("some boundaries"), Fours + Sixes > 0);
-	TestTrue(TEXT("some wickets"), Wickets > 0);
+	UE_LOG(LogTemp, Display, TEXT("AI stats: intents leave %d defend %d ground %d loft %d (advance %d); contact %d, middled %d, mean exit %.1f m/s"),
+		Intents[0], Intents[1], Intents[2], Intents[3], Advances, Contacts, Middled, Contacts ? ExitSum / Contacts : 0.f);
+	UE_LOG(LogTemp, Display, TEXT("AI stats: 4/6/W by intent: defend %d/%d/%d, ground %d/%d/%d, loft %d/%d/%d; catches %d/%d"),
+		IntentFours[1], IntentSixes[1], IntentOuts[1], IntentFours[2], IntentSixes[2], IntentOuts[2], IntentFours[3], IntentSixes[3], IntentOuts[3], Taken, Chances);
+	// Scoring shape of a death over, per ball. Bands are wide on purpose: they catch a broken mechanic
+	// (every ball a six, no running, no catches), not small calibration drift.
+	auto Band = [this, Deliveries](const TCHAR* What, int32 N, float Lo, float Hi)
+	{
+		const float P = float(N) / Deliveries;
+		TestTrue(*FString::Printf(TEXT("%s %.1f%% within %.0f-%.0f%%"), What, 100.f * P, 100.f * Lo, 100.f * Hi), P >= Lo && P <= Hi);
+	};
+	Band(TEXT("sixes"), Sixes, 0.08f, 0.25f);
+	Band(TEXT("fours"), Fours, 0.07f, 0.22f);
+	Band(TEXT("dots"), Dots, 0.15f, 0.40f);
+	Band(TEXT("singles"), Ran[1], 0.08f, 0.35f);
+	Band(TEXT("twos"), Ran[2], 0.005f, 0.12f);
+	Band(TEXT("wickets"), Wickets, 0.06f, 0.18f);
+	TestTrue(*FString::Printf(TEXT("catching efficiency %d/%d"), Taken, Chances), Chances > 0 && Taken >= 0.65f * Chances && Taken <= 0.92f * Chances);
+	TestTrue(TEXT("not everything is middled"), Middled < 0.8f * Contacts);
 	TestTrue(*FString::Printf(TEXT("keeper stops balls that beat the bat (%d byes to the boundary)"), ByeBoundaries), ByeBoundaries <= Deliveries / 100);
 	return true;
 }

@@ -104,14 +104,17 @@ FBatInput CricketAI::ChooseShot(const FDeliveryRelease& Rel, const FCricketPlaye
 	const float Line = Seen.PitchLine * Off;
 	const bool bShort = Seen.PitchX > 7.f || Seen.HeightAtBat > 0.95f;
 	const bool bYorker = Seen.PitchX < 2.3f;
-	Aggr = FMath::Clamp(Aggr + 0.1f * CricketMath::Gauss(Rng), 0.f, 1.f);
+	// How hittable the ball is in the air: the slot (half-volleys, full tosses) and short balls invite
+	// it, yorkers and a good length punish it. Pace lengths are longer than spin lengths.
+	const bool bSpin = BowlerType != EBowlerType::Pace;
+	const bool bSlot = !bYorker && Seen.PitchX < (bSpin ? 3.8f : 4.5f);
+	float Suit = bYorker ? 0.1f : bSlot ? 0.9f : bShort ? 0.6f : 0.35f;
+	if (FMath::Abs(Line) > 0.6f) Suit -= 0.15f;
+	const float Want = Aggr + 0.5f * (Suit - 0.5f) + 0.12f * CricketMath::Gauss(Rng);
 
 	FBatInput In;
-	In.Intent = EBatIntent::Defend;
-	if (Line > 0.8f && Aggr < 0.6f) In.Intent = EBatIntent::Leave;
-	else if (bShort) In.Intent = Aggr > 0.5f ? EBatIntent::Loft : (Aggr > 0.3f ? EBatIntent::Ground : EBatIntent::Defend);
-	else if (bYorker) In.Intent = Aggr > 0.75f ? EBatIntent::Loft : EBatIntent::Defend;
-	else In.Intent = Aggr > 0.6f ? EBatIntent::Loft : (Aggr > 0.3f ? EBatIntent::Ground : EBatIntent::Defend);
+	In.Intent = Want > 0.65f ? EBatIntent::Loft : Want > 0.3f ? EBatIntent::Ground : EBatIntent::Defend;
+	if (Line > 0.8f && Want < 0.5f) In.Intent = EBatIntent::Leave;
 	if (In.Intent == EBatIntent::Leave) return In;
 
 	// Play with the line: off side for balls outside off, leg side for straight/leg, then find the gap.
