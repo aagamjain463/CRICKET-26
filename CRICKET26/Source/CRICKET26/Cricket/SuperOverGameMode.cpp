@@ -1112,6 +1112,9 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	const bool bReplay = IsReplaying();
 	if (bReplay != bWasReplaying) bCutCamera = true; // cut into and out of the replay
 	bWasReplaying = bReplay;
+	const bool bScorecard = ShowingScorecard();
+	if (bScorecard != bWasScorecard) bCutCamera = true; // cut to the ground and back
+	bWasScorecard = bScorecard;
 	const float ReplayFrom = FMath::Max(0.f, Result.ContactTime - ReplayLead);
 	const float T = bReplay ? ReplayFrom + (PhaseTime - ReplayDelay) * ReplaySpeed : DPhase == EDeliveryPhase::DeadBall ? Result.DeadTime : PhaseTime;
 
@@ -1250,6 +1253,13 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 		WantLoc = ToWorld(FVector(Result.Shot.ContactX() + 2.f, 38.f * Off, 2.2f));
 		LookAt = T < Result.ContactTime + 0.3f ? ToWorld(FVector(Result.Shot.ContactX(), 0.f, 1.f)) : BallPos;
 		WantFov = T < Result.ContactTime + 0.3f ? 12.f : 35.f;
+	}
+	if (bScorecard)
+	{
+		// High in the square-leg stand, across the square to the far stands.
+		WantLoc = ToWorld(FVector(0.5f * PitchLength, -80.f, 26.f));
+		LookAt = ToWorld(FVector(0.5f * PitchLength, 30.f, 4.f));
+		WantFov = 70.f;
 	}
 	if (bDevCamFielder && bLive && Fielders.IsValidIndex(Result.Fielding.Fielder) && !Ctx.Field[Result.Fielding.Fielder].bBowler)
 	{

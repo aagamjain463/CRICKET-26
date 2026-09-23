@@ -1,6 +1,8 @@
 #include "BattingModel.h"
 
-namespace
+// File-local helpers live in the model's namespace, not an anonymous one: unity builds merge this file with
+// others (CricketPose has its own HandleLength), and the definitions below find them by the enclosing namespace.
+namespace CricketBatting
 {
 	constexpr float BladeHalfWidth = 0.054f;
 	constexpr float ToeLength = 0.17f;    // sweet spot to toe

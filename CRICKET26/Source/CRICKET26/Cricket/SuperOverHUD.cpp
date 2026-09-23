@@ -27,6 +27,23 @@ namespace
 	}
 }
 
+namespace CricketHUD
+{
+	FString HowOutName(EDismissal D)
+	{
+		switch (D)
+		{
+		case EDismissal::Bowled: return TEXT("bowled");
+		case EDismissal::Caught: return TEXT("caught");
+		case EDismissal::LBW: return TEXT("lbw");
+		case EDismissal::RunOut: return TEXT("run out");
+		case EDismissal::Stumped: return TEXT("stumped");
+		case EDismissal::HitWicket: return TEXT("hit wicket");
+		default: return FString();
+		}
+	}
+}
+
 void ASuperOverHUD::BeginPlay()
 {
 	Super::BeginPlay();
@@ -192,8 +209,47 @@ void ASuperOverHUD::DrawHUD()
 		Text(TEXT("REPLAY"), W - 85 * S, 24 * S, FLinearColor::White, 1.1f * S, true);
 	}
 
+	// Scorecard at the innings break and the result, once the banner and the replay have had their moment.
+	if (GM->ShowingScorecard())
+	{
+		const float CW = 560 * S, X0 = W * 0.5f - CW * 0.5f;
+		float Y = H * 0.22f;
+		DrawRect(FLinearColor(0.02f, 0.02f, 0.05f, 0.85f), X0, Y, CW, 34 * S);
+		Text(M.Phase == EMatchPhase::InningsBreak ? TEXT("INNINGS BREAK") : FString::Printf(TEXT("SUPER OVER %d  -  RESULT"), M.SuperOverNumber),
+			W * 0.5f, Y + 5 * S, FLinearColor(1, 0.85f, 0.3f), 1.2f * S, true);
+		Y += 34 * S;
+		for (const FInningsState& Inn : M.Innings)
+		{
+			const FCricketTeam& T = GM->Teams[Inn.BattingTeam];
+			DrawRect(FLinearColor(0.04f, 0.04f, 0.08f, 0.8f), X0, Y, CW, 30 * S);
+			DrawRect(T.Colour, X0, Y, 8 * S, 30 * S);
+			Text(T.Name.ToUpper(), X0 + 20 * S, Y + 4 * S, FLinearColor::White, 1.1f * S);
+			Text(FString::Printf(TEXT("%d/%d  (%d.%d)"), Inn.Runs, Inn.Wickets, Inn.LegalBalls / 6, Inn.LegalBalls % 6), X0 + CW - 150 * S, Y + 4 * S, FLinearColor::White, 1.1f * S);
+			Y += 30 * S;
+			for (int32 I = 0; I < Inn.Batters.Num(); ++I)
+			{
+				const FBatterCard& C = Inn.Batters[I];
+				if (C.Balls == 0 && C.HowOut == EDismissal::None && I != Inn.Striker && I != Inn.NonStriker) continue;
+				DrawRect(FLinearColor(0.02f, 0.02f, 0.05f, 0.7f), X0, Y, CW, 22 * S);
+				Text(FString::Printf(TEXT("%s%s"), *T.Batters[I].Name, C.HowOut == EDismissal::None ? TEXT(" *") : *(TEXT("   ") + CricketHUD::HowOutName(C.HowOut))), X0 + 20 * S, Y + 3 * S, FLinearColor(0.9f, 0.9f, 0.9f), 0.9f * S);
+				Text(FString::Printf(TEXT("%d (%d)   4s %d  6s %d"), C.Runs, C.Balls, C.Fours, C.Sixes), X0 + CW - 230 * S, Y + 3 * S, FLinearColor(0.9f, 0.9f, 0.9f), 0.9f * S);
+				Y += 22 * S;
+			}
+			const FBowlerCard& B = Inn.Bowler;
+			DrawRect(FLinearColor(0.02f, 0.02f, 0.05f, 0.7f), X0, Y, CW, 22 * S);
+			Text(GM->Teams[1 - Inn.BattingTeam].Bowler.Name, X0 + 20 * S, Y + 3 * S, FLinearColor(0.8f, 0.85f, 1.f), 0.9f * S);
+			Text(FString::Printf(TEXT("%d-%d (%d.%d)   wd %d  nb %d"), B.Wickets, B.Runs, B.Balls / 6, B.Balls % 6, B.Wides, B.NoBalls), X0 + CW - 230 * S, Y + 3 * S, FLinearColor(0.8f, 0.85f, 1.f), 0.9f * S);
+			Y += 30 * S;
+		}
+		const FString Line = M.Phase == EMatchPhase::InningsBreak ? FString::Printf(TEXT("%s NEED %d TO WIN FROM 6 BALLS"), *BowlT.Name.ToUpper(), M.Target)
+			: M.bTied ? FString(TEXT("SCORES LEVEL - ANOTHER SUPER OVER")) : FString::Printf(TEXT("%s WIN"), *GM->Teams[M.Winner].Name.ToUpper());
+		const bool bWon = M.Phase == EMatchPhase::MatchComplete && !M.bTied;
+		DrawRect(bWon ? GM->Teams[M.Winner].Colour * 0.6f + FLinearColor(0, 0, 0, 0.85f) : FLinearColor(0.6f, 0.05f, 0.05f, 0.85f), X0, Y, CW, 32 * S);
+		Text(Line, W * 0.5f, Y + 5 * S, FLinearColor::White, 1.1f * S, true);
+	}
+
 	// Event banner, until the next ball is on its way.
-	if (GetWorld()->GetTimeSeconds() - BannerAt < 2.2 && !GM->IsReplaying() && GM->DPhase != EDeliveryPhase::RunUp && GM->DPhase != EDeliveryPhase::BallInPlay)
+	if (GetWorld()->GetTimeSeconds() - BannerAt < 2.2 && !GM->IsReplaying() && GM->DPhase != EDeliveryPhase::RunUp && GM->DPhase != EDeliveryPhase::BallInPlay && !GM->ShowingScorecard())
 	{
 		DrawRect(FLinearColor(0.02f, 0.02f, 0.05f, 0.7f), 0, H * 0.36f, W, 70 * S);
 		Text(Banner, W * 0.5f, H * 0.36f + 12 * S, FLinearColor(1, 0.85f, 0.2f), 2.5f * S, true);

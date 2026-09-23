@@ -84,6 +84,13 @@ public:
 	static constexpr float ReplayDelay = 1.2f, ReplaySpeed = 0.5f, ReplayLead = 0.8f, ReplayAction = 1.6f;
 	bool bReplayThis = false;
 	bool IsReplaying() const { return bReplayThis && DPhase == EDeliveryPhase::DeadBall && PhaseTime >= ReplayDelay && PhaseTime < ReplayDelay + ReplayAction / ReplaySpeed; }
+	/** The innings break or result: after the last ball's banner and replay, a scorecard over a wide shot of the ground. */
+	static constexpr float ScorecardDelay = 2.2f;
+	bool ShowingScorecard() const
+	{
+		return (Match.Phase == EMatchPhase::InningsBreak || Match.Phase == EMatchPhase::MatchComplete) && !IsReplaying()
+			&& (DPhase != EDeliveryPhase::DeadBall || PhaseTime >= ScorecardDelay);
+	}
 
 	/** On-screen touch controls: on for phones and tablets, or -CricketTouch on desktop (the mouse is a finger). */
 	bool bTouchUI = false;
@@ -153,7 +160,7 @@ private:
 	FRandomStream Rng;
 	TArray<int32> RecentPlans;
 	float ReleaseTiming = 0.f;
-	bool bViewSet = false, bCutCamera = true, bWasReplaying = false;
+	bool bViewSet = false, bCutCamera = true, bWasReplaying = false, bWasScorecard = false;
 
 	AStaticMeshActor* Spawn(UStaticMesh* Mesh, const FVector& PosM, const FVector& SizeM, const FLinearColor& Colour);
 	void Paint(AStaticMeshActor* Actor, const FLinearColor& Colour);
