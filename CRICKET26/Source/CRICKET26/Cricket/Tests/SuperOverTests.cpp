@@ -837,6 +837,21 @@ bool FSOStumping::RunTest(const FString&)
 
 	// Same charge against pace: no advance (keeper back, nobody charges 140 kph).
 	TestTrue(TEXT("no charging the quicks"), CricketBatting::ChooseShot(EBatIntent::Loft, 0.f, 4.f, 0.5f, EBowlerType::Pace, 0.7f).Foot != EFootwork::Advance);
+
+	// A well-timed charge at a stock leg break on a good length goes to the pitch and smothers the turn.
+	const FDeliveryRelease Stock = Release(EDeliveryType::LegBreak, 4.6f, 0.05f, 0.f, EBowlerType::LegSpin);
+	const FBallRead Flight = CricketDelivery::Read(Stock.Ball, 0.f, FPitchConditions());
+	const FShotProfile Go = CricketBatting::ChooseShot(EBatIntent::Loft, 0.f, Flight.PitchX, Flight.HeightAtBat, EBowlerType::LegSpin, 0.8f);
+	FBallState AtBat = Stock.Ball;
+	CricketBall::SimulateToPlane(AtBat, Go.ContactX(), FPitchConditions());
+	FBatInput Meet;
+	Meet.Intent = EBatIntent::Loft;
+	Meet.PressTime = AtBat.Time - Go.SwingTime;
+	const FDeliveryResult G = CricketDelivery::Resolve(Stock, Meet, C);
+	TestTrue(*FString::Printf(TEXT("charged (%s)"), *G.Summary), G.Shot.Foot == EFootwork::Advance);
+	TestTrue(*FString::Printf(TEXT("met within a metre of the pitch (pitched %.2f, met %.2f)"), G.PitchPos.X, G.Shot.ContactX()),
+		G.Shot.ContactX() < G.PitchPos.X && G.Shot.ContactX() > G.PitchPos.X - 1.f);
+	TestTrue(*FString::Printf(TEXT("hit (%s)"), *G.Summary), G.Contact.HasContact() && G.Dismissal == EDismissal::None);
 	return true;
 }
 
@@ -1010,6 +1025,7 @@ bool FSOAIMatch::RunTest(const FString&)
 	Band(TEXT("wickets"), Wickets, 0.06f, 0.18f);
 	TestTrue(*FString::Printf(TEXT("catching efficiency %d/%d"), Taken, Chances), Chances > 0 && Taken >= 0.65f * Chances && Taken <= 0.92f * Chances);
 	TestTrue(TEXT("not everything is middled"), Middled < 0.8f * Contacts);
+	TestTrue(*FString::Printf(TEXT("batters use their feet to spin (%d advances)"), Advances), Advances >= Deliveries / 50 && Advances <= Deliveries / 6);
 	TestTrue(*FString::Printf(TEXT("keeper stops balls that beat the bat (%d byes to the boundary)"), ByeBoundaries), ByeBoundaries <= Deliveries / 100);
 	return true;
 }

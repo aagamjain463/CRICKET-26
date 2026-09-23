@@ -173,6 +173,15 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 			while (Early.Time < ReadAt) Step(Early, C);
 			float Unused;
 			if (!PredictAtPlane(Early, R.Shot.ContactX(), C, Aim, Unused)) Aim = Probe.Pos;
+			// The read leaves out movement still to come, except that batters partly play for a spinner's
+			// stock turn (it varies ball to ball); the variations (arm ball, googly, top-spinner) deceive.
+			FBallState Expect = Early;
+			Expect.SwingAccel = Expect.SeamKick = 0.f;
+			if (Ctx.Bowler.BowlerType != EBowlerType::Pace && Release.Type == CricketBowling::Repertoire(Ctx.Bowler.BowlerType)[0]
+				&& SimulateToPlane(Expect, R.Shot.ContactX(), C))
+			{
+				Aim = FMath::Lerp(Aim, Expect.Pos, 0.5f * FMath::Clamp(Bat.Technique, 0.f, 1.f));
+			}
 			// Judgement and hand-eye error in placing the bat: grows with pace and with the size of the
 			// swing, shrinks with technique. This is what separates middled shots from mistimed ones.
 			const float Swing = Input.Intent == EBatIntent::Defend ? 0.6f : Input.Intent == EBatIntent::Loft ? 1.25f : 1.f;
@@ -190,7 +199,7 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 
 	const bool bShot = R.Shot.Shot != EShotType::Leave;
 	const EFootwork Foot = bShot ? R.Shot.Foot : EFootwork::Back;
-	const float PadX = Foot == EFootwork::Advance ? 2.75f : Foot == EFootwork::Front ? 1.75f : 0.8f;
+	const float PadX = Foot == EFootwork::Advance ? R.Shot.AdvanceX - 0.25f : Foot == EFootwork::Front ? 1.75f : 0.8f;
 	const float PadMin = Foot == EFootwork::Back ? -0.32f : -0.22f, PadMax = Foot == EFootwork::Back ? 0.0f : 0.10f;
 	const float InLine = CricketGeo::StumpsHalfWidth + CricketGeo::BallRadius;
 

@@ -472,6 +472,14 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 		Striker->SetActorLocation(ToWorld(FVector(SX, -0.9f * Off, 0.9f)));
 		NonStriker->SetActorLocation(ToWorld(FVector(NX, 0.9f * Off, 0.9f)));
 	}
+	else if (bLive && BatInput.IsShot())
+	{
+		// Footwork: the striker steps to where the stroke is played (down the track to a spinner), then back.
+		const float S = FMath::Clamp((T - BatInput.PressTime) / FMath::Max(Result.Shot.SwingTime, 0.05f), 0.f, 1.f);
+		const float Back = FMath::Clamp((T - Result.ContactTime - 0.4f) / 0.8f, 0.f, 1.f);
+		const float X = FMath::Lerp(FMath::Lerp(0.9f, Result.Shot.ContactX() - 0.45f, FMath::SmoothStep(0.f, 1.f, S)), 0.9f, Back);
+		Striker->SetActorLocation(ToWorld(FVector(X, -0.35f * Off, 0.9f)));
+	}
 
 	// Bat: backlift while the ball is coming, swing over the shot's swing time, then follow-through.
 	float Angle = -25.f;

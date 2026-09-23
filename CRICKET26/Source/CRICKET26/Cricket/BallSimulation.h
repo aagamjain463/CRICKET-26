@@ -75,6 +75,7 @@ struct FDeliveryRelease
 	FBallState Ball;
 	bool bNoBall = false;
 	float SpeedKph = 0.f;
+	EDeliveryType Type = EDeliveryType::Stock;
 	FVector2D AimedPitch = FVector2D::ZeroVector; // after execution error, before movement
 };
 

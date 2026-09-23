@@ -2,6 +2,9 @@
 
 namespace
 {
+	/** How long before the ball arrives a premeditated charge is decided (s): early enough to go and meet it. */
+	constexpr float ChargeLead = 0.85f;
+
 	struct FPlanOption
 	{
 		const TCHAR* Label;
@@ -97,29 +100,35 @@ FBatInput CricketAI::ChooseShot(const FDeliveryRelease& Rel, const FCricketPlaye
 	float Aggr, const TArray<FFielder>& Field, const FPitchConditions& C, FRandomStream& Rng)
 {
 	const float Off = OffSideSign(Batter.BatHand);
-	// The batter decides roughly 0.35 s before the ball reaches them, on what they can see then.
+	const bool bSpin = BowlerType != EBowlerType::Pace;
+	// Against spin an attacking batter sometimes premeditates the charge: committed in the flight,
+	// before the ball pitches, so length is guessed and a ball that dips or turns past them risks a stumping.
+	const bool bCharge = bSpin && Rng.GetFraction() < FMath::Clamp(0.3f * (Aggr - 0.35f), 0.f, 0.15f);
+	// Otherwise the batter decides roughly 0.35 s before the ball reaches them, on what they can see then.
 	const FBallRead First = CricketDelivery::Read(Rel.Ball, 0.f, C);
-	const float DecideAt = FMath::Max(0.05f, First.ArrivalTime - 0.35f);
+	const float DecideAt = FMath::Max(0.05f, First.ArrivalTime - (bCharge ? ChargeLead : 0.35f));
 	const FBallRead Seen = CricketDelivery::Read(Rel.Ball, DecideAt, C);
 	const float Line = Seen.PitchLine * Off;
-	const bool bShort = Seen.PitchX > 7.f || Seen.HeightAtBat > 0.95f;
-	const bool bYorker = Seen.PitchX < 2.3f;
+	const bool bShort = !bCharge && (Seen.PitchX > 7.f || Seen.HeightAtBat > 0.95f);
+	const bool bYorker = !bCharge && Seen.PitchX < 2.3f;
 	// How hittable the ball is in the air: the slot (half-volleys, full tosses) and short balls invite
-	// it, yorkers and a good length punish it. Pace lengths are longer than spin lengths.
-	const bool bSpin = BowlerType != EBowlerType::Pace;
-	const bool bSlot = !bYorker && Seen.PitchX < (bSpin ? 3.8f : 4.5f);
+	// it, yorkers and a good length punish it. Pace lengths are longer than spin lengths. Charging
+	// makes the slot.
+	const bool bSlot = bCharge || (!bYorker && Seen.PitchX < (bSpin ? 3.8f : 4.5f));
 	float Suit = bYorker ? 0.1f : bSlot ? 0.9f : bShort ? 0.6f : 0.35f;
 	if (FMath::Abs(Line) > 0.6f) Suit -= 0.15f;
 	const float Want = Aggr + 0.5f * (Suit - 0.5f) + 0.12f * CricketMath::Gauss(Rng);
 
 	FBatInput In;
 	In.Intent = Want > 0.65f ? EBatIntent::Loft : Want > 0.3f ? EBatIntent::Ground : EBatIntent::Defend;
-	if (Line > 0.8f && Want < 0.5f) In.Intent = EBatIntent::Leave;
+	if (bCharge && In.Intent == EBatIntent::Defend) In.Intent = EBatIntent::Ground;
+	if (Line > 0.8f && Want < 0.5f && !bCharge) In.Intent = EBatIntent::Leave;
 	if (In.Intent == EBatIntent::Leave) return In;
 
 	// Play with the line: off side for balls outside off, leg side for straight/leg, then find the gap.
 	float Lo = -60.f, Hi = 60.f;
 	if (bShort) { Lo = Line > 0.2f ? 70.f : -130.f; Hi = Line > 0.2f ? 130.f : -40.f; }
+	else if (bCharge) { Lo = -45.f; Hi = 45.f; }
 	else if (Line > 0.3f) { Lo = 10.f; Hi = 80.f; }
 	else if (Line < 0.f) { Lo = -80.f; Hi = -5.f; }
 	float BestDir = 0.f, BestGap = -1.f;
@@ -136,10 +145,13 @@ FBatInput CricketAI::ChooseShot(const FDeliveryRelease& Rel, const FCricketPlaye
 	}
 	In.DirectionDeg = In.Intent == EBatIntent::Defend ? 0.f : BestDir;
 
-	const FShotProfile Shot = CricketBatting::ChooseShot(In.Intent, In.DirectionDeg, Seen.PitchX, Seen.HeightAtBat, BowlerType);
+	const FShotProfile Shot = CricketBatting::ChooseShot(In.Intent, In.DirectionDeg, Seen.PitchX, Seen.HeightAtBat, BowlerType,
+		bCharge ? ChargeLead : 0.f);
 	FBallState Probe = Rel.Ball;
 	if (!CricketBall::SimulateToPlane(Probe, Shot.ContactX(), C)) { In.Intent = EBatIntent::Leave; return In; }
 	const float Sigma = 0.015f + 0.035f * (1.f - Batter.Timing) + (Rel.SpeedKph > 138.f ? 0.01f : 0.f);
 	In.PressTime = FMath::Max(DecideAt, Probe.Time - Shot.SwingTime + CricketMath::Gauss(Rng) * Sigma);
+	// Committed to the charge: the feet go before AdvanceLead whatever the timing of the swing.
+	if (bCharge) In.PressTime = FMath::Min(In.PressTime, First.ArrivalTime - CricketBatting::AdvanceLead - 0.02f);
 	return In;
 }

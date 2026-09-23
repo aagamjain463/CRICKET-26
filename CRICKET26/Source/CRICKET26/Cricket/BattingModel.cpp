@@ -17,6 +17,14 @@ namespace
 		return P;
 	}
 
+	/** A charging batter goes to meet the ball where they read it pitching, as far as their feet get them. */
+	FShotProfile DownTheTrack(EShotType Shot, float ReadPitchX)
+	{
+		FShotProfile P = CricketBatting::Profile(Shot, EFootwork::Advance);
+		P.AdvanceX = FMath::Clamp(ReadPitchX - 0.4f, 2.6f, 4.4f); // ~2.5 m out of the crease, bat ahead of the front pad
+		return P;
+	}
+
 	FVector Dir3(float DirDeg, float LoftDeg, float Off)
 	{
 		const float T = FMath::DegreesToRadians(DirDeg), L = FMath::DegreesToRadians(LoftDeg);
@@ -44,9 +52,10 @@ const FShotProfile& CricketBatting::Profile(EShotType Shot, EFootwork Foot)
 	static const FShotProfile Punch = Make(EShotType::Punch, F::Back, false, 0.5f, 1.3f, -0.2f, 0.7f, 20.f, 2.f, -35.f, 70.f, 0.24f);
 	static const FShotProfile Cut = Make(EShotType::Cut, F::Back, true, 0.45f, 1.3f, 0.15f, 1.05f, 22.f, 3.f, 70.f, 135.f, 0.24f);
 	static const FShotProfile Pull = Make(EShotType::Pull, F::Back, true, 0.75f, 1.75f, -0.4f, 0.55f, 26.f, 14.f, -135.f, -35.f, 0.26f);
-	// Down the track: the stroke is played ~1.8 m out of the crease; the walk adds to the swing time.
-	static const FShotProfile DriveA = Make(EShotType::Drive, F::Advance, false, 0.03f, 0.85f, -0.35f, 0.75f, 24.f, 3.f, -50.f, 75.f, 0.58f);
-	static const FShotProfile LoftA = Make(EShotType::Loft, F::Advance, false, 0.1f, 1.0f, -0.45f, 0.8f, 26.f, 30.f, -70.f, 80.f, 0.6f);
+	// Down the track: the walk adds to the swing time, and the body still moving into the shot adds
+	// ~2 m/s to the bat.
+	static const FShotProfile DriveA = Make(EShotType::Drive, F::Advance, false, 0.03f, 0.85f, -0.35f, 0.75f, 26.f, 3.f, -50.f, 75.f, 0.58f);
+	static const FShotProfile LoftA = Make(EShotType::Loft, F::Advance, false, 0.1f, 1.0f, -0.45f, 0.8f, 28.f, 30.f, -70.f, 80.f, 0.6f);
 	static const FShotProfile Sweep = Make(EShotType::Sweep, F::Front, true, 0.0f, 0.65f, -0.35f, 0.6f, 20.f, 6.f, -150.f, -55.f, 0.3f);
 	// Wrists through the leg side off a full ball on the pads; fine enough it is a glance.
 	static const FShotProfile Flick = Make(EShotType::Flick, F::Front, false, 0.03f, 0.9f, -0.45f, 0.3f, 20.f, 2.f, -150.f, -20.f, 0.26f);
@@ -94,12 +103,12 @@ FShotProfile CricketBatting::ChooseShot(EBatIntent Intent, float Dir, float Read
 		if (Dir < -60.f && bSweepable) return Profile(EShotType::Sweep);
 		if (Dir > 80.f && bSweepable) return Profile(EShotType::ReverseSweep);
 		if (Dir < -50.f && !bAdvance) return Profile(EShotType::Flick);
-		return Profile(EShotType::Drive, bAdvance ? EFootwork::Advance : EFootwork::Front);
+		return bAdvance ? DownTheTrack(EShotType::Drive, ReadPitchX) : Profile(EShotType::Drive);
 	case EBatIntent::Loft:
 		if (bShort) return Profile(Dir > 35.f ? EShotType::Cut : ReadHeight > 1.1f && Dir < 0.f ? EShotType::Hook : EShotType::Pull);
 		if (Dir < -135.f && !bAdvance) return Profile(EShotType::Scoop);
 		if (Dir < -45.f && bSweepable) return Profile(EShotType::SlogSweep);
-		return Profile(EShotType::Loft, bAdvance ? EFootwork::Advance : EFootwork::Front);
+		return bAdvance ? DownTheTrack(EShotType::Loft, ReadPitchX) : Profile(EShotType::Loft);
 	}
 	return Profile(EShotType::Leave);
 }

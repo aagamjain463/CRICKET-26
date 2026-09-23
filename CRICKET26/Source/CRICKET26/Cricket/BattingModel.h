@@ -24,7 +24,8 @@ struct FShotProfile
 	float LoftDeg = 0.f;
 	float DirMin = -180.f, DirMax = 180.f;   // allowed shot directions (deg, 0 = straight, + = off side)
 	float SwingTime = 0.25f;                 // input-to-contact time (s)
-	float ContactX() const { return Foot == EFootwork::Advance ? 3.0f : Foot == EFootwork::Front ? 2.0f : 1.0f; }
+	float AdvanceX = 3.0f;                   // down the track: where the batter meets the ball (m from the stumps)
+	float ContactX() const { return Foot == EFootwork::Advance ? AdvanceX : Foot == EFootwork::Front ? 2.0f : 1.0f; }
 };
 
 struct FContactResult

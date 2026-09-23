@@ -147,6 +147,7 @@ FDeliveryRelease CricketBowling::Execute(const FCricketPlayer& Bowler, ECricketH
 	const float Length = Plan.Length + Timing * 1.8f + CricketMath::Gauss(Rng) * LengthSigma;
 	const float LineY = (Plan.Line + CricketMath::Gauss(Rng) * LineSigma) * Off;
 	Out.AimedPitch = FVector2D(Length, LineY);
+	Out.Type = Plan.Type;
 
 	float SpeedFactor = 1.f;
 	switch (Plan.Type)
