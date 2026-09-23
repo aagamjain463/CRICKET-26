@@ -23,6 +23,7 @@
 #include "Engine/DirectionalLight.h"
 #include "Engine/ExponentialHeightFog.h"
 #include "Engine/PostProcessVolume.h"
+#include "Scalability.h"
 #include "Engine/SkyLight.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
@@ -115,6 +116,9 @@ void ASuperOverGameMode::StartPlay()
 	int32 Level = int32(Difficulty);
 	FParse::Value(FCommandLine::Get(), TEXT("CricketDifficulty="), Level);
 	Difficulty = CricketAI::EDifficulty(FMath::Clamp(Level, 0, 3));
+	FParse::Value(FCommandLine::Get(), TEXT("CricketQuality="), Quality);
+	Quality = FMath::Clamp(Quality, 0, 3);
+	ApplyQuality();
 	bTouchUI = PLATFORM_IOS || PLATFORM_ANDROID || bTouchScript || FParse::Param(FCommandLine::Get(), TEXT("CricketTouch"));
 	bRecordAudio = FParse::Param(FCommandLine::Get(), TEXT("CricketRecordAudio")) && ShotBall > 0;
 	BuildScene();
@@ -346,6 +350,22 @@ void ASuperOverGameMode::BuildScene()
 	Sky->GetLightComponent()->bRealTimeCapture = true;
 	Sky->GetLightComponent()->RecaptureSky();
 	W->SpawnActor<ASkyAtmosphere>();
+	// The mobile renderer draws no sky from the atmosphere alone; give it Epic's sky dome (UE EULA).
+	if (W->GetFeatureLevel() < ERHIFeatureLevel::SM5)
+	{
+		UStaticMesh* Dome = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/EngineSky/SM_SkySphere.SM_SkySphere"));
+		UMaterialInterface* DomeMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineSky/M_SimpleSkyDome.M_SimpleSkyDome"));
+		if (Dome && DomeMat)
+		{
+			AStaticMeshActor* SkyDome = W->SpawnActor<AStaticMeshActor>(FVector::ZeroVector, FRotator::ZeroRotator);
+			SkyDome->GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);
+			SkyDome->GetStaticMeshComponent()->SetStaticMesh(Dome);
+			SkyDome->GetStaticMeshComponent()->SetMaterial(0, DomeMat);
+			SkyDome->GetStaticMeshComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			SkyDome->GetStaticMeshComponent()->SetCastShadow(false);
+			SkyDome->SetActorScale3D(FVector(400.f));
+		}
+	}
 	AExponentialHeightFog* Fog = W->SpawnActor<AExponentialHeightFog>();
 	Fog->GetComponent()->SetFogInscatteringColor(FLinearColor(0.45f, 0.6f, 0.85f));
 	Fog->GetComponent()->SetFogDensity(0.004f);
@@ -415,12 +435,26 @@ void ASuperOverGameMode::BuildScene()
 	Camera->GetCameraComponent()->SetConstraintAspectRatio(false);
 }
 
+void ASuperOverGameMode::ApplyQuality()
+{
+	Scalability::FQualityLevels Levels = Scalability::GetQualityLevels();
+	Levels.SetFromSingleQualityLevel(Quality);
+	Scalability::SetQualityLevels(Levels);
+	// Engine Medium still runs Lumen at reduced quality; below High use the sky light and screen-space
+	// reflections instead, which costs a third of the GPU time and looks nearly the same in daylight.
+	const bool bLumen = Quality >= 2;
+	IConsoleManager::Get().FindConsoleVariable(TEXT("r.DynamicGlobalIlluminationMethod"))->Set(bLumen ? 1 : 0, ECVF_SetByCode);
+	IConsoleManager::Get().FindConsoleVariable(TEXT("r.ReflectionMethod"))->Set(bLumen ? 1 : 2, ECVF_SetByCode);
+	UE_LOG(LogCRICKET26, Display, TEXT("Quality %d"), Quality);
+}
+
 void ASuperOverGameMode::BuildStadium()
 {
 	// A lit material that takes its base colour from the vertex colours (the modeling plugin's; Epic, UE EULA).
 	VertexColourMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/MeshModelingToolset/Materials/M_DynamicMeshComponentVtxColor.M_DynamicMeshComponentVtxColor"));
 	if (!VertexColourMaterial) return;
 	CricketStadium::FStadiumSpec Spec;
+	Spec.CrowdDensity = Quality == 0 ? 0.35f : Quality == 1 ? 0.5f : 0.7f;
 	Spec.Home = Teams[0].Colour;
 	Spec.Away = Teams[1].Colour;
 	const CricketStadium::FStadium Stadium = CricketStadium::Build(Spec);
@@ -592,6 +626,11 @@ void ASuperOverGameMode::HandleInput(APlayerController* PC, float Dt)
 	if (Pressed(EKeys::F4)) bTrajectory = !bTrajectory;
 	if (Pressed(EKeys::F5)) bForceWicket = true;
 	if (Pressed(EKeys::F6)) Difficulty = CricketAI::EDifficulty((uint8(Difficulty) + 1) % 4);
+	if (Pressed(EKeys::F7))
+	{
+		Quality = (Quality + 1) % 4;
+		ApplyQuality();
+	}
 	if (Pressed(EKeys::F8)) bAutoPlay = !bAutoPlay;
 	if (DPhase == EDeliveryPhase::Waiting && Match.Phase == EMatchPhase::ReadyForDelivery)
 	{

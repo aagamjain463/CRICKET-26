@@ -67,6 +67,13 @@ public:
 	bool bDebug = false, bTrajectory = false, bAutoPlay = false, bForceWicket = false;
 	CricketAI::EDifficulty Difficulty = CricketAI::EDifficulty::Hard; // F6 or -CricketDifficulty=0..3
 	float AiSkill() const { return CricketAI::SkillOf(Difficulty); }
+	/**
+	 * Graphics tier 0 (Low) to 3 (Epic), F7 or -CricketQuality=0..3: the engine scalability level, which turns
+	 * Lumen off below High, and (fixed at start-up) how full the stands are. Defaults to Medium on phones and
+	 * High elsewhere.
+	 */
+	int32 Quality = PLATFORM_IOS || PLATFORM_ANDROID ? 1 : 2;
+	void ApplyQuality();
 	int32 BallsPlayed = 0, ShotBall = 0; // -CricketShotBall=N: save the game view while delivery N is live
 	int32 QuitAfter = 0;
 	float ShotEvery = 0.2f;  // -CricketShotEvery: capture interval (s)

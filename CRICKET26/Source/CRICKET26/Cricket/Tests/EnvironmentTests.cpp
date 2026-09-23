@@ -21,6 +21,10 @@ bool FEnvStadium::RunTest(const FString&)
 	TestTrue(*FString::Printf(TEXT("within the mobile triangle budget (%d)"), Tris), Tris < 300000);
 	TestEqual(TEXT("one crowd mesh per section and group"), S.Crowd.Num(), NumSections * NumGroups);
 	TestEqual(TEXT("the same ground every time"), Build(Spec).Spectators, S.Spectators);
+	FStadiumSpec Thin = Spec;
+	Thin.CrowdDensity = 0.35f; // the Low tier
+	const int32 ThinCount = Build(Thin).Spectators;
+	TestTrue(*FString::Printf(TEXT("the Low tier halves the crowd (%d of %d)"), ThinCount, S.Spectators), ThinCount > S.Spectators * 0.4f && ThinCount < S.Spectators * 0.6f);
 
 	// Every spectator sits in the stands, and nobody sits behind the sightscreens.
 	float Nearest = 1e9f, NearestLine = 1e9f;

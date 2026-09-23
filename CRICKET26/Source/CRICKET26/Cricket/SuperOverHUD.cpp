@@ -204,13 +204,13 @@ void ASuperOverHUD::DrawHUD()
 	{
 		const FDeliveryResult& R = GM->Result;
 		const FString D = FString::Printf(
-			TEXT("DEBUG (F1)  F2 flip striker hand  F3 cycle bowler type  F4 trajectory  F5 force wicket%s  F6 AI %s  F8 AI vs AI\n")
+			TEXT("DEBUG (F1)  F2 flip striker hand  F3 cycle bowler type  F4 trajectory  F5 force wicket%s  F6 AI %s  F7 quality %d  F8 AI vs AI\n")
 			TEXT("Bowler: %s %s   plan: %s len %.1f line %+.2f   AI intent: %s\n")
 			TEXT("Release %.0f kph%s   pitched x=%.2f y=%+.2f   wide=%d\n")
 			TEXT("Input: intent %d dir %.0f press %.3f s   shot %s   zone %s   timing %+.3f s%s\n")
 			TEXT("Pad %d  stumps %d  dismissal %d   fielder %s  catch chance %d (diff %.2f)  boundary %d\n")
 			TEXT("Runs attempted %d completed %d  run-out %d  direct hit %d   seed %d   dead at %.2f s"),
-			GM->bForceWicket ? TEXT(" [ARMED]") : TEXT(""), CricketAI::DifficultyName(GM->Difficulty),
+			GM->bForceWicket ? TEXT(" [ARMED]") : TEXT(""), CricketAI::DifficultyName(GM->Difficulty), GM->Quality,
 			*GM->BowlerPlayer().Name, *UEnum::GetValueAsString(GM->BowlerPlayer().BowlerType), TypeName(GM->HumanPlan.Type), GM->HumanPlan.Length, GM->HumanPlan.Line,
 			*GM->BowlerIntent, R.SpeedKph, R.bNoBall ? TEXT(" NO-BALL") : TEXT(""), R.PitchPos.X, R.PitchPos.Y, R.bWide,
 			int32(GM->BatInput.Intent), GM->BatInput.DirectionDeg, GM->BatInput.PressTime, *CricketDelivery::ShotName(R.Shot.Shot),
