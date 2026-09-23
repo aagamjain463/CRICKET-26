@@ -107,6 +107,55 @@ namespace
 		return Best;
 	}
 
+	/**
+	 * How a ground ball is taken. A ring fielder attacks a slow ball and picks up on the run; a deep fielder
+	 * facing a hard-hit ball goes down in the long barrier; one chasing a ball toward the rope slides. Faster
+	 * balls and less sure hands fumble more (the long barrier almost never does). Seen is how long the fielder
+	 * has been able to watch the ball's final line (for the keeper, since it pitched or came off the bat).
+	 */
+	EFieldAction GroundAction(const FFielder& F, const FBallState& Ball, float Seen, float Ran, bool bDive,
+		const FCricketPlayer& Skill, FRandomStream& Rng)
+	{
+		const float Hands = 1.2f - FMath::Clamp(Skill.Catching, 0.f, 1.f);
+		const FVector2D P(Ball.Pos.X, Ball.Pos.Y);
+		if (F.bKeeper)
+		{
+			// Hard takes: standing up, little time after the deviation, down the leg side (the batter blocks
+			// the view), at the ankles or above the shoulders, or at full stretch.
+			const bool bUp = F.Home.Size() < 3.f;
+			const bool bLeg = P.Y * F.Home.Y < 0.f && FMath::Abs(P.Y) > 0.3f;
+			const float Diff = 0.05f + (bUp ? 0.12f : 0.f) + 0.25f * FMath::Clamp((0.4f - Seen) / 0.4f, 0.f, 1.f)
+				+ (bLeg ? 0.15f : 0.f) + (Ball.Pos.Z < 0.2f || Ball.Pos.Z > 1.5f ? 0.1f : 0.f) + (bDive ? 0.2f : 0.f);
+			return Rng.GetFraction() < 0.5f * Diff * Hands ? EFieldAction::Fumble : EFieldAction::KeeperTake;
+		}
+		const FVector2D Centre(CricketGeo::PitchLength * 0.5f, 0.f);
+		const FVector2D V(Ball.Vel.X, Ball.Vel.Y);
+		const float Speed = V.Size();
+		const bool bChasing = Ran > 3.f && FVector2D::DotProduct(V.GetSafeNormal(), (P - F.Home).GetSafeNormal()) > 0.5f;
+		const bool bDeep = FVector2D::Distance(F.Home, Centre) > 45.f;
+		EFieldAction A = EFieldAction::PickupClean;
+		float Fumble = 0.03f + 0.004f * Speed;
+		if (bChasing && Speed > 5.f && FVector2D::Distance(P, Centre) > CricketGeo::BoundaryRadius - 12.f) { A = EFieldAction::SlideStop; Fumble = 0.08f; }
+		else if (bDive) { A = EFieldAction::DiveStop; Fumble = 0.2f; }
+		else if (bDeep && !bChasing && Speed > 10.f) { A = EFieldAction::LongBarrier; Fumble = 0.01f; }
+		else if (!bDeep && !bChasing && Speed < 15.f) { A = EFieldAction::PickupOnRun; Fumble = 0.05f + 0.006f * Speed; }
+		return Rng.GetFraction() < Fumble * (Hands + 0.1f) ? EFieldAction::Fumble : A;
+	}
+
+	/** Seconds from reaching the ball to having it in hand, set to throw. */
+	float GatherTime(const FFieldingOutcome& Fd, bool bKeeper, float Throw)
+	{
+		if (bKeeper) return Fd.Action == EFieldAction::Fumble ? 0.9f : 0.25f;
+		switch (Fd.Action)
+		{
+		case EFieldAction::PickupOnRun: return 0.45f - 0.15f * Throw; // stride and set for an overarm throw
+		case EFieldAction::LongBarrier: return 0.8f - 0.2f * Throw;
+		case EFieldAction::SlideStop: return 1.f - 0.2f * Throw;  // back up off the ground
+		case EFieldAction::Fumble: return 1.35f - 0.2f * Throw;    // chases the loose ball
+		default: return 0.55f - 0.2f * Throw + (Fd.bDive ? 0.5f : 0.f);
+		}
+	}
+
 	void Coordinate(FFieldingOutcome& O, const TArray<FBallState>& Samples, float Dt, const TArray<FFielder>& Field,
 		const FCricketPlayer& Skill, bool bContact)
 	{
@@ -175,24 +224,14 @@ FFieldingOutcome CricketField::Intercept(const TArray<FBallState>& Samples, floa
 	if (Samples.Num() == 0) return O;
 	const FVector2D Centre(CricketGeo::PitchLength * 0.5f, 0.f);
 	const int32 Extra = FMath::CeilToInt(10.f / Dt); // a stopped ball still has to be picked up
-	for (int32 K = 0; K < Samples.Num() + Extra; ++K)
+	auto SampleAt = [&](int32 K) -> const FBallState& { return Samples[FMath::Min(K, Samples.Num() - 1)]; };
+	auto Over = [&](const FBallState& S) { return FVector2D::Distance(FVector2D(S.Pos.X, S.Pos.Y), Centre) >= CricketGeo::BoundaryRadius; };
+	struct FTake { int32 Who = -1; float Slack = -1.f, Run = 0.f; bool bDive = false; };
+	// The fielder with the most time in hand to reach S at T, at full stretch if bDiveAllowed, else standing.
+	auto TakeAt = [&](const FBallState& S, float T, bool bAir, bool bDiveAllowed)
 	{
-		const FBallState& S = Samples[FMath::Min(K, Samples.Num() - 1)];
-		const float T = K * Dt;
+		FTake Take;
 		const FVector2D P(S.Pos.X, S.Pos.Y);
-		if (FVector2D::Distance(P, Centre) >= CricketGeo::BoundaryRadius)
-		{
-			O.Boundary = (bContact && S.Bounces == 0) ? 6 : 4;
-			O.BoundaryTime = T;
-			return O;
-		}
-		if (T < 0.06f) continue;
-
-		const bool bAir = bContact && S.Bounces == 0;
-		int32 Best = -1;
-		float BestSlack = -1.f;
-		bool bBestDive = false;
-		float BestRun = 0.f;
 		for (int32 I = 0; I < Field.Num(); ++I)
 		{
 			const FFielder& F = Field[I];
@@ -204,18 +243,47 @@ FFieldingOutcome CricketField::Intercept(const TArray<FBallState>& Samples, floa
 			const float DiveReach = F.bKeeper ? 2.8f : 2.3f;
 			const float D = FVector2D::Distance(P, F.Home);
 			const float Lead = F.bKeeper ? KeeperLead : 0.f;
-			const float Need = Reaction + TimeToCover(FMath::Max(0.f, D - DiveReach), Skill.RunSpeed) - Lead;
-			if (Need > T) continue;
-			const float Slack = T - Need;
-			if (Slack > BestSlack)
+			const float Need = Reaction + TimeToCover(FMath::Max(0.f, D - (bDiveAllowed ? DiveReach : Reach)), Skill.RunSpeed) - Lead;
+			if (Need > T || T - Need <= Take.Slack) continue;
+			Take.Who = I;
+			Take.Slack = T - Need;
+			Take.bDive = Reaction + TimeToCover(FMath::Max(0.f, D - Reach), Skill.RunSpeed) - Lead > T;
+			Take.Run = FMath::Max(0.f, D - Reach);
+		}
+		return Take;
+	};
+	for (int32 K = 0; K < Samples.Num() + Extra; ++K)
+	{
+		const FBallState* SP = &SampleAt(K);
+		float T = K * Dt;
+		if (Over(*SP))
+		{
+			O.Boundary = (bContact && SP->Bounces == 0) ? 6 : 4;
+			O.BoundaryTime = T;
+			return O;
+		}
+		if (T < 0.06f) continue;
+
+		const bool bAir = bContact && SP->Bounces == 0;
+		FTake Take = TakeAt(*SP, T, bAir, true);
+		if (Take.Who < 0) continue;
+		if (Take.bDive)
+		{
+			// Only reachable at full stretch this soon. A fielder who can instead get in line a little later takes it
+			// on their feet: along the ground if that beats diving and getting up (0.5 s), in the air while it is still up.
+			for (int32 K2 = K + 1; K2 < Samples.Num() + Extra && (K2 - K) * Dt <= (bAir ? 1.5f : 0.5f); ++K2)
 			{
-				Best = I;
-				BestSlack = Slack;
-				bBestDive = Reaction + TimeToCover(FMath::Max(0.f, D - Reach), Skill.RunSpeed) - Lead > T;
-				BestRun = FMath::Max(0.f, D - Reach);
+				const FBallState& S2 = SampleAt(K2);
+				if (Over(S2) || (bContact && S2.Bounces == 0) != bAir) break;
+				const FTake Standing = TakeAt(S2, K2 * Dt, bAir, false);
+				if (Standing.Who >= 0) { Take = Standing; SP = &S2; T = K2 * Dt; break; }
 			}
 		}
-		if (Best < 0) continue;
+		const FBallState& S = *SP;
+		const FVector2D P(S.Pos.X, S.Pos.Y);
+		const int32 Best = Take.Who;
+		const float BestSlack = Take.Slack, BestRun = Take.Run;
+		const bool bBestDive = Take.bDive;
 
 		O.Fielder = Best;
 		O.ChaseStart = Field[Best].bKeeper ? 0.15f : bAir ? 0.5f : 0.25f;
@@ -223,25 +291,53 @@ FFieldingOutcome CricketField::Intercept(const TArray<FBallState>& Samples, floa
 		O.FieldPos = S.Pos;
 		O.FielderFrom = Field[Best].Home;
 		O.bDive = bBestDive;
-		if (bAir)
+		if (!bAir)
 		{
-			O.bCatchChance = true;
-			const float Speed = S.Vel.Size();
-			float Diff = 0.1f + 0.45f * FMath::Clamp((0.5f - BestSlack) / 0.5f, 0.f, 1.f)
-				+ 0.3f * FMath::Clamp((Speed - 18.f) / 25.f, 0.f, 1.f) + (bBestDive ? 0.25f : 0.f)
-				+ 0.2f * FMath::Clamp((BestRun - 10.f) / 15.f, 0.f, 1.f); // taken on the run
-			O.CatchDifficulty = FMath::Clamp(Diff, 0.f, 0.95f);
-			const float Chance = FMath::Clamp(1.f - O.CatchDifficulty * (1.25f - Skill.Catching), 0.03f, 0.99f);
-			O.bCaught = Rng.GetFraction() < Chance;
-			if (!O.bCaught) O.FieldTime += 0.9f; // spilled: gathered again at the fielder's feet
+			// A beaten ball has been in view since it pitched; an edge since it came off the bat.
+			O.Action = GroundAction(Field[Best], S, T + (Field[Best].bKeeper ? KeeperLead : 0.f), BestRun, bBestDive, Skill, Rng);
+			return O;
 		}
+		O.bCatchChance = true;
+		const float Speed = S.Vel.Size();
+		const FVector2D Out = (P - Centre).GetSafeNormal();
+		const float ToRope = CricketGeo::BoundaryRadius - FVector2D::Distance(P, Centre);
+		// Running back toward the rope to take it. Pulling up from running pace takes v^2 / 2a metres: if the
+		// rope is closer than that the catcher's momentum carries them over.
+		const bool bOutward = BestRun > 3.f && FVector2D::DotProduct(P - Field[Best].Home, Out) > 0.f;
+		const float Pace = FMath::Min(Skill.RunSpeed, FMath::Sqrt(2.f * Accel * BestRun));
+		const bool bAtRope = bOutward && ToRope < 5.f;
+		const bool bCarried = bOutward && ToRope < Pace * Pace / (2.f * Accel);
+		O.Action = Field[Best].bKeeper ? EFieldAction::CatchKeeper : bBestDive ? EFieldAction::CatchDiving
+			: bAtRope ? EFieldAction::CatchBoundary : S.Pos.Z < 0.5f ? EFieldAction::CatchLow
+			: S.Vel.Z < -0.6f * Speed ? EFieldAction::CatchHigh : EFieldAction::CatchFlat;
+		float Diff = 0.1f + 0.45f * FMath::Clamp((0.5f - BestSlack) / 0.5f, 0.f, 1.f)
+			+ 0.3f * FMath::Clamp((Speed - 18.f) / 25.f, 0.f, 1.f) + (bBestDive ? 0.25f : 0.f)
+			+ 0.2f * FMath::Clamp((BestRun - 10.f) / 15.f, 0.f, 1.f) // taken on the run
+			+ (O.Action == EFieldAction::CatchLow ? 0.1f : O.Action == EFieldAction::CatchHigh ? 0.05f : 0.f);
+		O.CatchDifficulty = FMath::Clamp(Diff, 0.f, 0.95f);
+		const float Catching = FMath::Clamp(Skill.Catching, 0.f, 1.f);
+		const float Chance = FMath::Clamp(1.f - O.CatchDifficulty * (1.25f - Catching), 0.03f, 0.99f);
+		O.bCaught = Rng.GetFraction() < Chance;
+		if (O.bCaught && bCarried)
+		{
+			// Carried over: flick it back up before stepping on the rope, to a team-mate close enough to take it,
+			// or back to themselves once they are inside again. Fail and it is six.
+			float PartnerTime;
+			const int32 Partner = Nearest(Field, P - 4.f * Out, Best, Skill.RunSpeed, 0.5f, PartnerTime);
+			const bool bPartner = Partner >= 0 && PartnerTime < T + 1.f;
+			O.bCaught = Rng.GetFraction() < (bPartner ? 0.7f : 0.35f) + 0.25f * Catching;
+			if (bPartner) O.CatchPartner = Partner;
+			if (O.bCaught) O.Action = EFieldAction::CatchRelay;
+			else { O.Boundary = 6; O.BoundaryTime = T + 0.4f; }
+		}
+		if (!O.bCaught && !O.Boundary) O.FieldTime += 0.9f; // spilled: gathered again at the fielder's feet
 		return O;
 	}
 	return O;
 }
 
 FRunningOutcome CricketField::SolveRunning(const FFieldingOutcome& Fd, const FCricketPlayer& Striker, const FCricketPlayer& NonStriker,
-	const FCricketPlayer& Skill, bool bKeeperFielded, float Margin, FRandomStream& Rng)
+	const FCricketPlayer& Skill, bool bKeeperFielded, float Margin, FRandomStream& Rng, const TArray<FFielder>* Field)
 {
 	FRunningOutcome R;
 	if (Fd.bCaught || Fd.Boundary != 0 || Fd.Fielder < 0) return R;
@@ -253,31 +349,79 @@ FRunningOutcome CricketField::SolveRunning(const FFieldingOutcome& Fd, const FCr
 
 	const FVector2D From(Fd.FieldPos.X, Fd.FieldPos.Y);
 	const float Throw = FMath::Clamp(Skill.Throwing, 0.f, 1.f);
-	// Gather and throw; a dive costs the time to get back up.
-	const float Gathered = Fd.FieldTime + (bKeeperFielded ? 0.25f : 0.55f - 0.2f * Throw) + (Fd.bDive && !bKeeperFielded ? 0.5f : 0.f);
+	// Gathered and set to throw: how soon depends on how the ball was taken.
+	const float Gathered = Fd.FieldTime + GatherTime(Fd, bKeeperFielded, Throw);
+	auto PDirectAt = [Throw](float Dist) { return Dist < 3.f ? 1.f : FMath::Clamp(0.15f + 0.35f * Throw - Dist / 150.f, 0.03f, 0.5f); };
 	// Throw at the end where the stumps can be broken soonest: the throw has to arrive and, unless it hits,
 	// someone has to be there to take it. Throwing back across the way they ran costs a turn.
-	struct FEnd { float Release, Arrive, PDirect, Expected; };
+	struct FEnd
+	{
+		EThrowType Type = EThrowType::Overarm;
+		float Release = 0.f, Arrive = 0.f, PDirect = 0.f, Expected = 0.f, RelayCatch = 0.f, RelayRelease = 0.f;
+		FFielderMove Relay;
+	};
 	auto AtEnd = [&](int32 E)
 	{
 		const FVector2D Stumps(E == 0 ? 0.f : CricketGeo::PitchLength, 0.f);
 		const FVector2D ThrowDir = (Stumps - From).GetSafeNormal(), RanDir = (From - Fd.FielderFrom).GetSafeNormal();
 		const float TurnCost = FVector2D::Distance(From, Fd.FielderFrom) > 2.f ? 0.3f * 0.5f * (1.f - FVector2D::DotProduct(ThrowDir, RanDir)) : 0.f;
 		const float Dist = FVector2D::Distance(From, Stumps);
-		FEnd End;
-		End.Release = Gathered + (bKeeperFielded ? 0.f : TurnCost);
-		End.Arrive = End.Release + Dist / (24.f + 12.f * Throw);
-		End.PDirect = Dist < 3.f ? 1.f : FMath::Clamp(0.15f + 0.35f * Throw - Dist / 150.f, 0.03f, 0.5f);
 		// A missed direct hit is gathered by whoever is covering, once they are there.
-		const float Taken = FMath::Max(End.Arrive, Fd.CoverTime[E]) + 0.4f;
-		End.Expected = End.PDirect * End.Arrive + (1.f - End.PDirect) * Taken;
-		return End;
+		auto Score = [&](FEnd& End) { End.Expected = End.PDirect * End.Arrive + (1.f - End.PDirect) * (FMath::Max(End.Arrive, Fd.CoverTime[E]) + 0.4f); };
+		FEnd Best;
+		Best.Release = Gathered + (bKeeperFielded ? 0.f : TurnCost);
+		Best.Arrive = Best.Release + ThrowFlight(Dist, Throw);
+		Best.PDirect = PDirectAt(Dist);
+		Score(Best);
+		if (Fd.Action == EFieldAction::PickupOnRun && Dist <= 12.f)
+		{
+			// Flicked underarm in the same movement as the pickup: no set and no turn, slower but accurate close in.
+			FEnd Under = Best;
+			Under.Type = EThrowType::Underarm;
+			Under.Release = Fd.FieldTime + 0.1f;
+			Under.Arrive = Under.Release + Dist / 16.f;
+			Under.PDirect = FMath::Clamp(0.45f + 0.3f * Throw - Dist / 25.f, 0.05f, 0.7f);
+			Score(Under);
+			if (Under.Expected < Best.Expected) Best = Under;
+		}
+		if (Field && Dist > 45.f)
+		{
+			// From the deep: a free fielder runs to the throw's line a little past halfway and relays it on.
+			const FVector2D At = FMath::Lerp(Stumps, From, 0.45f);
+			int32 Who = -1;
+			float There = BIG_NUMBER;
+			for (int32 I = 0; I < Field->Num(); ++I)
+			{
+				const FFielder& F = (*Field)[I];
+				if (F.bKeeper || F.bBowler || I == Fd.Fielder || Fd.Moves.ContainsByPredicate([I](const FFielderMove& M) { return M.Fielder == I; })) continue;
+				const float Time = CoverReaction + TimeToCover(FVector2D::Distance(F.Home, At), Skill.RunSpeed);
+				if (Time < There) { There = Time; Who = I; }
+			}
+			if (Who >= 0)
+			{
+				FEnd Relay = Best;
+				Relay.Type = EThrowType::Relay;
+				Relay.Release = Gathered + TurnCost;
+				Relay.RelayCatch = FMath::Max(Relay.Release + ThrowFlight(FVector2D::Distance(From, At), Throw), There);
+				Relay.RelayRelease = Relay.RelayCatch + 0.3f;
+				Relay.Arrive = Relay.RelayRelease + ThrowFlight(FVector2D::Distance(At, Stumps), Throw);
+				Relay.PDirect = PDirectAt(FVector2D::Distance(At, Stumps));
+				Relay.Relay = { Who, EFieldRole::Relay, CoverReaction, At };
+				Score(Relay);
+				if (Relay.Expected < Best.Expected) Best = Relay;
+			}
+		}
+		return Best;
 	};
 	const FEnd Ends[2] = { AtEnd(0), AtEnd(1) };
 	R.bThrowToStrikerEnd = Ends[0].Expected <= Ends[1].Expected;
 	const FEnd& To = Ends[R.bThrowToStrikerEnd ? 0 : 1];
+	R.ThrowType = To.Type;
 	R.ThrowRelease = To.Release;
 	R.ThrowArrive = To.Arrive;
+	R.RelayMove = To.Relay;
+	R.RelayCatch = To.RelayCatch;
+	R.RelayRelease = To.RelayRelease;
 	const float Expected = To.Expected;
 
 	R.bDirectHit = Rng.GetFraction() < To.PDirect;
@@ -318,4 +462,32 @@ FRunningOutcome CricketField::SolveRunning(const FFieldingOutcome& Fd, const FCr
 		R.bRunOutStriker = R.bThrowToStrikerEnd != bStrikerHeadingToBowlerEnd;
 	}
 	return R;
+}
+
+float CricketField::ThrowFlight(float Dist, float Throwing)
+{
+	// Flat out to about 35 m; beyond that the throw has to be put up and comes in slower.
+	return Dist / (24.f + 12.f * FMath::Clamp(Throwing, 0.f, 1.f)) + FMath::Square(FMath::Max(0.f, Dist - 35.f)) / 1500.f;
+}
+
+const TCHAR* CricketField::ActionName(EFieldAction Action)
+{
+	switch (Action)
+	{
+	case EFieldAction::CatchFlat: return TEXT("flat catch");
+	case EFieldAction::CatchHigh: return TEXT("skier held");
+	case EFieldAction::CatchLow: return TEXT("low catch");
+	case EFieldAction::CatchDiving: return TEXT("diving catch");
+	case EFieldAction::CatchKeeper: return TEXT("keeper's catch");
+	case EFieldAction::CatchBoundary: return TEXT("catch on the rope");
+	case EFieldAction::CatchRelay: return TEXT("relay catch at the rope");
+	case EFieldAction::KeeperTake: return TEXT("keeper takes");
+	case EFieldAction::PickupClean: return TEXT("clean pickup");
+	case EFieldAction::PickupOnRun: return TEXT("pickup on the run");
+	case EFieldAction::LongBarrier: return TEXT("long barrier");
+	case EFieldAction::SlideStop: return TEXT("sliding stop");
+	case EFieldAction::DiveStop: return TEXT("diving stop");
+	case EFieldAction::Fumble: return TEXT("misfield");
+	default: return TEXT("");
+	}
 }

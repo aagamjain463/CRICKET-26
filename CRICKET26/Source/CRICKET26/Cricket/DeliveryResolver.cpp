@@ -207,7 +207,7 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 	FBallState B = Release.Ball;
 	R.BallPath.Add(B.Pos);
 	bool bContact = false, bWideLine = false, bDead = false;
-	float PassedBat = -1.f, HeightAtBat = 0.f; // when/how high the ball crossed the bat's plane
+	float PassedBat = -1.f, HeightAtBat = 0.f, LineAtBat = 0.f; // when/how high/how wide (off side +) the ball crossed the bat's plane
 	while (B.Time < 4.f)
 	{
 		const FBallState Prev = B;
@@ -223,6 +223,7 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 			const FBallState AtBat = AtPlane(Prev, B, R.Shot.ContactX());
 			PassedBat = AtBat.Time;
 			HeightAtBat = AtBat.Pos.Z;
+			LineAtBat = AtBat.Pos.Y * Off;
 			R.Contact = CricketBatting::ResolveContact(AtBat, Aim, R.Shot, FaceDir, Timing, Bat, Input.Intent == EBatIntent::Loft);
 			if (R.Contact.HasContact())
 			{
@@ -336,6 +337,7 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 		else Hold(R.BallPath, R.BallPath.Last(), (PreCount + K - R.BallPath.Num() + 1) * Dt);
 	};
 
+	const TCHAR* StumpingNote = nullptr;
 	if (!bDead && R.Dismissal == EDismissal::None)
 	{
 		// A beaten ball: the keeper has been tracking it since it pitched (or since release for a full toss).
@@ -343,7 +345,19 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 		R.Fielding = CricketField::SolveFielding(Post, Dt, Ctx.Field, Ctx.Fielding, bContact, Rng, KeeperLead);
 		const FFieldingOutcome& F = R.Fielding;
 		const bool bKeeperUp = F.Fielder >= 0 && Ctx.Field[F.Fielder].bKeeper && Ctx.Field[F.Fielder].Home.Size() < 3.f;
-		if (F.Boundary)
+		const bool bStumpable = bShot && !bContact && !R.bPadImpact && bKeeperUp && PassedBat >= 0.f;
+		// Stretching forward to a spinner wide of off and missing: the back foot can lift or drag out of the crease.
+		const bool bOverbalanced = bStumpable && Foot == EFootwork::Front && Ctx.Bowler.BowlerType != EBowlerType::Pace
+			&& Rng.GetFraction() < 0.3f * FMath::Clamp((LineAtBat - 0.45f) / 0.6f, 0.f, 1.f) * (1.f - FMath::Clamp(Bat.Technique, 0.f, 1.f));
+		if (F.Boundary && F.Fielder >= 0)
+		{
+			// Held, but the catcher's momentum took them over the rope with the ball.
+			TruncateAt(F.FieldTime);
+			const FVector2D Out = (FVector2D(F.FieldPos) - FVector2D(0.5f * CricketGeo::PitchLength, 0.f)).GetSafeNormal() * 2.f;
+			Hold(R.BallPath, F.FieldPos + FVector(Out.X, Out.Y, 0.f), 1.2f);
+			R.DeadTime = T0 + F.BoundaryTime + 1.5f;
+		}
+		else if (F.Boundary)
 		{
 			TruncateAt(F.BoundaryTime + 0.7f);
 			R.DeadTime = T0 + F.BoundaryTime + 1.5f;
@@ -357,22 +371,26 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 				Hold(R.BallPath, F.FieldPos, 2.f);
 				R.DeadTime = T0 + F.FieldTime + 2.f;
 			}
-			else if (bShot && Foot == EFootwork::Advance && !bContact && !R.bPadImpact && bKeeperUp && PassedBat >= 0.f)
+			else if (bStumpable && (Foot == EFootwork::Advance || bOverbalanced))
 			{
 				// Beaten down the track: the keeper, standing up, races the striker back to the crease.
-				// The striker has to get the bat grounded ~1 m behind where they met the ball.
+				// The striker has to get the bat grounded ~1 m behind where they met the ball. Overbalanced
+				// reaching forward, they only have to get the back foot down again, but first recover their balance.
 				const float OutOfGround = R.Shot.ContactX() - CricketGeo::PoppingCrease - 1.f;
-				const float Regain = PassedBat - T0 + 0.2f + CricketField::TimeToCover(OutOfGround, Bat.RunSpeed);
-				const bool bCleanTake = Rng.GetFraction() < 0.75f + 0.25f * FMath::Clamp(Ctx.Fielding.Catching, 0.f, 1.f);
-				const float Break = F.FieldTime + (bCleanTake ? 0.25f : 0.9f);
+				const float Regain = Foot == EFootwork::Advance ? PassedBat - T0 + 0.2f + CricketField::TimeToCover(OutOfGround, Bat.RunSpeed)
+					: PassedBat - T0 + 0.3f + 0.4f * Rng.GetFraction();
+				// The keeper's take decides it: a fumble gives the batter time to get back.
+				const float Break = F.FieldTime + (F.Action == EFieldAction::Fumble ? 0.9f : 0.25f);
 				if (Break < Regain) R.Dismissal = EDismissal::Stumped;
+				StumpingNote = R.Dismissal == EDismissal::Stumped ? (bOverbalanced ? TEXT(" (overbalanced)") : TEXT(" (down the track)"))
+					: F.Action == EFieldAction::Fumble ? TEXT(" - keeper fumbles, stumping missed") : TEXT(" - just back in");
 				Hold(R.BallPath, FVector(0.f, 0.f, 0.5f), 1.5f);
 				R.DeadTime = T0 + Break + 1.5f;
 			}
 			else if (R.bRunsAllowed)
 			{
 				R.Running = CricketField::SolveRunning(F, Ctx.Striker, Ctx.NonStriker, Ctx.Fielding,
-					Ctx.Field[F.Fielder].bKeeper, Ctx.RunMargin, Rng);
+					Ctx.Field[F.Fielder].bKeeper, Ctx.RunMargin, Rng, &Ctx.Field);
 			}
 
 			if (R.DeadTime > 0.f)
@@ -381,16 +399,29 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 			}
 			else if (bContact || R.Running.Attempted > 0)
 			{
-				const FVector Hand = FVector(F.FieldPos.X, F.FieldPos.Y, 1.4f);
-				const FVector Stumps(R.Running.bThrowToStrikerEnd ? 0.f : CricketGeo::PitchLength, 0.f, 0.6f);
-				Hold(R.BallPath, Hand, R.Running.ThrowRelease - F.FieldTime);
-				const int32 N = FMath::Max(1, FMath::CeilToInt((R.Running.ThrowArrive - R.Running.ThrowRelease) / Dt));
-				for (int32 I = 1; I <= N; ++I)
+				const FRunningOutcome& Run = R.Running;
+				const FVector Hand = FVector(F.FieldPos.X, F.FieldPos.Y, Run.ThrowType == EThrowType::Underarm ? 0.6f : 1.4f);
+				const FVector Stumps(Run.bThrowToStrikerEnd ? 0.f : CricketGeo::PitchLength, 0.f, 0.6f);
+				auto Throw = [&](const FVector& A, const FVector& B, float Time)
 				{
-					FVector P = FMath::Lerp(Hand, Stumps, float(I) / N);
-					P.Z += 4.f * FMath::Min(8.f, FVector::Dist(Hand, Stumps) / 8.f) * (float(I) / N) * (1.f - float(I) / N);
-					R.BallPath.Add(P);
+					const int32 N = FMath::Max(1, FMath::CeilToInt(Time / Dt));
+					for (int32 I = 1; I <= N; ++I)
+					{
+						FVector P = FMath::Lerp(A, B, float(I) / N);
+						P.Z += 4.f * FMath::Min(8.f, FVector::Dist(A, B) / 8.f) * (float(I) / N) * (1.f - float(I) / N);
+						R.BallPath.Add(P);
+					}
+				};
+				Hold(R.BallPath, Hand, Run.ThrowRelease - F.FieldTime);
+				if (Run.ThrowType == EThrowType::Relay)
+				{
+					const FVector Relay(Run.RelayMove.Target.X, Run.RelayMove.Target.Y, 1.4f);
+					const float Flight = CricketField::ThrowFlight(FVector2D::Distance(FVector2D(Hand), Run.RelayMove.Target), Ctx.Fielding.Throwing);
+					Throw(Hand, Relay, Flight);
+					Hold(R.BallPath, Relay, Run.RelayRelease - Run.ThrowRelease - Flight);
+					Throw(Relay, Stumps, Run.ThrowArrive - Run.RelayRelease);
 				}
+				else Throw(Hand, Stumps, Run.ThrowArrive - Run.ThrowRelease);
 				Hold(R.BallPath, Stumps, 1.2f);
 				if (R.Running.bRunOut) R.Dismissal = EDismissal::RunOut;
 				R.DeadTime = T0 + FMath::Max(R.Running.ThrowArrive, R.Running.EndTime()) + 1.2f;
@@ -425,12 +456,14 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 	case EDismissal::Bowled: Result = TEXT("BOWLED!"); break;
 	case EDismissal::LBW: Result = TEXT("LBW!"); break;
 	case EDismissal::Caught: Result = Ctx.Field[R.Fielding.Fielder].bKeeper ? FString(TEXT("CAUGHT BEHIND!"))
-		: FString::Printf(TEXT("CAUGHT by %s!"), *Ctx.Field[R.Fielding.Fielder].Position); break;
-	case EDismissal::RunOut: Result = TEXT("RUN OUT!"); break;
-	case EDismissal::Stumped: Result = TEXT("STUMPED!"); break;
+		: R.Fielding.CatchPartner >= 0 ? FString::Printf(TEXT("CAUGHT by %s, relayed from %s!"), *Ctx.Field[R.Fielding.CatchPartner].Position, *Ctx.Field[R.Fielding.Fielder].Position)
+		: FString::Printf(TEXT("CAUGHT by %s (%s)!"), *Ctx.Field[R.Fielding.Fielder].Position, CricketField::ActionName(R.Fielding.Action)); break;
+	case EDismissal::RunOut: Result = R.Running.bDirectHit ? TEXT("RUN OUT - direct hit!") : TEXT("RUN OUT!"); break;
+	case EDismissal::Stumped: Result = FString(TEXT("STUMPED!")) + StumpingNote; break;
 	case EDismissal::HitWicket: Result = TEXT("HIT WICKET!"); break;
 	default:
 		if (O.Boundary && !O.bBatContact) Result = FString::Printf(TEXT("FOUR %sS"), *FString(Extra).ToUpper());
+		else if (O.Boundary && R.Fielding.Fielder >= 0) Result = TEXT("SIX! - carried over the rope");
 		else if (O.Boundary) Result = O.Boundary == 6 ? TEXT("SIX!") : TEXT("FOUR!");
 		else if (R.bPadImpact && !R.bRunsAllowed) Result = TEXT("Off the pad, no stroke offered - no leg byes");
 		else if (R.Fielding.bCatchChance && !R.Fielding.bCaught) Result = TEXT("DROPPED!");
@@ -439,6 +472,13 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 		else if (O.RunsRun > 0) Result = FString::Printf(TEXT("%d run%s"), O.RunsRun, O.RunsRun > 1 ? TEXT("s") : TEXT(""));
 		else Result = TEXT("No run");
 		if (R.Running.bSentBack) Result += TEXT(" - sent back!");
+		if (StumpingNote) Result += StumpingNote;
+		else if (R.Fielding.Fielder >= 0 && Ctx.Field[R.Fielding.Fielder].bKeeper && R.Fielding.Action == EFieldAction::Fumble) Result += TEXT(" (keeper fumbles)");
+		else if (!O.Boundary && R.Fielding.Fielder >= 0 && !R.Fielding.bCatchChance && R.Fielding.Action != EFieldAction::KeeperTake)
+		{
+			Result += FString::Printf(TEXT(" (%s%s)"), CricketField::ActionName(R.Fielding.Action),
+				R.Running.ThrowType == EThrowType::Underarm ? TEXT(", underarm") : R.Running.ThrowType == EThrowType::Relay ? TEXT(", relay throw") : TEXT(""));
+		}
 	}
 	if (R.bWide) Result += bOverHeadWide ? TEXT("  (WIDE - over head height)") : TEXT("  (WIDE)");
 	if (R.bNoBall) Result += R.bBeamer ? TEXT("  (NO BALL - above waist)") : R.bBouncer && !Release.bNoBall ? TEXT("  (NO BALL - bouncer)") : TEXT("  (NO BALL)");

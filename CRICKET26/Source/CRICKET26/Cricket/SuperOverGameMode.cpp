@@ -18,6 +18,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
+#include "UnrealClient.h"
 
 namespace
 {
@@ -83,6 +84,7 @@ void ASuperOverGameMode::StartPlay()
 	Super::StartPlay();
 	Rng.Initialize(MatchSeed);
 	bAutoPlay = FParse::Param(FCommandLine::Get(), TEXT("CricketAutoPlay")); // soak/smoke runs
+	FParse::Value(FCommandLine::Get(), TEXT("CricketShotBall="), ShotBall);
 	BuildScene();
 	Match.Start(HumanTeam);
 	PlaceForDelivery();
@@ -240,6 +242,13 @@ void ASuperOverGameMode::Tick(float Dt)
 	}
 	if (PC) HandleInput(PC, Dt);
 	PhaseTime += Dt;
+	// Dev capture of the game view alone, 5 times a second (the desktop is never recorded).
+	if (ShotBall == BallsPlayed + 1 && DPhase != EDeliveryPhase::Waiting && (ShotClock += Dt) >= 0.2f)
+	{
+		ShotClock = 0.f;
+		static int32 Shot = 0;
+		FScreenshotRequest::RequestScreenshot(FPaths::ScreenShotDir() / FString::Printf(TEXT("Ball%d_%03d.png"), ShotBall, Shot++), true, false);
+	}
 
 	switch (DPhase)
 	{
@@ -410,6 +419,7 @@ void ASuperOverGameMode::FinishDelivery()
 	FString Err;
 	if (!Match.CheckInvariants(Err)) UE_LOG(LogCRICKET26, Error, TEXT("Match invariant broken: %s"), *Err);
 	LastSummary = Result.Summary;
+	++BallsPlayed;
 	UE_LOG(LogCRICKET26, Display, TEXT("%s %d/%d (%d.%d): %s"), *Teams[Match.BattingTeam()].Short, Match.Cur().Runs,
 		Match.Cur().Wickets, Match.Cur().LegalBalls / 6, Match.Cur().LegalBalls % 6, *LastSummary);
 	Emit(Events);
@@ -463,6 +473,25 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 			const FVector2D P = CricketField::PositionOf(Move, Who, Post, Ctx.Fielding.RunSpeed);
 			if (Who.bBowler) Bowler->SetActorLocation(ToWorld(FVector(P.X, P.Y, 0.925f)));
 			else if (Fielders.IsValidIndex(Move.Fielder)) Fielders[Move.Fielder]->SetActorLocation(ToWorld(FVector(P.X, P.Y, 0.9f)));
+		}
+		const FFielderMove& Relay = Result.Running.RelayMove;
+		if (Fielders.IsValidIndex(Relay.Fielder) && Post >= Relay.Start)
+		{
+			const FVector2D P = CricketField::PositionOf(Relay, Ctx.Field[Relay.Fielder], Post, Ctx.Fielding.RunSpeed);
+			Fielders[Relay.Fielder]->SetActorLocation(ToWorld(FVector(P.X, P.Y, 0.9f)));
+		}
+		// Going to ground for a dive or a slide: the primary lies toward the ball from just before the take
+		// until they are back up (the same time the solver charges before the throw).
+		const FFieldingOutcome& Fd = Result.Fielding;
+		const EFieldAction A = Fd.Action;
+		const bool bGround = Fd.bDive || A == EFieldAction::SlideStop || A == EFieldAction::CatchDiving;
+		if (Fielders.IsValidIndex(Fd.Fielder) && !Ctx.Field[Fd.Fielder].bBowler)
+		{
+			const float Down = FMath::Clamp((Post - Fd.FieldTime + 0.2f) / 0.2f, 0.f, 1.f) * FMath::Clamp((Fd.FieldTime + 0.8f - Post) / 0.3f, 0.f, 1.f);
+			AActor* Who = Fielders[Fd.Fielder];
+			const FVector2D Lean = (FVector2D(Fd.FieldPos) - FVector2D(Who->GetActorLocation() / 100.f)).GetSafeNormal();
+			const FVector Up = FMath::Lerp(FVector::UpVector, FVector(Lean.X, Lean.Y, 0.25f).GetSafeNormal(), bGround ? 0.85f * Down : 0.f);
+			Who->SetActorRotation(FRotationMatrix::MakeFromZ(Up).Rotator());
 		}
 	}
 

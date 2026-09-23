@@ -18,7 +18,19 @@ struct FFielder
 
 enum class EFieldPreset : uint8 { PaceDeath, SpinDefensive };
 
-enum class EFieldRole : uint8 { Primary, Backup, Chase, CoverStumps };
+enum class EFieldRole : uint8 { Primary, Backup, Chase, CoverStumps, Relay };
+
+/** What the primary fielder does with the ball. The kind of take sets how soon they can throw. */
+enum class EFieldAction : uint8
+{
+	None,
+	// In the air
+	CatchFlat, CatchHigh, CatchLow, CatchDiving, CatchKeeper, CatchBoundary, CatchRelay,
+	// Along the ground
+	KeeperTake, PickupClean, PickupOnRun, LongBarrier, SlideStop, DiveStop, Fumble
+};
+
+enum class EThrowType : uint8 { None, Overarm, Underarm, Relay };
 
 /** A fielder who leaves their mark: runs from Home toward Target from Start (s after contact), physically. */
 struct FFielderMove
@@ -42,6 +54,8 @@ struct FFieldingOutcome
 	bool bCaught = false;
 	float CatchDifficulty = 0.f;
 	FVector2D FielderFrom = FVector2D::ZeroVector; // where the primary ran from: throwing back across it costs a turn
+	EFieldAction Action = EFieldAction::None;
+	int32 CatchPartner = -1;        // took the relay catch after the catcher's momentum carried them to the rope
 
 	// Coordination: every fielder who moves, and when each end's stumps are manned for a throw.
 	TArray<FFielderMove> Moves;
@@ -56,7 +70,10 @@ struct FRunningOutcome
 	bool bRunOutStriker = false;    // original striker is the one out
 	bool bThrowToStrikerEnd = true;
 	bool bDirectHit = false;
+	EThrowType ThrowType = EThrowType::None;
 	float ThrowRelease = 0.f;       // seconds after contact
+	FFielderMove RelayMove;         // the fielder who takes a relay throw (Fielder -1 if none)
+	float RelayCatch = 0.f, RelayRelease = 0.f;
 	float ThrowArrive = 0.f;
 	float BreakTime = 0.f;          // when the stumps can be broken
 	TArray<float> RunTimes;         // completion time of each run carried through (the last may be run out)
@@ -100,7 +117,12 @@ namespace CricketField
 	 * the stroke on a judgement of how quickly the ball will be gathered and returned (off by a seeded
 	 * misjudgement); each further run is called at the turn, knowing the truth if the ball is in hand by
 	 * then. A run shown to be lost once the ball is gathered is called off if they are not yet halfway.
+	 * The throw is overarm, underarm (a close pickup on the run) or, from the deep, relayed through a free
+	 * fielder when that is quicker; the relay needs Field.
 	 */
 	FRunningOutcome SolveRunning(const FFieldingOutcome& Fielding, const FCricketPlayer& Striker, const FCricketPlayer& NonStriker,
-		const FCricketPlayer& FieldingSkill, bool bKeeperFielded, float Margin, FRandomStream& Rng);
+		const FCricketPlayer& FieldingSkill, bool bKeeperFielded, float Margin, FRandomStream& Rng, const TArray<FFielder>* Field = nullptr);
+	/** Flight time (s) of a throw over Dist metres: long throws have to be lobbed and lose pace. */
+	float ThrowFlight(float Dist, float Throwing);
+	const TCHAR* ActionName(EFieldAction Action);
 }

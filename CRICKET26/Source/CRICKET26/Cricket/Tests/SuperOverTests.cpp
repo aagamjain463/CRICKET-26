@@ -928,14 +928,21 @@ bool FSOStumping::RunTest(const FString&)
 	FBatInput Charge;
 	Charge.Intent = EBatIntent::Loft;
 	Charge.PressTime = Seen.ArrivalTime - 0.62f;
-	const FDeliveryResult S = CricketDelivery::Resolve(R, Charge, C);
-	TestTrue(*FString::Printf(TEXT("went down the track (%s)"), *S.Summary), S.Shot.Foot == EFootwork::Advance);
-	TestFalse(TEXT("beaten"), S.Contact.HasContact());
-	TestEqual(*FString::Printf(TEXT("stumped (%s)"), *S.Summary), S.Dismissal, EDismissal::Stumped);
-	FSuperOverMatch M;
-	M.Start(0);
-	TestTrue(TEXT("stumping outcome legal"), Bowl(M, S.ToOutcome()));
-	TestEqual(TEXT("recorded"), M.Cur().Batters[0].HowOut, EDismissal::Stumped);
+	// Out unless the keeper fumbles the take (the take's difficulty is seeded per delivery).
+	int32 Stumpings = 0;
+	for (int32 Seed = 1; Seed <= 50; ++Seed)
+	{
+		const FDeliveryResult S = CricketDelivery::Resolve(R, Charge, Ctx(EBowlerType::LegSpin, Seed));
+		TestTrue(*FString::Printf(TEXT("went down the track (%s)"), *S.Summary), S.Shot.Foot == EFootwork::Advance);
+		TestFalse(TEXT("beaten"), S.Contact.HasContact());
+		TestTrue(*FString::Printf(TEXT("stumped or fumbled (%s)"), *S.Summary), S.Dismissal == EDismissal::Stumped || S.Fielding.Action == EFieldAction::Fumble);
+		if (S.Dismissal != EDismissal::Stumped || Stumpings++) continue;
+		FSuperOverMatch M;
+		M.Start(0);
+		TestTrue(TEXT("stumping outcome legal"), Bowl(M, S.ToOutcome()));
+		TestEqual(TEXT("recorded"), M.Cur().Batters[0].HowOut, EDismissal::Stumped);
+	}
+	TestTrue(*FString::Printf(TEXT("stumped on %d of 50"), Stumpings), Stumpings >= 40);
 
 	// Same ball, batter stays in the crease: not stumped.
 	FBatInput Stay = Charge;
@@ -1319,3 +1326,166 @@ bool FSOAIMatch::RunTest(const FString&)
 }
 
 #endif
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOFieldActions, "CRICKET26.Fielding.ActionsCatchesThrows", CricketTestFlags)
+bool FSOFieldActions::RunTest(const FString&)
+{
+	const FPitchConditions C;
+	const FCricketPlayer Skill;
+	auto Fly = [&](const TArray<FFielder>& Field, FVector Vel, int32 Seed)
+	{
+		TArray<FBallState> S;
+		FBallState B;
+		B.Pos = FVector(1.f, 0.f, 0.8f);
+		B.Vel = Vel;
+		S.Add(B);
+		for (int32 I = 0; I < 240 * 12 && CricketBall::Step(B, C) != CricketBall::EStep::Stopped; ++I) S.Add(B);
+		FRandomStream Rng(Seed);
+		return CricketField::SolveFielding(S, CricketBall::FixedDt, Field, Skill, true, Rng);
+	};
+
+	// Every kind of take turns up across a sweep of ground balls and lofted shots round the field.
+	TMap<EFieldAction, int32> Seen;
+	int32 Ground = 0, Fumbles = 0, RopeSixes = 0;
+	for (const EFieldPreset Preset : { EFieldPreset::PaceDeath, EFieldPreset::SpinDefensive })
+	{
+		const TArray<FFielder> Field = CricketField::Make(Preset, ECricketHand::Right, ECricketHand::Right);
+		for (float Dir = -150.f; Dir <= 150.f; Dir += 10.f)
+		{
+			for (const float Speed : { 6.f, 12.f, 20.f, 30.f })
+			{
+				for (const float Up : { 0.f, 3.f, 8.f, 11.f, 14.f, 17.f, 20.f })
+				{
+					const FVector V = CricketBatting::DirectionToWorld(Dir, ECricketHand::Right) * Speed;
+					const FFieldingOutcome O = Fly(Field, FVector(V.X, V.Y, Up), int32(Dir) * 7 + int32(Speed) + int32(Up) * 13);
+					if (O.Fielder < 0) continue;
+					if (O.Boundary) { RopeSixes += O.Boundary == 6; continue; }
+					Seen.FindOrAdd(O.Action)++;
+					if (!O.bCatchChance && O.Action != EFieldAction::KeeperTake) { ++Ground; Fumbles += O.Action == EFieldAction::Fumble; }
+					TestTrue(TEXT("every take has an action"), O.Action != EFieldAction::None);
+					TestEqual(TEXT("catch kinds only in the air"), O.bCatchChance, O.Action >= EFieldAction::CatchFlat && O.Action <= EFieldAction::CatchRelay);
+					if (O.Action == EFieldAction::CatchDiving || O.Action == EFieldAction::DiveStop) TestTrue(TEXT("dives are at full stretch"), O.bDive);
+				}
+			}
+		}
+	}
+	FString Counts;
+	for (const TPair<EFieldAction, int32>& P : Seen) Counts += FString::Printf(TEXT("%s %d, "), CricketField::ActionName(P.Key), P.Value);
+	for (const EFieldAction A : { EFieldAction::PickupClean, EFieldAction::PickupOnRun, EFieldAction::LongBarrier, EFieldAction::SlideStop,
+		EFieldAction::DiveStop, EFieldAction::Fumble, EFieldAction::CatchFlat, EFieldAction::CatchHigh, EFieldAction::CatchDiving, EFieldAction::CatchBoundary })
+	{
+		TestTrue(*FString::Printf(TEXT("%s seen"), CricketField::ActionName(A)), Seen.Contains(A));
+	}
+	const float FumbleRate = float(Fumbles) / FMath::Max(1, Ground);
+	TestTrue(*FString::Printf(TEXT("misfields are occasional (%.1f%%)"), 100.f * FumbleRate), FumbleRate > 0.01f && FumbleRate < 0.12f);
+
+	// The kind of take sets how soon the throw goes: attacking pickup, clean pickup, long barrier, slide, misfield.
+	auto Release = [](EFieldAction A, FVector2D At)
+	{
+		FFieldingOutcome Fd;
+		Fd.Fielder = 3;
+		Fd.FieldTime = 2.f;
+		Fd.FieldPos = FVector(At.X, At.Y, 0.1f);
+		Fd.FielderFrom = At;
+		Fd.Action = A;
+		FRandomStream Rng(3);
+		return CricketField::SolveRunning(Fd, FCricketPlayer(), FCricketPlayer(), FCricketPlayer(), false, 0.3f, Rng);
+	};
+	const FVector2D Ring(10.f, 25.f);
+	const float OnRun = Release(EFieldAction::PickupOnRun, Ring).ThrowRelease, Clean = Release(EFieldAction::PickupClean, Ring).ThrowRelease,
+		Barrier = Release(EFieldAction::LongBarrier, Ring).ThrowRelease, Slide = Release(EFieldAction::SlideStop, Ring).ThrowRelease,
+		Fumble = Release(EFieldAction::Fumble, Ring).ThrowRelease;
+	TestTrue(*FString::Printf(TEXT("release order %.2f < %.2f < %.2f < %.2f < %.2f"), OnRun, Clean, Barrier, Slide, Fumble),
+		OnRun < Clean && Clean < Barrier && Barrier < Slide && Slide < Fumble);
+	// Close in, a pickup on the run is flicked underarm; further out it is thrown overarm.
+	TestEqual(TEXT("underarm from 8 m"), Release(EFieldAction::PickupOnRun, FVector2D(18.f, 6.f)).ThrowType, EThrowType::Underarm);
+	TestEqual(TEXT("overarm from the ring"), Release(EFieldAction::PickupOnRun, Ring).ThrowType, EThrowType::Overarm);
+
+	// Long throws have to be put up: 70 m takes well over twice as long as 35 m.
+	TestTrue(TEXT("long throws lose pace"), CricketField::ThrowFlight(70.f, 0.6f) > 2.2f * CricketField::ThrowFlight(35.f, 0.6f));
+
+	// From the rope a free fielder comes in to relay it, and it gets there sooner than the one long throw.
+	const TArray<FFielder> Field = CricketField::Make(EFieldPreset::PaceDeath, ECricketHand::Right, ECricketHand::Right);
+	FFieldingOutcome Deep;
+	Deep.Fielder = Field.IndexOfByPredicate([](const FFielder& F) { return F.Position == TEXT("Deep midwicket"); });
+	// Stopped at the rope behind deep midwicket, 59 m from the bowler's stumps and 70 m from the keeper's.
+	const FVector Rope = FVector(0.5f * CricketGeo::PitchLength, 0.f, 0.1f) + FVector(CricketBatting::DirectionToWorld(-58.f, ECricketHand::Right).GetSafeNormal2D() * 64.f);
+	Deep.FieldPos = Rope;
+	Deep.FielderFrom = Field[Deep.Fielder].Home;
+	Deep.FieldTime = 3.f;
+	Deep.Action = EFieldAction::PickupClean;
+	Deep.CoverTime[0] = Deep.CoverTime[1] = 0.f;
+	FRandomStream R1(4), R2(4);
+	const FRunningOutcome Relayed = CricketField::SolveRunning(Deep, FCricketPlayer(), FCricketPlayer(), FCricketPlayer(), false, 0.3f, R1, &Field);
+	const FRunningOutcome Direct = CricketField::SolveRunning(Deep, FCricketPlayer(), FCricketPlayer(), FCricketPlayer(), false, 0.3f, R2);
+	TestEqual(TEXT("relay from deep midwicket"), Relayed.ThrowType, EThrowType::Relay);
+	const int32 Who = Relayed.RelayMove.Fielder;
+	TestTrue(TEXT("relay fielder is free"), Field.IsValidIndex(Who) && Who != Deep.Fielder && !Field[FMath::Max(Who, 0)].bKeeper && !Field[FMath::Max(Who, 0)].bBowler);
+	if (Field.IsValidIndex(Who))
+	{
+		const float There = Relayed.RelayMove.Start + CricketField::TimeToCover(FVector2D::Distance(Field[Who].Home, Relayed.RelayMove.Target), Skill.RunSpeed);
+		TestTrue(*FString::Printf(TEXT("relay man in place (%.2f) for the take (%.2f)"), There, Relayed.RelayCatch), There <= Relayed.RelayCatch + 1e-3f);
+	}
+	TestTrue(*FString::Printf(TEXT("relay beats the long throw (%.2f vs %.2f s)"), Relayed.ThrowArrive, Direct.ThrowArrive), Relayed.ThrowArrive < Direct.ThrowArrive);
+	UE_LOG(LogTemp, Display, TEXT("Fielding actions: %s%d ground, %d misfields, %d carried over the rope; relay %.2f vs direct %.2f s"),
+		*Counts, Ground, Fumbles, RopeSixes, Relayed.ThrowArrive, Direct.ThrowArrive);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOKeeper, "CRICKET26.Keeper.TakesAndStumping", CricketTestFlags)
+bool FSOKeeper::RunTest(const FString&)
+{
+	// Keeper's takes of balls left alone: standing back to pace is routine, standing up to spin is harder,
+	// and down the leg side (unsighted behind the batter) harder still.
+	auto FumbleRate = [&](EBowlerType Style, EDeliveryType Type, float Line, int32& Takes)
+	{
+		const FDeliveryRelease R = Release(Type, Style == EBowlerType::Pace ? 7.f : 4.8f, Line, 0.f, Style);
+		int32 Fumbles = 0;
+		Takes = 0;
+		for (int32 Seed = 1; Seed <= 400; ++Seed)
+		{
+			const FResolveContext C = Ctx(Style, Seed);
+			const FDeliveryResult D = CricketDelivery::Resolve(R, FBatInput(), C);
+			if (D.Fielding.Fielder < 0 || !C.Field[D.Fielding.Fielder].bKeeper || D.Dismissal != EDismissal::None) continue;
+			++Takes;
+			Fumbles += D.Fielding.Action == EFieldAction::Fumble;
+		}
+		return float(Fumbles) / FMath::Max(1, Takes);
+	};
+	int32 N1, N2, N3;
+	const float Pace = FumbleRate(EBowlerType::Pace, EDeliveryType::Stock, 0.5f, N1);
+	const float SpinOff = FumbleRate(EBowlerType::LegSpin, EDeliveryType::LegBreak, 0.6f, N2);
+	const float SpinLeg = FumbleRate(EBowlerType::LegSpin, EDeliveryType::Googly, -0.9f, N3);
+	TestTrue(*FString::Printf(TEXT("keeper took them (%d/%d/%d)"), N1, N2, N3), N1 > 300 && N2 > 300 && N3 > 300);
+	TestTrue(*FString::Printf(TEXT("fumbles: pace back %.1f%% < spin up %.1f%% < down leg %.1f%%"), 100.f * Pace, 100.f * SpinOff, 100.f * SpinLeg),
+		Pace < SpinOff && SpinOff < SpinLeg && Pace < 0.05f && SpinLeg < 0.25f);
+
+	// Reaching forward in the crease for a spinner wide of off and missing: the back foot can come up and the
+	// keeper standing up stumps them. Less often for a better technique, and never against pace (keeper back).
+	auto Overbalanced = [&](EBowlerType Style, float Technique, int32& Beaten)
+	{
+		const FDeliveryRelease R = Release(Style == EBowlerType::Pace ? EDeliveryType::Outswing : EDeliveryType::LegBreak, 4.6f, 1.0f, 0.f, Style);
+		const FBallRead Seen = CricketDelivery::Read(R.Ball, 0.f, FPitchConditions());
+		int32 Stumped = 0;
+		Beaten = 0;
+		for (int32 Seed = 1; Seed <= 400; ++Seed)
+		{
+			FResolveContext C = Ctx(Style, Seed);
+			C.Striker.Technique = Technique;
+			const FDeliveryResult D = CricketDelivery::Resolve(R, FBatInput{ EBatIntent::Ground, 30.f, Seen.ArrivalTime - 0.3f }, C);
+			if (D.Shot.Foot != EFootwork::Front || D.Contact.HasContact() || D.bPadImpact) continue;
+			++Beaten;
+			Stumped += D.Dismissal == EDismissal::Stumped;
+			if (D.Dismissal == EDismissal::Stumped) TestTrue(*FString::Printf(TEXT("named (%s)"), *D.Summary), D.Summary.Contains(TEXT("overbalanced")));
+		}
+		return Stumped;
+	};
+	int32 B1, B2, B3;
+	const int32 Poor = Overbalanced(EBowlerType::LegSpin, 0.f, B1), Sound = Overbalanced(EBowlerType::LegSpin, 1.f, B2), Quick = Overbalanced(EBowlerType::Pace, 0.f, B3);
+	TestTrue(*FString::Printf(TEXT("poor technique stumped %d of %d beaten"), Poor, B1), B1 > 50 && Poor > 0 && Poor < B1 / 3);
+	TestEqual(*FString::Printf(TEXT("sound technique never overbalances (%d beaten)"), B2), Sound, 0);
+	TestEqual(*FString::Printf(TEXT("not against pace (%d beaten)"), B3), Quick, 0);
+	UE_LOG(LogTemp, Display, TEXT("Keeper: fumbles pace back %.1f%%, spin up %.1f%%, down leg %.1f%%; overbalanced stumpings %d/%d"),
+		100.f * Pace, 100.f * SpinOff, 100.f * SpinLeg, Poor, B1);
+	return true;
+}
