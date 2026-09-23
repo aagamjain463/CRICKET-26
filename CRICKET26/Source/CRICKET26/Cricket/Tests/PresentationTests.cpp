@@ -1,8 +1,9 @@
-// Gate 6 automation tests: synthesised sound cues and text commentary.
+// Presentation automation tests: synthesised sound cues, text commentary and ball readability.
 
 #include "Misc/AutomationTest.h"
 #include "CricketAudio.h"
 #include "CricketCommentary.h"
+#include "SuperOverGameMode.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -136,6 +137,32 @@ bool FCommentaryLines::RunTest(const FString&)
 	Bowl(Chase, Hit(1));
 	const FString Won = Describe(Stroke(EShotType::Drive, FVector(10.f, 5.f, 0.f)), Hit(1), Chase, N, 1.f, 0);
 	TestTrue(TEXT("winning run called: ") + Won, Won.Contains(TEXT("wins it for Home")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBallReadability, "CRICKET26.Presentation.BallScale", CricketPresentationTests::Flags)
+bool FBallReadability::RunTest(const FString&)
+{
+	const float Aspect = 16.f / 9.f;
+	auto Scale = [&](float Dist, float Fov) { return ASuperOverGameMode::BallDisplayScale(Dist, Fov, Aspect); };
+	// Share of the screen height the drawn ball covers.
+	auto Screen = [&](float Dist, float Fov)
+	{
+		const float ViewHeight = 2.f * Dist * FMath::Tan(FMath::DegreesToRadians(Fov) * 0.5f) / Aspect;
+		return 2.f * CricketGeo::BallRadius * Scale(Dist, Fov) / ViewHeight;
+	};
+	// The broadcast delivery view (8 degrees from behind the bowler) shows the real ball, at both ends.
+	TestEqual(TEXT("true size at the bowler's end"), Scale(62.f, 8.f), 1.f);
+	TestEqual(TEXT("true size at the batter's end"), Scale(82.f, 8.f), 1.f);
+	TestEqual(TEXT("true size close up"), Scale(3.f, 35.f), 1.f);
+	// On the wide follow camera the ball is held at the minimum readable size, not blown up further.
+	const float Far = Scale(60.f, 42.f);
+	AddInfo(FString::Printf(TEXT("follow camera at 60 m: %.2fx"), Far));
+	TestTrue(TEXT("enlarged on a wide shot"), Far > 1.f && Far < ASuperOverGameMode::MaxBallScale);
+	TestTrue(TEXT("held at the minimum screen size"), FMath::IsNearlyEqual(Screen(60.f, 42.f), ASuperOverGameMode::MinBallScreen, 1e-4f));
+	TestEqual(TEXT("capped far away"), Scale(500.f, 42.f), ASuperOverGameMode::MaxBallScale);
+	TestTrue(TEXT("never smaller when further"), Scale(40.f, 42.f) <= Scale(50.f, 42.f) && Scale(50.f, 42.f) <= Scale(80.f, 42.f));
+	TestEqual(TEXT("degenerate view"), Scale(0.f, 42.f), 1.f);
 	return true;
 }
 

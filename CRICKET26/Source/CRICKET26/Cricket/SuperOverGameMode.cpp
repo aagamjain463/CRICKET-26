@@ -27,6 +27,8 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
 #include "UnrealClient.h"
+#include "RenderTimer.h"
+#include "DynamicRHI.h"
 
 namespace
 {
@@ -94,6 +96,8 @@ void ASuperOverGameMode::StartPlay()
 	bTouchScript = FParse::Param(FCommandLine::Get(), TEXT("CricketTouchScript")); // a human side, played by injected touches
 	bAutoPlay = FParse::Param(FCommandLine::Get(), TEXT("CricketAutoPlay")) && !bTouchScript; // soak/smoke runs
 	FParse::Value(FCommandLine::Get(), TEXT("CricketShotBall="), ShotBall);
+	QuitAfter = ShotBall;
+	FParse::Value(FCommandLine::Get(), TEXT("CricketQuitAfter="), QuitAfter);
 	int32 Level = int32(Difficulty);
 	FParse::Value(FCommandLine::Get(), TEXT("CricketDifficulty="), Level);
 	Difficulty = CricketAI::EDifficulty(FMath::Clamp(Level, 0, 3));
@@ -103,6 +107,28 @@ void ASuperOverGameMode::StartPlay()
 	SetupAudio();
 	Match.Start(HumanTeam);
 	PlaceForDelivery();
+}
+
+void ASuperOverGameMode::EndPlay(const EEndPlayReason::Type Reason)
+{
+	// Performance summary: averages and the 99th percentile of each measure over the session.
+	if (Perf.Num() > 30)
+	{
+		auto Stat = [&](auto Get)
+		{
+			TArray<float> V;
+			for (const FPerfSample& S : Perf) V.Add(float(Get(S)));
+			V.Sort();
+			double Sum = 0.0;
+			for (float X : V) Sum += X;
+			return FString::Printf(TEXT("%.1f/%.1f"), Sum / V.Num(), V[V.Num() * 99 / 100]);
+		};
+		UE_LOG(LogCRICKET26, Display, TEXT("Perf (avg/p99 over %d frames, RHI %s): frame %s ms, game %s ms, render %s ms, GPU %s ms"),
+			Perf.Num(), GDynamicRHI ? GDynamicRHI->GetName() : TEXT("?"),
+			*Stat([](const FPerfSample& S) { return S.Frame; }), *Stat([](const FPerfSample& S) { return S.Game; }),
+			*Stat([](const FPerfSample& S) { return S.Render; }), *Stat([](const FPerfSample& S) { return S.Gpu; }));
+	}
+	Super::EndPlay(Reason);
 }
 
 AStaticMeshActor* ASuperOverGameMode::Spawn(UStaticMesh* Mesh, const FVector& PosM, const FVector& SizeM, const FLinearColor& Colour)
@@ -115,6 +141,13 @@ AStaticMeshActor* ASuperOverGameMode::Spawn(UStaticMesh* Mesh, const FVector& Po
 	A->SetActorScale3D(SizeM); // basic shapes are 1 m
 	Paint(A, Colour);
 	return A;
+}
+
+float ASuperOverGameMode::BallDisplayScale(float DistanceM, float HorizontalFovDeg, float Aspect)
+{
+	const float ViewHeight = 2.f * DistanceM * FMath::Tan(FMath::DegreesToRadians(HorizontalFovDeg) * 0.5f) / Aspect;
+	if (ViewHeight <= 0.f) return 1.f;
+	return FMath::Clamp(MinBallScreen * ViewHeight / (2.f * CricketGeo::BallRadius), 1.f, MaxBallScale);
 }
 
 void ASuperOverGameMode::Paint(AStaticMeshActor* A, const FLinearColor& Colour)
@@ -280,8 +313,7 @@ void ASuperOverGameMode::BuildScene()
 		Spawn(CubeMesh, FVector(C.X + Dir * (BoundaryRadius + 4.f), 0.f, 2.5f), FVector(1.f, 16.f, 5.f), FLinearColor(0.95f, 0.95f, 0.95f));
 	}
 
-	// ponytail: ball drawn at 2x size so it reads on a telephoto view; replace with a streak/trail when real assets land.
-	Ball = Spawn(SphereMesh, FVector(0.f, 0.f, -5.f), FVector(2.f * 2.f * BallRadius), FLinearColor(0.85f, 0.85f, 0.8f));
+	Ball = Spawn(SphereMesh, FVector(0.f, 0.f, -5.f), FVector(2.f * BallRadius), FLinearColor(0.85f, 0.85f, 0.8f));
 	Bat = Spawn(CubeMesh, FVector::ZeroVector, FVector(0.11f, 0.05f, 0.85f), Wood);
 	// Epic's template mannequin (UE EULA, ships with the project template) when present; plain markers otherwise.
 	BodyMesh = LoadObject<USkeletalMesh>(nullptr, TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple"));
@@ -362,9 +394,18 @@ void ASuperOverGameMode::Tick(float Dt)
 		PC->SetViewTarget(Camera);
 		bViewSet = true;
 	}
+	if (PC)
+	{
+		int32 VX = 0, VY = 0;
+		PC->GetViewportSize(VX, VY);
+		if (VY > 0) ViewAspect = float(VX) / VY;
+	}
 	if (PC && bTouchScript) RunTouchScript(PC);
 	if (PC) HandleInput(PC, Dt);
 	PhaseTime += Dt;
+	if (GetWorld()->GetTimeSeconds() > 3.f) // after start-up hitches
+		Perf.Add({ float(FApp::GetDeltaTime() * 1000.0), float(FPlatformTime::ToMilliseconds(GGameThreadTime)), float(FPlatformTime::ToMilliseconds(GRenderThreadTime)),
+			float(FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles())) });
 	// Dev capture of the game view alone, 5 times a second (the desktop is never recorded).
 	const int32 LiveBall = DPhase == EDeliveryPhase::DeadBall ? BallsPlayed : BallsPlayed + 1; // dead ball: the one just finished
 	if (ShotBall == LiveBall && DPhase != EDeliveryPhase::Waiting && (ShotClock += Dt) >= 0.2f)
@@ -375,7 +416,7 @@ void ASuperOverGameMode::Tick(float Dt)
 		// -CricketRecordAudio: also write the mixed game audio of the delivery to Saved/BallN.wav.
 		if (bRecordAudio && !bRecording) { UAudioMixerBlueprintLibrary::StartRecordingOutput(this, 30.f); bRecording = true; }
 	}
-	if (ShotBall > 0 && BallsPlayed >= ShotBall && DPhase == EDeliveryPhase::Waiting)
+	if (QuitAfter > 0 && BallsPlayed >= QuitAfter && DPhase == EDeliveryPhase::Waiting)
 	{
 		if (bRecording) UAudioMixerBlueprintLibrary::StopRecordingOutput(this, EAudioRecordingExportType::WavFile, FString::Printf(TEXT("Ball%d"), ShotBall), FPaths::ProjectSavedDir());
 		FPlatformMisc::RequestExit(false); // capture done
@@ -527,7 +568,6 @@ FCricketControls ASuperOverGameMode::ReadTouch(APlayerController* PC)
 	int32 VX = 0, VY = 0;
 	PC->GetViewportSize(VX, VY);
 	if (VY <= 0) return FCricketControls();
-	ViewAspect = float(VX) / VY;
 	// Positions in screen-height units, as the layout uses.
 	TArray<FVector2D> Held, New;
 	for (int32 I = 0; I < UE_ARRAY_COUNT(bTouchWasDown); ++I)
@@ -758,6 +798,14 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	FVector BallPos = ToWorld(FVector(BowlerPos.X - 0.3f, 0.4f * Arm, 1.1f));
 	if (bLive) BallPos = ToWorld(Result.BallAt(T));
 	Ball->SetActorLocation(BallPos);
+	// Drawn stretched along its path by the distance it covers in a 1/60 s shutter, as a broadcast camera
+	// blurs it, so a fast ball reads as a streak rather than strobing dots. A jump (new ball, replay) is not motion.
+	const float Size = 2.f * BallRadius * BallDisplayScale(FVector::Dist(BallPos, Camera->GetActorLocation()) / 100.f, Camera->GetCameraComponent()->FieldOfView, ViewAspect);
+	const FVector BallVel = Dt > 0.f ? (BallPos - LastBallPos) / 100.f / Dt : FVector::ZeroVector;
+	LastBallPos = BallPos;
+	const float Streak = BallVel.Size() < 60.f ? FMath::Min(BallVel.Size() / 60.f, 6.f * Size) : 0.f;
+	Ball->SetActorRotation(Streak > Size ? BallVel.Rotation() : FRotator::ZeroRotator);
+	Ball->SetActorScale3D(FVector(FMath::Max(Size, Streak), Size, Size));
 
 	// Fielders run where the coordinator sends them (chase, back up, cover the stumps) at the speed the
 	// solver assumed, so nobody arrives sooner than they physically could.

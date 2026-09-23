@@ -36,6 +36,7 @@ public:
 	ASuperOverGameMode();
 	virtual void StartPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
+	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 
 	UPROPERTY(EditAnywhere, Category = "Super Over") TArray<FCricketTeam> Teams;
 	UPROPERTY(EditAnywhere, Category = "Super Over") int32 HumanTeam = 0;
@@ -65,6 +66,7 @@ public:
 	CricketAI::EDifficulty Difficulty = CricketAI::EDifficulty::Hard; // F6 or -CricketDifficulty=0..3
 	float AiSkill() const { return CricketAI::SkillOf(Difficulty); }
 	int32 BallsPlayed = 0, ShotBall = 0; // -CricketShotBall=N: save the game view while delivery N is live
+	int32 QuitAfter = 0;                 // -CricketQuitAfter=N: quit after N deliveries (default: after the shot ball)
 	float ShotClock = 0.f;
 	/** Action replay of the key moment after a wicket or boundary, from side-on at half speed. */
 	static constexpr float ReplayDelay = 1.2f, ReplaySpeed = 0.5f, ReplayLead = 0.8f, ReplayAction = 1.6f;
@@ -75,6 +77,15 @@ public:
 	bool bTouchUI = false;
 	CricketTouch::EMode TouchMode() const;
 	float ViewAspect = 16.f / 9.f;
+
+	/**
+	 * Ball readability: the ball is drawn at its true size until, seen from DistanceM through a lens of
+	 * HorizontalFovDeg, it would cover less than MinBallScreen of the screen height; then it is enlarged
+	 * just enough to stay that size (at most MaxBallScale), so it never vanishes on a wide shot but is
+	 * never oversized close up.
+	 */
+	static constexpr float MinBallScreen = 0.008f, MaxBallScale = 4.f;
+	static float BallDisplayScale(float DistanceM, float HorizontalFovDeg, float Aspect);
 
 	bool HumanBats() const { return !bAutoPlay && Match.BattingTeam() == HumanTeam; }
 	bool HumanBowls() const { return !bAutoPlay && Match.BowlingTeam() == HumanTeam; }
@@ -110,6 +121,10 @@ private:
 	UPROPERTY() TObjectPtr<USoundWaveProcedural> CrowdWave;
 	TArray<int16> CuePcm[int32(CricketAudio::ECue::Count)];
 	float CrowdLevel = 0.3f, PrevCueT = 0.f;
+	FVector LastBallPos = FVector::ZeroVector;
+	/** Frame timings for the performance summary logged at the end of play (ms; draw calls). */
+	struct FPerfSample { float Frame, Game, Render, Gpu; };
+	TArray<FPerfSample> Perf;
 	bool bRecordAudio = false, bRecording = false;
 	bool bTouchWasDown[10] = {};
 	// -CricketTouchScript: plays a whole match through the touch layer by injecting touches into the
