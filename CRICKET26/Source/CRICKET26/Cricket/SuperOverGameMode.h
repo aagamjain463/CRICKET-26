@@ -39,6 +39,8 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 
 	UPROPERTY(EditAnywhere, Category = "Super Over") TArray<FCricketTeam> Teams;
+	/** The fictional placeholder sides: three batters and one bowler each, as a Super Over picks them. */
+	static TArray<FCricketTeam> DefaultSquads();
 	UPROPERTY(EditAnywhere, Category = "Super Over") int32 HumanTeam = 0;
 	UPROPERTY(EditAnywhere, Category = "Super Over") int32 MatchSeed = 2026;
 	UPROPERTY(EditAnywhere, Category = "Super Over") float RunUpSeconds = 1.8f;

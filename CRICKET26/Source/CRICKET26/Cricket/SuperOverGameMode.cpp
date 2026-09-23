@@ -67,30 +67,37 @@ ASuperOverGameMode::ASuperOverGameMode()
 	CylinderMesh = CylF.Object;
 	ShapeMaterial = MatF.Object;
 
-	// Placeholder squads (fictional). Super Over: three batters and one bowler per side.
+	Teams = DefaultSquads();
+	HumanPlan.Length = 5.f;
+}
+
+TArray<FCricketTeam> ASuperOverGameMode::DefaultSquads()
+{
+	// Placeholder squads (fictional). Super Over: three batters and one bowler per side. Each side bowls its best
+	// death bowler, as real sides do; CRICKET26.AI.DefaultSquadsScoreLikeASuperOver holds the match these make.
 	FCricketTeam Home;
 	Home.Name = TEXT("Home XI");
 	Home.Short = TEXT("HOM");
 	Home.Colour = FLinearColor(0.05f, 0.2f, 0.75f);
-	Home.Batters = { MakePlayer(TEXT("Opener"), ECricketHand::Right, 0.7f, 0.65f),
-		MakePlayer(TEXT("Finisher"), ECricketHand::Left, 0.65f, 0.85f), MakePlayer(TEXT("Allrounder"), ECricketHand::Right, 0.55f, 0.7f) };
+	Home.Batters = { MakePlayer(TEXT("Opener"), ECricketHand::Right, 0.7f, 0.6f),
+		MakePlayer(TEXT("Finisher"), ECricketHand::Left, 0.65f, 0.8f), MakePlayer(TEXT("Allrounder"), ECricketHand::Right, 0.55f, 0.65f) };
 	Home.Bowler = MakePlayer(TEXT("Quick"), ECricketHand::Right, 0.3f, 0.3f);
 	Home.Bowler.PaceKph = 142.f;
-	Home.Bowler.Accuracy = 0.7f;
+	Home.Bowler.Accuracy = 0.9f;
+	Home.Bowler.Movement = 0.8f;
 
 	FCricketTeam Away;
 	Away.Name = TEXT("Away XI");
 	Away.Short = TEXT("AWY");
 	Away.Colour = FLinearColor(0.6f, 0.08f, 0.1f);
-	Away.Batters = { MakePlayer(TEXT("Hitter"), ECricketHand::Left, 0.6f, 0.9f),
-		MakePlayer(TEXT("Anchor"), ECricketHand::Right, 0.75f, 0.55f), MakePlayer(TEXT("Keeper-bat"), ECricketHand::Right, 0.6f, 0.7f) };
+	Away.Batters = { MakePlayer(TEXT("Hitter"), ECricketHand::Left, 0.6f, 0.8f),
+		MakePlayer(TEXT("Anchor"), ECricketHand::Right, 0.75f, 0.5f), MakePlayer(TEXT("Keeper-bat"), ECricketHand::Right, 0.6f, 0.65f) };
 	Away.Bowler = MakePlayer(TEXT("Wrist spinner"), ECricketHand::Right, 0.3f, 0.3f);
 	Away.Bowler.BowlerType = EBowlerType::LegSpin;
 	Away.Bowler.PaceKph = 86.f;
-	Away.Bowler.Accuracy = 0.7f;
-	Away.Bowler.Movement = 0.7f;
-	Teams = { Home, Away };
-	HumanPlan.Length = 5.f;
+	Away.Bowler.Accuracy = 0.9f;
+	Away.Bowler.Movement = 0.8f;
+	return { Home, Away };
 }
 
 void ASuperOverGameMode::StartPlay()

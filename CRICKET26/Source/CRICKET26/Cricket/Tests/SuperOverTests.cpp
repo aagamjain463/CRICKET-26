@@ -3,6 +3,7 @@
 
 #include "Misc/AutomationTest.h"
 #include "CricketAI.h"
+#include "SuperOverGameMode.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -1493,12 +1494,12 @@ bool FSOKeeper::RunTest(const FString&)
 
 namespace
 {
-	struct FDifficultyStats { int32 Innings = 0, Runs = 0, Wickets = 0, RunOuts = 0, Balls = 0; };
+	struct FDifficultyStats { int32 Innings = 0, Runs = 0, Wickets = 0, RunOuts = 0, Balls = 0, Sixes = 0; };
 
 	/** Whole Super Overs with the batting AI and the bowling AI at separate skills; same seeds, same players
 	  * unless Setup changes them. */
 	FDifficultyStats PlaySuperOvers(int32 Games, float BatSkill, float BowlSkill,
-		TFunctionRef<void(FResolveContext&)> Setup = [](FResolveContext&) {})
+		TFunctionRef<void(FResolveContext&, const FSuperOverMatch&)> Setup = [](FResolveContext&, const FSuperOverMatch&) {})
 	{
 		FDifficultyStats S;
 		const FPitchConditions Cond;
@@ -1516,7 +1517,7 @@ namespace
 				if (Bowler.BowlerType != EBowlerType::Pace) Bowler.PaceKph = 88.f;
 				FResolveContext C;
 				C.Bowler = Bowler;
-				Setup(C);
+				Setup(C, M);
 				Bowler = C.Bowler;
 				C.Field = CricketField::Make(CricketField::PresetFor(Bowler.BowlerType), C.Striker.BatHand, Bowler.BowlHand);
 				C.bFreeHit = M.bFreeHit;
@@ -1537,6 +1538,7 @@ namespace
 				++S.Balls;
 				S.Wickets += Ev.Contains(ECricketEvent::Wicket);
 				S.RunOuts += R.Dismissal == EDismissal::RunOut;
+				S.Sixes += Ev.Contains(ECricketEvent::BoundarySix);
 				if (M.Phase == EMatchPhase::MatchComplete && M.bTied)
 				{
 					S.Runs += M.Innings[0].Runs + M.Innings[1].Runs;
@@ -1672,8 +1674,8 @@ bool FSOAttributeCurves::RunTest(const FString&)
 	};
 	for (const FCase& Case : Cases)
 	{
-		const FDifficultyStats Lo = PlaySuperOvers(Games, Hard, Hard, [&](FResolveContext& C) { Case.Set(C, 0.2f); });
-		const FDifficultyStats Hi = PlaySuperOvers(Games, Hard, Hard, [&](FResolveContext& C) { Case.Set(C, 0.95f); });
+		const FDifficultyStats Lo = PlaySuperOvers(Games, Hard, Hard, [&](FResolveContext& C, const FSuperOverMatch&) { Case.Set(C, 0.2f); });
+		const FDifficultyStats Hi = PlaySuperOvers(Games, Hard, Hard, [&](FResolveContext& C, const FSuperOverMatch&) { Case.Set(C, 0.95f); });
 		const float RLo = float(Lo.Runs) / Lo.Innings, RHi = float(Hi.Runs) / Hi.Innings;
 		const float WLo = float(Lo.Wickets) / Lo.Innings, WHi = float(Hi.Wickets) / Hi.Innings;
 		UE_LOG(LogTemp, Display, TEXT("Attribute %s weak/strong: %.1f/%.1f runs, %.2f/%.2f wickets, %d/%d run outs per %d innings"),
@@ -1929,6 +1931,31 @@ bool FSOAcceptance::RunTest(const FString&)
 		FString Err;
 		TestTrue(TEXT("L: invariants hold"), Tied.CheckInvariants(Err));
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOSquads, "CRICKET26.AI.DefaultSquadsScoreLikeASuperOver", CricketTestFlags)
+bool FSOSquads::RunTest(const FString&)
+{
+	// The squads the game ships with, each side's bowler to the other's batters in order, over whole AI
+	// Super Overs: the default match has to score like the real thing, not like a net session.
+	const TArray<FCricketTeam> Teams = ASuperOverGameMode::DefaultSquads();
+	const FDifficultyStats S = PlaySuperOvers(150, CricketAI::DefaultSkill, CricketAI::DefaultSkill, [&](FResolveContext& C, const FSuperOverMatch& M)
+	{
+		const FCricketTeam& Bat = Teams[M.BattingTeam()];
+		C.Striker = Bat.Batters[M.Cur().Striker];
+		C.NonStriker = Bat.Batters[M.Cur().NonStriker];
+		C.Bowler = Teams[M.BowlingTeam()].Bowler;
+	});
+	const float PerInnings = float(S.Runs) / FMath::Max(1, S.Innings), SixShare = float(S.Sixes) / FMath::Max(1, S.Balls);
+	UE_LOG(LogTemp, Display, TEXT("Default squads: %.1f runs and %.2f wickets per innings, %.0f%% of balls hit for six, %d run outs over %d innings"),
+		PerInnings, float(S.Wickets) / FMath::Max(1, S.Innings), 100.f * SixShare, S.RunOuts, S.Innings);
+	// The two 2019 World Cup final Super Overs made 15 each. The squads first shipped as five hitters against two
+	// average bowlers and made 17.9 with 40% of balls hit for six; the bowlers are now death specialists. The six
+	// share is still high because the model's lofted shots are (see the reference doc), so this band only stops
+	// the default match drifting further from real cricket.
+	TestTrue(*FString::Printf(TEXT("runs per innings like a real Super Over (%.1f)"), PerInnings), PerInnings > 10.f && PerInnings < 17.f);
+	TestTrue(*FString::Printf(TEXT("six share no higher than now (%.0f%%)"), 100.f * SixShare), SixShare < 0.36f);
 	return true;
 }
 
