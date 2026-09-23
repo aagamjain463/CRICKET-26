@@ -42,6 +42,14 @@ namespace CricketHUD
 		default: return FString();
 		}
 	}
+
+	FString RoleName(const FCricketPlayer& P, bool bBatting)
+	{
+		if (bBatting) return P.BatHand == ECricketHand::Right ? TEXT("Right-hand bat") : TEXT("Left-hand bat");
+		const TCHAR* Arm = P.BowlHand == ECricketHand::Right ? TEXT("Right-arm") : TEXT("Left-arm");
+		const TCHAR* Kind = P.BowlerType == EBowlerType::OffSpin ? TEXT("off spin") : P.BowlerType == EBowlerType::LegSpin ? TEXT("leg spin") : TEXT("fast");
+		return FString::Printf(TEXT("%s %s"), Arm, Kind);
+	}
 }
 
 void ASuperOverHUD::BeginPlay()
@@ -105,35 +113,87 @@ void ASuperOverHUD::DrawHUD()
 	const float W = Canvas->ClipX, H = Canvas->ClipY;
 	const float S = FMath::Max(1.f, H / 720.f);
 
-	// Score bug.
-	DrawRect(FLinearColor(0.02f, 0.02f, 0.05f, 0.75f), 20 * S, 20 * S, 420 * S, 118 * S);
-	DrawRect(BatT.Colour, 20 * S, 20 * S, 8 * S, 118 * S);
-	Text(FString::Printf(TEXT("%s  %d/%d   (%d.%d)"), *BatT.Short, In.Runs, In.Wickets, In.LegalBalls / 6, In.LegalBalls % 6), 38 * S, 26 * S, FLinearColor::White, 1.5f * S);
-	Text(FString::Printf(TEXT("SUPER OVER %d  -  %s"), M.SuperOverNumber, M.IsChase() ? *FString::Printf(TEXT("TARGET %d"), M.Target) : TEXT("1ST INNINGS")),
-		300 * S, 30 * S, FLinearColor(1, 0.85f, 0.3f), 0.8f * S);
+	// Broadcast score bar along the bottom (the top when the touch controls own the bottom): the batting side,
+	// the two batters, the bowler, this over ball by ball and what the chase needs.
+	const bool bTouch = GM->bTouchUI;
+	const float BarH = 46 * S, BX0 = 20 * S, BarW = W - 40 * S;
+	const float BarY = bTouch ? 12 * S : H - BarH - 12 * S;
+	const FLinearColor Dim(0.8f, 0.85f, 1.f);
+	DrawRect(FLinearColor(0.02f, 0.03f, 0.07f, 0.88f), BX0, BarY, BarW, BarH);
+	DrawRect(BatT.Colour * 0.55f + FLinearColor(0, 0, 0, 0.9f), BX0, BarY, 220 * S, BarH);
+	DrawRect(BatT.Colour, BX0, BarY + BarH - 4 * S, 220 * S, 4 * S);
+	Text(BatT.Short, BX0 + 12 * S, BarY + 11 * S, FLinearColor::White, 1.2f * S);
+	Text(FString::Printf(TEXT("%d-%d"), In.Runs, In.Wickets), BX0 + 80 * S, BarY + 5 * S, FLinearColor::White, 1.7f * S);
+	Text(FString::Printf(TEXT("%d.%d"), In.LegalBalls / 6, In.LegalBalls % 6), BX0 + 172 * S, BarY + 14 * S, Dim, 1.f * S);
 	for (int32 I : { In.Striker, In.NonStriker })
 	{
 		const FBatterCard& C = In.Batters[I];
 		const bool bOnStrike = I == In.Striker;
-		Text(FString::Printf(TEXT("%s%s  %d (%d)"), bOnStrike ? TEXT("> ") : TEXT("  "), *BatT.Batters[I].Name, C.Runs, C.Balls),
-			38 * S, (bOnStrike ? 62 : 82) * S, FLinearColor::White, 0.9f * S);
+		const float Y = BarY + (bOnStrike ? 4 : 24) * S;
+		Text(FString::Printf(TEXT("%s%s"), bOnStrike ? TEXT("> ") : TEXT("  "), *BatT.Batters[I].Name), BX0 + 232 * S, Y, bOnStrike ? FLinearColor::White : Dim, 0.85f * S);
+		Text(FString::Printf(TEXT("%d (%d)"), C.Runs, C.Balls), BX0 + 400 * S, Y, bOnStrike ? FLinearColor::White : Dim, 0.85f * S);
 	}
-	Text(FString::Printf(TEXT("%s  %d-%d  (%d.%d)%s"), *BowlT.Bowler.Name, In.Bowler.Wickets, In.Bowler.Runs, In.Bowler.Balls / 6, In.Bowler.Balls % 6,
-		M.bFreeHit ? TEXT("   FREE HIT") : TEXT("")), 38 * S, 106 * S, FLinearColor(0.8f, 0.85f, 1.f), 0.9f * S);
-	if (M.IsChase() && M.Phase != EMatchPhase::MatchComplete)
+	DrawRect(FLinearColor(1, 1, 1, 0.15f), BX0 + 470 * S, BarY + 6 * S, 1.5f * S, BarH - 12 * S);
+	Text(BowlT.Bowler.Name, BX0 + 482 * S, BarY + 4 * S, FLinearColor::White, 0.85f * S);
+	Text(FString::Printf(TEXT("%d-%d  (%d.%d)"), In.Bowler.Wickets, In.Bowler.Runs, In.Bowler.Balls / 6, In.Bowler.Balls % 6), BX0 + 482 * S, BarY + 24 * S, Dim, 0.85f * S);
+
+	// This over: a disc per ball, coloured the way broadcasts do (wicket red, boundaries bright, extras amber).
+	float BX = BX0 + 660 * S;
+	for (const FString& B : In.BallLog)
 	{
-		DrawRect(FLinearColor(0.6f, 0.05f, 0.05f, 0.85f), 20 * S, 142 * S, 420 * S, 30 * S);
-		Text(M.PressureText(), 230 * S, 146 * S, FLinearColor::White, 1.1f * S, true);
+		const FLinearColor Disc = B.EndsWith(TEXT("W")) ? FLinearColor(0.8f, 0.08f, 0.08f)
+			: B == TEXT("6") ? FLinearColor(0.55f, 0.2f, 0.85f) : B == TEXT("4") ? FLinearColor(0.1f, 0.45f, 0.9f)
+			: B.Len() > 1 ? FLinearColor(0.85f, 0.6f, 0.1f) : FLinearColor(0.25f, 0.27f, 0.32f);
+		Canvas->K2_DrawPolygon(nullptr, FVector2D(BX, BarY + BarH * 0.5f), FVector2D(14 * S, 14 * S), 24, Disc);
+		Text(B == TEXT(".") ? TEXT("0") : B, BX, BarY + BarH * 0.5f - 8 * S, FLinearColor::White, (B.Len() > 1 ? 0.6f : 0.8f) * S, true);
+		BX += 33 * S;
 	}
 
-	// This over, ball by ball.
-	FString Over;
-	for (const FString& B : In.BallLog) Over += B + TEXT("  ");
-	Text(Over, 20 * S, 178 * S, FLinearColor(0.9f, 0.9f, 0.9f), 0.9f * S);
+	// The equation, or where the match stands.
+	const float RX = BX0 + BarW - 240 * S;
+	if (M.IsChase() && M.Phase != EMatchPhase::MatchComplete)
+	{
+		DrawRect(FLinearColor(0.6f, 0.05f, 0.05f, 0.9f), RX, BarY, 240 * S, BarH);
+		Text(M.PressureText(), RX + 120 * S, BarY + 5 * S, FLinearColor::White, 0.85f * S, true);
+		Text(FString::Printf(TEXT("TARGET %d"), M.Target), RX + 120 * S, BarY + 25 * S, FLinearColor(1, 0.85f, 0.3f), 0.75f * S, true);
+	}
+	else
+	{
+		Text(FString::Printf(TEXT("SUPER OVER %d"), M.SuperOverNumber), RX + 120 * S, BarY + 5 * S, FLinearColor(1, 0.85f, 0.3f), 0.85f * S, true);
+		Text(M.IsChase() ? TEXT("2ND INNINGS") : TEXT("1ST INNINGS"), RX + 120 * S, BarY + 25 * S, Dim, 0.75f * S, true);
+	}
+	if (M.bFreeHit)
+	{
+		DrawRect(FLinearColor(0.95f, 0.75f, 0.1f, 0.95f), RX - 110 * S, BarY + 10 * S, 100 * S, 26 * S);
+		Text(TEXT("FREE HIT"), RX - 60 * S, BarY + 13 * S, FLinearColor(0.05f, 0.05f, 0.05f), 0.85f * S, true);
+	}
+
+	// Speed gun, from release until the next ball.
+	const float Above = bTouch ? BarY + BarH + 8 * S : BarY - 38 * S;
+	if ((GM->DPhase == EDeliveryPhase::BallInPlay || GM->DPhase == EDeliveryPhase::DeadBall) && GM->Result.SpeedKph > 0.f && !GM->ShowingScorecard())
+	{
+		DrawRect(FLinearColor(0.02f, 0.03f, 0.07f, 0.88f), BX0 + BarW - 170 * S, Above, 170 * S, 30 * S);
+		DrawRect(BowlT.Colour, BX0 + BarW - 170 * S, Above, 5 * S, 30 * S);
+		Text(FString::Printf(TEXT("%.1f km/h"), GM->Result.SpeedKph), BX0 + BarW - 82 * S, Above + 5 * S, FLinearColor::White, 1.f * S, true);
+	}
+
+	// Player cards: a batter walking in and a bowler starting the over, until the ball is bowled.
+	if (GM->DPhase == EDeliveryPhase::Waiting && M.Phase != EMatchPhase::MatchComplete && M.Phase != EMatchPhase::InningsBreak)
+	{
+		auto Card = [&](float CX, const FLinearColor& Colour, const FString& Name, const FString& Role)
+		{
+			DrawRect(FLinearColor(0.02f, 0.03f, 0.07f, 0.88f), CX, Above - 26 * S, 250 * S, 56 * S);
+			DrawRect(Colour, CX, Above - 26 * S, 5 * S, 56 * S);
+			Text(Name.ToUpper(), CX + 16 * S, Above - 22 * S, FLinearColor::White, 1.f * S);
+			Text(Role, CX + 16 * S, Above + 4 * S, Dim, 0.8f * S);
+		};
+		const FBatterCard& C = In.Batters[In.Striker];
+		if (C.Balls == 0) Card(BX0, BatT.Colour, BatT.Batters[In.Striker].Name, CricketHUD::RoleName(BatT.Batters[In.Striker], true));
+		if (In.Bowler.Balls == 0 && In.Deliveries == 0) Card(BX0 + BarW - 250 * S, BowlT.Colour, BowlT.Bowler.Name, CricketHUD::RoleName(BowlT.Bowler, false));
+	}
 
 	// Prompts.
 	FString Prompt;
-	const bool bTouch = GM->bTouchUI;
 	const TCHAR* Go = bTouch ? TEXT("Tap") : TEXT("Press Enter");
 	if (M.Phase == EMatchPhase::InningsBreak) Prompt = FString::Printf(TEXT("INNINGS BREAK - %s need %d. %s to continue."), *BowlT.Name, M.Target, Go);
 	else if (M.Phase == EMatchPhase::MatchComplete) Prompt = M.bTied ? FString::Printf(TEXT("TIED! %s for another Super Over."), Go)
@@ -155,16 +215,16 @@ void ASuperOverHUD::DrawHUD()
 			: FString::Printf(TEXT("YOU BAT   hold WASD for direction: %s   J ground  K loft  L defend  (no key = leave)   R running: %s"),
 			*GM->DirectionName(), Run);
 	}
-	Text(Prompt, W * 0.5f, H - 70 * S, FLinearColor::White, 0.9f * S, true);
+	Text(Prompt, W * 0.5f, bTouch ? H - 70 * S : BarY - 104 * S, FLinearColor::White, 0.9f * S, true);
 
 	// Release meter.
 	if (GM->HumanBowls() && GM->DPhase == EDeliveryPhase::RunUp)
 	{
-		const float X0 = W * 0.5f - 200 * S, Y0 = H - 120 * S, MW = 400 * S;
-		DrawRect(FLinearColor(0, 0, 0, 0.7f), X0, Y0, MW, 18 * S);
-		DrawRect(FLinearColor(0.1f, 0.8f, 0.2f, 0.9f), X0 + MW * 0.5f * (1.f - 0.15f), Y0, MW * 0.15f, 18 * S);
-		DrawRect(FLinearColor(0.85f, 0.1f, 0.1f, 0.9f), X0 + MW * 0.5f * 1.85f, Y0, MW * 0.075f, 18 * S);
-		DrawRect(FLinearColor::White, X0 + MW * 0.5f * (GM->Meter + 1.f) - 2 * S, Y0 - 4 * S, 4 * S, 26 * S);
+		const float MX = W * 0.5f - 200 * S, Y0 = bTouch ? H - 120 * S : BarY - 132 * S, MW = 400 * S;
+		DrawRect(FLinearColor(0, 0, 0, 0.7f), MX, Y0, MW, 18 * S);
+		DrawRect(FLinearColor(0.1f, 0.8f, 0.2f, 0.9f), MX + MW * 0.5f * (1.f - 0.15f), Y0, MW * 0.15f, 18 * S);
+		DrawRect(FLinearColor(0.85f, 0.1f, 0.1f, 0.9f), MX + MW * 0.5f * 1.85f, Y0, MW * 0.075f, 18 * S);
+		DrawRect(FLinearColor::White, MX + MW * 0.5f * (GM->Meter + 1.f) - 2 * S, Y0 - 4 * S, 4 * S, 26 * S);
 	}
 
 	// Touch controls: the same layout the game mode reads, so what is drawn is what is pressed.
@@ -200,8 +260,8 @@ void ASuperOverHUD::DrawHUD()
 	}
 
 	// Last ball (raised clear of the touch buttons when they are shown).
-	if (!GM->Commentary.IsEmpty()) Text(GM->Commentary, W * 0.5f, bTouch ? H * 0.64f : H - 100 * S, FLinearColor(1, 0.9f, 0.5f), 1.f * S, true);
-	if (GM->bDebug && !GM->LastSummary.IsEmpty()) Text(GM->LastSummary, W * 0.5f, H - 80 * S, FLinearColor(0.7f, 0.7f, 0.7f), 0.8f * S, true);
+	if (!GM->Commentary.IsEmpty()) Text(GM->Commentary, W * 0.5f, bTouch ? H * 0.64f : BarY - 160 * S, FLinearColor(1, 0.9f, 0.5f), 1.f * S, true);
+	if (GM->bDebug && !GM->LastSummary.IsEmpty()) Text(GM->LastSummary, W * 0.5f, bTouch ? H - 80 * S : BarY - 182 * S, FLinearColor(0.7f, 0.7f, 0.7f), 0.8f * S, true);
 
 	if (GM->IsReplaying())
 	{

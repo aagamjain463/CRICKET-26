@@ -580,7 +580,7 @@ void ASuperOverGameMode::Tick(float Dt)
 	if (!bFiguresChecked && GetWorld()->GetTimeSeconds() > 2.f) CheckFigures();
 	// Dev capture of the game view alone, 5 times a second (the desktop is never recorded).
 	const int32 LiveBall = DPhase == EDeliveryPhase::DeadBall ? BallsPlayed : BallsPlayed + 1; // dead ball: the one just finished
-	if (ShotBall == LiveBall && DPhase != EDeliveryPhase::Waiting && (ShotClock += Dt) >= ShotEvery)
+	if (ShotBall == LiveBall && (ShotClock += Dt) >= ShotEvery) // from the wait before the ball, which shows the player cards
 	{
 		ShotClock = 0.f;
 		static int32 Shot = 0;
