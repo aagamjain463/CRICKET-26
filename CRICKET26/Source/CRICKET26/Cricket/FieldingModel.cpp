@@ -74,7 +74,101 @@ float CricketField::TimeToCover(float Dist, float Top)
 	return Dist < AccelDist ? FMath::Sqrt(2.f * Dist / Accel) : Dist / Top + Top / (2.f * Accel);
 }
 
+float CricketField::DistanceCovered(float T, float Top)
+{
+	if (T <= 0.f) return 0.f;
+	const float AccelTime = Top / Accel;
+	return T < AccelTime ? 0.5f * Accel * T * T : Top * (T - 0.5f * AccelTime);
+}
+
+FVector2D CricketField::PositionOf(const FFielderMove& Move, const FFielder& Who, float Post, float Top)
+{
+	const FVector2D Path = Move.Target - Who.Home;
+	const float Len = Path.Size();
+	if (Len < KINDA_SMALL_NUMBER) return Who.Home;
+	return Who.Home + Path * (FMath::Min(Len, DistanceCovered(Post - Move.Start, Top)) / Len);
+}
+
+namespace
+{
+	constexpr float CoverReaction = 0.3f; // keeper and bowler see where the ball is going, then head for the stumps
+
+	/** Fielder (not keeper or bowler, not Skip) with the soonest arrival at P, and that arrival time. */
+	int32 Nearest(const TArray<FFielder>& Field, const FVector2D& P, int32 Skip, float Top, float Reaction, float& OutTime)
+	{
+		int32 Best = -1;
+		OutTime = BIG_NUMBER;
+		for (int32 I = 0; I < Field.Num(); ++I)
+		{
+			if (I == Skip || Field[I].bKeeper || Field[I].bBowler) continue;
+			const float T = Reaction + CricketField::TimeToCover(FVector2D::Distance(Field[I].Home, P), Top);
+			if (T < OutTime) { OutTime = T; Best = I; }
+		}
+		return Best;
+	}
+
+	void Coordinate(FFieldingOutcome& O, const TArray<FBallState>& Samples, float Dt, const TArray<FFielder>& Field,
+		const FCricketPlayer& Skill, bool bContact)
+	{
+		const float Top = Skill.RunSpeed;
+		const FVector2D Centre(CricketGeo::PitchLength * 0.5f, 0.f);
+		auto BallAt = [&](float T)
+		{
+			const FBallState& S = Samples[FMath::Clamp(FMath::RoundToInt(T / Dt), 0, Samples.Num() - 1)];
+			FVector2D P(S.Pos.X, S.Pos.Y);
+			const FVector2D R = P - Centre;
+			if (R.Size() > CricketGeo::BoundaryRadius - 1.f) P = Centre + R.GetSafeNormal() * (CricketGeo::BoundaryRadius - 1.f);
+			return P;
+		};
+		if (O.Boundary)
+		{
+			// Nobody can stop it, but the nearest rider still chases toward where it crosses the rope.
+			float T;
+			const int32 Chaser = Nearest(Field, BallAt(O.BoundaryTime), -1, Top, 0.4f, T);
+			if (Chaser >= 0) O.Moves.Add({ Chaser, EFieldRole::Chase, 0.4f, BallAt(O.BoundaryTime) });
+			return;
+		}
+		if (O.Fielder < 0) return;
+		O.Moves.Add({ O.Fielder, EFieldRole::Primary, O.ChaseStart, FVector2D(O.FieldPos.X, O.FieldPos.Y) });
+		if (!bContact || O.bCaught) return;
+
+		// Backup: whoever gets soonest to where the ball goes if the primary misses it, a second on.
+		if (!Field[O.Fielder].bKeeper)
+		{
+			float T;
+			const FVector2D Behind = BallAt(O.FieldTime + 1.f);
+			const int32 Backup = Nearest(Field, Behind, O.Fielder, Top, 0.4f, T);
+			if (Backup >= 0) O.Moves.Add({ Backup, EFieldRole::Backup, 0.4f, Behind });
+		}
+
+		// Stumps: the keeper comes up to the striker's end, the bowler goes to the non-striker's. Whoever is
+		// fielding the ball covers their own end only once they have it.
+		const FVector2D Ends[2] = { FVector2D(-0.4f, 0.f), FVector2D(CricketGeo::PitchLength + 0.4f, 0.f) };
+		for (int32 E = 0; E < 2; ++E)
+		{
+			const int32 Who = Field.IndexOfByPredicate([E](const FFielder& F) { return E == 0 ? F.bKeeper : F.bBowler; });
+			if (Who < 0) { O.CoverTime[E] = BIG_NUMBER; continue; }
+			const float Dist = FVector2D::Distance(Field[Who].Home, Ends[E]);
+			if (Who == O.Fielder)
+			{
+				O.CoverTime[E] = O.FieldTime + CricketField::TimeToCover(FVector2D::Distance(FVector2D(O.FieldPos.X, O.FieldPos.Y), Ends[E]), Top);
+				continue;
+			}
+			O.CoverTime[E] = Dist < 1.f ? 0.f : CoverReaction + CricketField::TimeToCover(Dist, Top);
+			if (Dist >= 1.f) O.Moves.Add({ Who, EFieldRole::CoverStumps, CoverReaction, Ends[E] });
+		}
+	}
+}
+
 FFieldingOutcome CricketField::SolveFielding(const TArray<FBallState>& Samples, float Dt, const TArray<FFielder>& Field,
+	const FCricketPlayer& Skill, bool bContact, FRandomStream& Rng, float KeeperLead)
+{
+	FFieldingOutcome O = Intercept(Samples, Dt, Field, Skill, bContact, Rng, KeeperLead);
+	if (Samples.Num() > 0) Coordinate(O, Samples, Dt, Field, Skill, bContact);
+	return O;
+}
+
+FFieldingOutcome CricketField::Intercept(const TArray<FBallState>& Samples, float Dt, const TArray<FFielder>& Field,
 	const FCricketPlayer& Skill, bool bContact, FRandomStream& Rng, float KeeperLead)
 {
 	FFieldingOutcome O;
@@ -127,6 +221,7 @@ FFieldingOutcome CricketField::SolveFielding(const TArray<FBallState>& Samples, 
 		O.ChaseStart = Field[Best].bKeeper ? 0.15f : bAir ? 0.5f : 0.25f;
 		O.FieldTime = T;
 		O.FieldPos = S.Pos;
+		O.FielderFrom = Field[Best].Home;
 		O.bDive = bBestDive;
 		if (bAir)
 		{
@@ -157,19 +252,36 @@ FRunningOutcome CricketField::SolveRunning(const FFieldingOutcome& Fd, const FCr
 	auto Leave = [&RunTime](int32 N) { return N == 1 ? SetOff : RunTime(N - 1) + 0.5f * Turn; };
 
 	const FVector2D From(Fd.FieldPos.X, Fd.FieldPos.Y);
-	const float ToStriker = From.Size();
-	const float ToBowler = FVector2D::Distance(From, FVector2D(CricketGeo::PitchLength, 0.f));
-	R.bThrowToStrikerEnd = ToStriker <= ToBowler;
-	const float Dist = FMath::Min(ToStriker, ToBowler);
 	const float Throw = FMath::Clamp(Skill.Throwing, 0.f, 1.f);
 	// Gather and throw; a dive costs the time to get back up.
-	R.ThrowRelease = Fd.FieldTime + (bKeeperFielded ? 0.25f : 0.55f - 0.2f * Throw) + (Fd.bDive && !bKeeperFielded ? 0.5f : 0.f);
-	R.ThrowArrive = R.ThrowRelease + Dist / (24.f + 12.f * Throw);
-	const float PDirect = Dist < 3.f ? 1.f : FMath::Clamp(0.15f + 0.35f * Throw - Dist / 150.f, 0.03f, 0.5f);
-	const float Expected = R.ThrowArrive + 0.4f * (1.f - PDirect);
+	const float Gathered = Fd.FieldTime + (bKeeperFielded ? 0.25f : 0.55f - 0.2f * Throw) + (Fd.bDive && !bKeeperFielded ? 0.5f : 0.f);
+	// Throw at the end where the stumps can be broken soonest: the throw has to arrive and, unless it hits,
+	// someone has to be there to take it. Throwing back across the way they ran costs a turn.
+	struct FEnd { float Release, Arrive, PDirect, Expected; };
+	auto AtEnd = [&](int32 E)
+	{
+		const FVector2D Stumps(E == 0 ? 0.f : CricketGeo::PitchLength, 0.f);
+		const FVector2D ThrowDir = (Stumps - From).GetSafeNormal(), RanDir = (From - Fd.FielderFrom).GetSafeNormal();
+		const float TurnCost = FVector2D::Distance(From, Fd.FielderFrom) > 2.f ? 0.3f * 0.5f * (1.f - FVector2D::DotProduct(ThrowDir, RanDir)) : 0.f;
+		const float Dist = FVector2D::Distance(From, Stumps);
+		FEnd End;
+		End.Release = Gathered + (bKeeperFielded ? 0.f : TurnCost);
+		End.Arrive = End.Release + Dist / (24.f + 12.f * Throw);
+		End.PDirect = Dist < 3.f ? 1.f : FMath::Clamp(0.15f + 0.35f * Throw - Dist / 150.f, 0.03f, 0.5f);
+		// A missed direct hit is gathered by whoever is covering, once they are there.
+		const float Taken = FMath::Max(End.Arrive, Fd.CoverTime[E]) + 0.4f;
+		End.Expected = End.PDirect * End.Arrive + (1.f - End.PDirect) * Taken;
+		return End;
+	};
+	const FEnd Ends[2] = { AtEnd(0), AtEnd(1) };
+	R.bThrowToStrikerEnd = Ends[0].Expected <= Ends[1].Expected;
+	const FEnd& To = Ends[R.bThrowToStrikerEnd ? 0 : 1];
+	R.ThrowRelease = To.Release;
+	R.ThrowArrive = To.Arrive;
+	const float Expected = To.Expected;
 
-	R.bDirectHit = Rng.GetFraction() < PDirect;
-	R.BreakTime = R.ThrowArrive + (R.bDirectHit ? 0.f : 0.4f);
+	R.bDirectHit = Rng.GetFraction() < To.PDirect;
+	R.BreakTime = R.bDirectHit ? R.ThrowArrive : FMath::Max(R.ThrowArrive, Fd.CoverTime[R.bThrowToStrikerEnd ? 0 : 1]) + 0.4f;
 
 	// What the batters believe at time Now: the truth once the ball is in hand, else their read of it.
 	const float Misjudge = CricketMath::Gauss(Rng) * JudgeSigma;

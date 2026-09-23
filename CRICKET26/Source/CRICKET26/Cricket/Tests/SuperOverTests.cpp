@@ -1068,7 +1068,97 @@ bool FSOFieldBoundaries::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORunningCalls, "CRICKET26.Running.CallsSendBacksAndCloseCalls", CricketTestFlags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOFieldCoordinator, "CRICKET26.Fielding.CoordinatorRolesAndMotion", CricketTestFlags)
+bool FSOFieldCoordinator::RunTest(const FString&)
+{
+	const FPitchConditions C;
+	const FCricketPlayer Skill;
+	auto Fly = [&](const TArray<FFielder>& Field, FVector Vel)
+	{
+		TArray<FBallState> S;
+		FBallState B;
+		B.Pos = FVector(1.f, 0.f, 0.8f);
+		B.Vel = Vel;
+		S.Add(B);
+		for (int32 I = 0; I < 240 * 12 && CricketBall::Step(B, C) != CricketBall::EStep::Stopped; ++I) S.Add(B);
+		FRandomStream Rng(5);
+		return CricketField::SolveFielding(S, CricketBall::FixedDt, Field, Skill, true, Rng);
+	};
+	auto Has = [](const FFieldingOutcome& O, EFieldRole Role) { return O.Moves.ContainsByPredicate([Role](const FFielderMove& M) { return M.Role == Role; }); };
+
+	int32 Checked = 0;
+	for (const EFieldPreset Preset : { EFieldPreset::PaceDeath, EFieldPreset::SpinDefensive })
+	{
+		const TArray<FFielder> Field = CricketField::Make(Preset, ECricketHand::Right, ECricketHand::Right);
+		for (float Dir = -150.f; Dir <= 150.f; Dir += 15.f)
+		{
+			for (const float Speed : { 9.f, 18.f, 30.f })
+			{
+				const FVector V = CricketBatting::DirectionToWorld(Dir, ECricketHand::Right) * Speed;
+				const FFieldingOutcome O = Fly(Field, FVector(V.X, V.Y, 0.f));
+				const FString Case = FString::Printf(TEXT("%s dir %.0f speed %.0f"), Preset == EFieldPreset::PaceDeath ? TEXT("pace") : TEXT("spin"), Dir, Speed);
+				++Checked;
+				// One job per fielder: nobody is sent two places, so nobody runs into another's path.
+				TSet<int32> Seen;
+				for (const FFielderMove& M : O.Moves) { bool bDup = false; Seen.Add(M.Fielder, &bDup); TestFalse(*(Case + TEXT(": one job each")), bDup); }
+				if (O.Boundary) { TestTrue(*(Case + TEXT(": a boundary is chased")), Has(O, EFieldRole::Chase)); continue; }
+				if (O.Fielder < 0) continue;
+				TestTrue(*(Case + TEXT(": primary set")), Has(O, EFieldRole::Primary));
+				TestTrue(*(Case + TEXT(": stumps covered")), Field[O.Fielder].bKeeper || Field[O.Fielder].bBowler || (O.CoverTime[0] < 5.f && O.CoverTime[1] < 5.f));
+				if (!Field[O.Fielder].bKeeper) TestTrue(*(Case + TEXT(": backed up")), Has(O, EFieldRole::Backup));
+				// The presented primary reaches the ball within their dive at the time the solver says - no teleport.
+				const FFielderMove& P = *O.Moves.FindByPredicate([](const FFielderMove& M) { return M.Role == EFieldRole::Primary; });
+				const float Gap = FVector2D::Distance(CricketField::PositionOf(P, Field[O.Fielder], O.FieldTime, Skill.RunSpeed), FVector2D(O.FieldPos.X, O.FieldPos.Y));
+				TestTrue(*FString::Printf(TEXT("%s: primary in reach at the take (%.2f m)"), *Case, Gap), Gap <= (Field[O.Fielder].bKeeper ? 2.8f : 2.3f) + 0.05f);
+			}
+		}
+	}
+	// Motion obeys the speed and acceleration limits.
+	const FFielder Mark{ TEXT("Test"), FVector2D(10.f, 10.f) };
+	const FFielderMove Run{ 0, EFieldRole::Backup, 0.4f, FVector2D(60.f, 10.f) };
+	float MaxV = 0.f, MaxA = 0.f, PrevV = 0.f;
+	for (float T = 0.f; T < 9.f; T += 0.05f)
+	{
+		const float V = FVector2D::Distance(CricketField::PositionOf(Run, Mark, T + 0.05f, 7.f), CricketField::PositionOf(Run, Mark, T, 7.f)) / 0.05f;
+		MaxV = FMath::Max(MaxV, V);
+		MaxA = FMath::Max(MaxA, (V - PrevV) / 0.05f);
+		PrevV = V;
+	}
+	TestTrue(*FString::Printf(TEXT("top speed respected (%.2f m/s)"), MaxV), MaxV <= 7.01f);
+	TestTrue(*FString::Printf(TEXT("acceleration respected (%.2f m/s^2)"), MaxA), MaxA <= 6.3f);
+	TestEqual(TEXT("stops at the target"), CricketField::PositionOf(Run, Mark, 30.f, 7.f), Run.Target);
+
+	// Keeper standing back needs time to reach the stumps; standing up to spin he is already there.
+	const TArray<FFielder> PaceField = CricketField::Make(EFieldPreset::PaceDeath, ECricketHand::Right, ECricketHand::Right);
+	const TArray<FFielder> SpinField = CricketField::Make(EFieldPreset::SpinDefensive, ECricketHand::Right, ECricketHand::Right);
+	const FVector Cover = CricketBatting::DirectionToWorld(45.f, ECricketHand::Right) * 12.f;
+	const FFieldingOutcome Back = Fly(PaceField, FVector(Cover.X, Cover.Y, 0.f)), Up = Fly(SpinField, FVector(Cover.X, Cover.Y, 0.f));
+	TestTrue(*FString::Printf(TEXT("keeper standing back runs up (%.2f s)"), Back.CoverTime[0]), Back.CoverTime[0] > 2.f);
+	TestEqual(TEXT("keeper standing up is at the stumps"), Up.CoverTime[0], 0.f);
+
+	// Throw target: to the end where the stumps can be broken soonest.
+	auto Throw = [](FVector2D At, FVector2D From, float CoverStriker, float CoverBowler)
+	{
+		FFieldingOutcome Fd;
+		Fd.Fielder = 3;
+		Fd.FieldTime = 1.5f;
+		Fd.FieldPos = FVector(At.X, At.Y, 0.1f);
+		Fd.FielderFrom = From;
+		Fd.CoverTime[0] = CoverStriker;
+		Fd.CoverTime[1] = CoverBowler;
+		FRandomStream Rng(2);
+		return CricketField::SolveRunning(Fd, FCricketPlayer(), FCricketPlayer(), FCricketPlayer(), false, 0.3f, Rng);
+	};
+	TestFalse(TEXT("gathered near the bowler's end: throw there"), Throw(FVector2D(19.f, 12.f), FVector2D(19.f, 25.f), 0.f, 0.f).bThrowToStrikerEnd);
+	TestTrue(TEXT("nobody at the bowler's end: throw to the keeper"), Throw(FVector2D(12.f, 15.f), FVector2D(12.f, 25.f), 0.f, 30.f).bThrowToStrikerEnd);
+	// Running away from the target, the fielder has to turn before throwing.
+	const FRunningOutcome Toward = Throw(FVector2D(5.f, 20.f), FVector2D(5.f, 30.f), 0.f, 30.f), Away = Throw(FVector2D(5.f, 20.f), FVector2D(5.f, 10.f), 0.f, 30.f);
+	TestTrue(*FString::Printf(TEXT("turning to throw costs time (%.2f vs %.2f s)"), Away.ThrowRelease, Toward.ThrowRelease), Away.ThrowRelease > Toward.ThrowRelease + 0.15f);
+	UE_LOG(LogTemp, Display, TEXT("Coordinator: %d cases; keeper back covers at %.2f s"), Checked, Back.CoverTime[0]);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORunningCalls,"CRICKET26.Running.CallsSendBacksAndCloseCalls", CricketTestFlags)
 bool FSORunningCalls::RunTest(const FString&)
 {
 	// Sweep balls gathered at 8-55 m from the bat, at 0.6-6 s, some at full stretch, under the three human

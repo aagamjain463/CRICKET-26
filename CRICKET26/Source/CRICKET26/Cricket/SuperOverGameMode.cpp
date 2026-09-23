@@ -434,7 +434,14 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	// Bowler: run-up, delivery stride, follow-through.
 	FVector BowlerPos(PitchLength + 14.f, 0.5f * Arm, 0.925f);
 	if (DPhase == EDeliveryPhase::RunUp) BowlerPos.X = FMath::Lerp(PitchLength + 14.f, PitchLength - 1.f, FMath::Clamp(PhaseTime / RunUpSeconds, 0.f, 1.f));
-	if (bLive) BowlerPos.X = PitchLength - 1.f - 3.f * FMath::Clamp(T, 0.f, 1.f);
+	// Follow-through ends at the bowler's fielding mark, where the fielding solver has them.
+	const int32 BowlerSlot = Ctx.Field.IndexOfByPredicate([](const FFielder& F) { return F.bBowler; });
+	const FVector2D FollowThrough = BowlerSlot >= 0 ? Ctx.Field[BowlerSlot].Home : FVector2D(PitchLength - 4.f, 0.5f * Arm);
+	if (bLive)
+	{
+		const float A = FMath::Clamp(T, 0.f, 1.f);
+		BowlerPos = FVector(FMath::Lerp(PitchLength - 1.f, FollowThrough.X, A), FMath::Lerp(0.5f * Arm, FollowThrough.Y, A), BowlerPos.Z);
+	}
 	Bowler->SetActorLocation(ToWorld(BowlerPos));
 
 	TargetMarker->SetActorHiddenInGame(!(HumanBowls() && (DPhase == EDeliveryPhase::Waiting || DPhase == EDeliveryPhase::RunUp)));
@@ -445,14 +452,18 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	if (bLive) BallPos = ToWorld(Result.BallAt(T));
 	Ball->SetActorLocation(BallPos);
 
-	// Fielders chase the ball the solver says they reach.
-	const FFieldingOutcome& F = Result.Fielding;
-	if (bLive && F.Fielder >= 0 && Fielders.IsValidIndex(F.Fielder))
+	// Fielders run where the coordinator sends them (chase, back up, cover the stumps) at the speed the
+	// solver assumed, so nobody arrives sooner than they physically could.
+	if (bLive)
 	{
-		const FFielder& Who = Ctx.Field[F.Fielder];
-		const float A = FMath::Clamp((Post - F.ChaseStart) / FMath::Max(F.FieldTime - F.ChaseStart, 0.05f), 0.f, 1.f);
-		const FVector2D P = FMath::Lerp(Who.Home, FVector2D(F.FieldPos.X, F.FieldPos.Y), A);
-		Fielders[F.Fielder]->SetActorLocation(ToWorld(FVector(P.X, P.Y, 0.9f)));
+		for (const FFielderMove& Move : Result.Fielding.Moves)
+		{
+			if (!Ctx.Field.IsValidIndex(Move.Fielder) || Post < Move.Start) continue;
+			const FFielder& Who = Ctx.Field[Move.Fielder];
+			const FVector2D P = CricketField::PositionOf(Move, Who, Post, Ctx.Fielding.RunSpeed);
+			if (Who.bBowler) Bowler->SetActorLocation(ToWorld(FVector(P.X, P.Y, 0.925f)));
+			else if (Fielders.IsValidIndex(Move.Fielder)) Fielders[Move.Fielder]->SetActorLocation(ToWorld(FVector(P.X, P.Y, 0.9f)));
+		}
 	}
 
 	// Batters running between the wickets.

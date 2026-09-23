@@ -18,6 +18,17 @@ struct FFielder
 
 enum class EFieldPreset : uint8 { PaceDeath, SpinDefensive };
 
+enum class EFieldRole : uint8 { Primary, Backup, Chase, CoverStumps };
+
+/** A fielder who leaves their mark: runs from Home toward Target from Start (s after contact), physically. */
+struct FFielderMove
+{
+	int32 Fielder = -1;
+	EFieldRole Role = EFieldRole::Primary;
+	float Start = 0.f;
+	FVector2D Target = FVector2D::ZeroVector;
+};
+
 struct FFieldingOutcome
 {
 	int32 Boundary = 0;
@@ -30,6 +41,11 @@ struct FFieldingOutcome
 	bool bCatchChance = false;
 	bool bCaught = false;
 	float CatchDifficulty = 0.f;
+	FVector2D FielderFrom = FVector2D::ZeroVector; // where the primary ran from: throwing back across it costs a turn
+
+	// Coordination: every fielder who moves, and when each end's stumps are manned for a throw.
+	TArray<FFielderMove> Moves;
+	float CoverTime[2] = { 0.f, 0.f }; // [0] striker's end (keeper), [1] bowler's end (bowler)
 };
 
 struct FRunningOutcome
@@ -60,13 +76,23 @@ namespace CricketField
 
 	/** Seconds to cover Dist metres from standing, accelerating at 6 m/s^2 up to TopSpeed. */
 	float TimeToCover(float Dist, float TopSpeed);
+	/** Inverse of TimeToCover: metres covered T seconds after setting off. */
+	float DistanceCovered(float T, float TopSpeed);
+	/** Where a moving fielder is Post seconds after contact. */
+	FVector2D PositionOf(const FFielderMove& Move, const FFielder& Who, float Post, float TopSpeed);
 
 	/**
 	 * Samples are post-contact ball states at a fixed Dt, starting at contact. KeeperLead is how long
 	 * (s) the keeper has already been tracking the ball's line at the first sample - a keeper reacts to
 	 * a beaten ball off the pitch, not when it passes the stumps.
+	 * Picks the primary interceptor (the first fielder who can physically reach the ball's path), then
+	 * coordinates the rest: a backup on the line behind them, a boundary rider chasing a ball they cannot
+	 * stop, and the keeper and bowler running to the stumps.
 	 */
 	FFieldingOutcome SolveFielding(const TArray<FBallState>& Samples, float Dt, const TArray<FFielder>& Field,
+		const FCricketPlayer& FieldingSkill, bool bBatContact, FRandomStream& Rng, float KeeperLead = 0.f);
+	/** The primary interception alone (no coordination). */
+	FFieldingOutcome Intercept(const TArray<FBallState>& Samples, float Dt, const TArray<FFielder>& Field,
 		const FCricketPlayer& FieldingSkill, bool bBatContact, FRandomStream& Rng, float KeeperLead = 0.f);
 
 	/**
