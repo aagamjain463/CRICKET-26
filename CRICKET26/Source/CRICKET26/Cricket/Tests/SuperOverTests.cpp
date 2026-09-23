@@ -1495,8 +1495,10 @@ namespace
 {
 	struct FDifficultyStats { int32 Innings = 0, Runs = 0, Wickets = 0, RunOuts = 0, Balls = 0; };
 
-	/** Whole Super Overs with the batting AI and the bowling AI at separate skills; same seeds, same players. */
-	FDifficultyStats PlaySuperOvers(int32 Games, float BatSkill, float BowlSkill)
+	/** Whole Super Overs with the batting AI and the bowling AI at separate skills; same seeds, same players
+	  * unless Setup changes them. */
+	FDifficultyStats PlaySuperOvers(int32 Games, float BatSkill, float BowlSkill,
+		TFunctionRef<void(FResolveContext&)> Setup = [](FResolveContext&) {})
 	{
 		FDifficultyStats S;
 		const FPitchConditions Cond;
@@ -1514,6 +1516,8 @@ namespace
 				if (Bowler.BowlerType != EBowlerType::Pace) Bowler.PaceKph = 88.f;
 				FResolveContext C;
 				C.Bowler = Bowler;
+				Setup(C);
+				Bowler = C.Bowler;
 				C.Field = CricketField::Make(CricketField::PresetFor(Bowler.BowlerType), C.Striker.BatHand, Bowler.BowlHand);
 				C.bFreeHit = M.bFreeHit;
 				C.Rules = M.Rules;
@@ -1645,6 +1649,76 @@ bool FSOAIDifficulty::RunTest(const FString&)
 	TestTrue(TEXT("the easy gap is felt: at least 10% more runs off an easy bowler"), PerInnings(BowlEasy) > 1.1f * PerInnings(BatHard));
 	for (const CricketAI::EDifficulty D : { CricketAI::EDifficulty::Easy, CricketAI::EDifficulty::Medium, CricketAI::EDifficulty::Hard })
 		TestTrue(TEXT("levels ascend"), CricketAI::SkillOf(D) < CricketAI::SkillOf(CricketAI::EDifficulty(uint8(D) + 1)));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOAttributeCurves, "CRICKET26.AI.AttributeCurves", CricketTestFlags)
+bool FSOAttributeCurves::RunTest(const FString&)
+{
+	// Each attribute, weak (0.2) against strong (0.95) with everything else equal, over whole AI Super Overs:
+	// it must move the result the way cricket says, by a noticeable amount, and a strong player must not
+	// break the game.
+	constexpr int32 Games = 120;
+	const float Hard = CricketAI::DefaultSkill;
+	struct FCase { const TCHAR* Name; TFunction<void(FResolveContext&, float)> Set; bool bBatting; };
+	const FCase Cases[] = {
+		{ TEXT("batting Timing"), [](FResolveContext& C, float V) { C.Striker.Timing = C.NonStriker.Timing = V; }, true },
+		{ TEXT("batting Technique"), [](FResolveContext& C, float V) { C.Striker.Technique = C.NonStriker.Technique = V; }, true },
+		{ TEXT("batting Power"), [](FResolveContext& C, float V) { C.Striker.Power = C.NonStriker.Power = V; }, true },
+		{ TEXT("bowler Accuracy"), [](FResolveContext& C, float V) { C.Bowler.Accuracy = V; }, false },
+		{ TEXT("bowler Movement"), [](FResolveContext& C, float V) { C.Bowler.Movement = V; }, false },
+		{ TEXT("fielding Catching"), [](FResolveContext& C, float V) { C.Fielding.Catching = V; }, false },
+		{ TEXT("fielders' RunSpeed"), [](FResolveContext& C, float V) { C.Fielding.RunSpeed = 5.5f + 3.f * V; }, false },
+	};
+	for (const FCase& Case : Cases)
+	{
+		const FDifficultyStats Lo = PlaySuperOvers(Games, Hard, Hard, [&](FResolveContext& C) { Case.Set(C, 0.2f); });
+		const FDifficultyStats Hi = PlaySuperOvers(Games, Hard, Hard, [&](FResolveContext& C) { Case.Set(C, 0.95f); });
+		const float RLo = float(Lo.Runs) / Lo.Innings, RHi = float(Hi.Runs) / Hi.Innings;
+		const float WLo = float(Lo.Wickets) / Lo.Innings, WHi = float(Hi.Wickets) / Hi.Innings;
+		UE_LOG(LogTemp, Display, TEXT("Attribute %s weak/strong: %.1f/%.1f runs, %.2f/%.2f wickets, %d/%d run outs per %d innings"),
+			Case.Name, RLo, RHi, WLo, WHi, Lo.RunOuts, Hi.RunOuts, Lo.Innings);
+		// Batting attributes are worth runs per wicket to the batting side; the rest take them away.
+		const float Good = (RHi + 1.f) / (WHi + 0.1f) / ((RLo + 1.f) / (WLo + 0.1f));
+		TestTrue(*FString::Printf(TEXT("%s: strong changes runs per wicket by %.0f%%"), Case.Name, 100.f * (Good - 1.f)),
+			Case.bBatting ? Good > 1.05f : Good < 0.95f);
+		TestTrue(*FString::Printf(TEXT("%s: strong side still plays cricket (%.1f runs per innings)"), Case.Name, RHi), RHi > 5.f && RHi < 25.f);
+	}
+
+	// Running between the wickets is a small share of Super Over runs, so the running attributes are
+	// measured on the running sweep's balls (normal margin) where they are the only thing that differs.
+	auto Sweep = [](float BatterSpeed, float Throwing, int32& Runs, int32& Attempts, int32& RunOuts)
+	{
+		Runs = Attempts = RunOuts = 0;
+		FCricketPlayer Batter, Fielding;
+		Batter.RunSpeed = BatterSpeed;
+		Fielding.Throwing = Throwing;
+		FRandomStream Pick(11);
+		for (int32 I = 0; I < 3000; ++I)
+		{
+			FFieldingOutcome Fd;
+			Fd.Fielder = 3;
+			const float Dist = Pick.FRandRange(8.f, 55.f), Ang = Pick.FRandRange(-PI, PI);
+			Fd.FieldPos = FVector(Dist * FMath::Cos(Ang), Dist * FMath::Sin(Ang), 0.1f);
+			Fd.FieldTime = Pick.FRandRange(0.6f, 6.f);
+			Fd.bDive = Pick.GetFraction() < 0.2f;
+			FRandomStream Rng(I);
+			const FRunningOutcome R = CricketField::SolveRunning(Fd, Batter, Batter, Fielding, false, 0.25f, Rng);
+			Runs += R.Completed;
+			Attempts += R.Attempted;
+			RunOuts += R.bRunOut;
+		}
+	};
+	int32 Runs[4], Attempts[4], Outs[4];
+	Sweep(6.1f, 0.6f, Runs[0], Attempts[0], Outs[0]);
+	Sweep(8.35f, 0.6f, Runs[1], Attempts[1], Outs[1]);
+	Sweep(7.f, 0.2f, Runs[2], Attempts[2], Outs[2]);
+	Sweep(7.f, 0.95f, Runs[3], Attempts[3], Outs[3]);
+	UE_LOG(LogTemp, Display, TEXT("Attribute running (3000 balls): batters slow/fast %d/%d runs, %d/%d attempted, %d/%d run outs; throwing weak/strong %d/%d runs, %d/%d attempted, %d/%d run outs"),
+		Runs[0], Runs[1], Attempts[0], Attempts[1], Outs[0], Outs[1], Runs[2], Runs[3], Attempts[2], Attempts[3], Outs[2], Outs[3]);
+	TestTrue(TEXT("fast batters score more runs"), Runs[1] > Runs[0] * 1.1f);
+	TestTrue(TEXT("fast batters are not run out more often per run attempted"), Outs[1] * Attempts[0] <= Outs[0] * Attempts[1] * 1.2f + Attempts[1] * 0.002f);
+	TestTrue(TEXT("a strong arm stops runs"), Runs[3] < Runs[2] * 0.95f);
 	return true;
 }
 
