@@ -393,8 +393,7 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 				}
 				Hold(R.BallPath, Stumps, 1.2f);
 				if (R.Running.bRunOut) R.Dismissal = EDismissal::RunOut;
-				const float LastRun = R.Running.RunTimes.Num() ? R.Running.RunTimes.Last() : 0.f;
-				R.DeadTime = T0 + FMath::Max(R.Running.ThrowArrive, LastRun) + 1.2f;
+				R.DeadTime = T0 + FMath::Max(R.Running.ThrowArrive, R.Running.EndTime()) + 1.2f;
 			}
 			else
 			{
@@ -439,6 +438,7 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 		else if (R.bPadImpact) Result = TEXT("Hit on the pad - not out");
 		else if (O.RunsRun > 0) Result = FString::Printf(TEXT("%d run%s"), O.RunsRun, O.RunsRun > 1 ? TEXT("s") : TEXT(""));
 		else Result = TEXT("No run");
+		if (R.Running.bSentBack) Result += TEXT(" - sent back!");
 	}
 	if (R.bWide) Result += bOverHeadWide ? TEXT("  (WIDE - over head height)") : TEXT("  (WIDE)");
 	if (R.bNoBall) Result += R.bBeamer ? TEXT("  (NO BALL - above waist)") : R.bBouncer && !Release.bNoBall ? TEXT("  (NO BALL - bouncer)") : TEXT("  (NO BALL)");

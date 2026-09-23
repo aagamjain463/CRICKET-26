@@ -43,7 +43,14 @@ struct FRunningOutcome
 	float ThrowRelease = 0.f;       // seconds after contact
 	float ThrowArrive = 0.f;
 	float BreakTime = 0.f;          // when the stumps can be broken
-	TArray<float> RunTimes;         // completion time of each attempted run
+	TArray<float> RunTimes;         // completion time of each run carried through (the last may be run out)
+	bool bSentBack = false;         // the last run was called off once the ball was gathered
+	float SentBackAt = 0.f;         // when they turned back
+	float SentBackFrom = 0.f;       // how far along that run they were (0..1)
+	float BackIn = 0.f;             // when they regained their ground (or would have)
+
+	/** When the last runner is home or out. */
+	float EndTime() const { return FMath::Max(RunTimes.Num() ? RunTimes.Last() : 0.f, BackIn); }
 };
 
 namespace CricketField
@@ -62,7 +69,12 @@ namespace CricketField
 	FFieldingOutcome SolveFielding(const TArray<FBallState>& Samples, float Dt, const TArray<FFielder>& Field,
 		const FCricketPlayer& FieldingSkill, bool bBatContact, FRandomStream& Rng, float KeeperLead = 0.f);
 
-	/** Margin is the time buffer (s) the batters insist on; smaller = riskier. */
+	/**
+	 * Margin is the time buffer (s) the batters insist on; smaller = riskier. The first run is called at
+	 * the stroke on a judgement of how quickly the ball will be gathered and returned (off by a seeded
+	 * misjudgement); each further run is called at the turn, knowing the truth if the ball is in hand by
+	 * then. A run shown to be lost once the ball is gathered is called off if they are not yet halfway.
+	 */
 	FRunningOutcome SolveRunning(const FFieldingOutcome& Fielding, const FCricketPlayer& Striker, const FCricketPlayer& NonStriker,
 		const FCricketPlayer& FieldingSkill, bool bKeeperFielded, float Margin, FRandomStream& Rng);
 }

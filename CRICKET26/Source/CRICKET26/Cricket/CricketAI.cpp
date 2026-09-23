@@ -38,7 +38,7 @@ float CricketAI::Aggression(const FSuperOverMatch& M)
 float CricketAI::RunMargin(const FSuperOverMatch& M, float Aggression)
 {
 	if (M.IsChase() && M.BallsRemaining() == 1 && M.RunsRequired() <= 2) return -0.25f; // must run
-	return FMath::Lerp(0.6f, 0.f, Aggression);
+	return FMath::Lerp(0.6f, -0.2f, Aggression);
 }
 
 FBowlingChoice CricketAI::ChooseDelivery(const FCricketPlayer& Bowler, ECricketHand BatHand, const FSuperOverMatch& M,

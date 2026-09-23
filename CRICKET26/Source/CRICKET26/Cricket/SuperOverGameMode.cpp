@@ -468,6 +468,13 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 			Along = (N % 2 == 0) ? A : 1.f - A;
 			Start = Run.RunTimes[N] + 0.3f;
 		}
+		if (Run.bSentBack && Post >= Start)
+		{
+			// Out towards the next run, then sent back to the end they left.
+			const float Out = Run.SentBackFrom * FMath::Clamp((Post - Start) / FMath::Max(Run.SentBackAt - Start, 0.05f), 0.f, 1.f);
+			const float A = Post < Run.SentBackAt ? Out : Run.SentBackFrom * (1.f - FMath::Clamp((Post - Run.SentBackAt) / FMath::Max(Run.BackIn - Run.SentBackAt, 0.1f), 0.f, 1.f));
+			Along = (Run.RunTimes.Num() % 2 == 0) ? A : 1.f - A;
+		}
 		const float SX = FMath::Lerp(0.9f, PitchLength - 1.3f, Along), NX = FMath::Lerp(PitchLength - 1.3f, 0.9f, Along);
 		Striker->SetActorLocation(ToWorld(FVector(SX, -0.9f * Off, 0.9f)));
 		NonStriker->SetActorLocation(ToWorld(FVector(NX, 0.9f * Off, 0.9f)));

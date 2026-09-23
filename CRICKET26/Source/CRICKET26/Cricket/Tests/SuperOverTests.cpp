@@ -1068,6 +1068,58 @@ bool FSOFieldBoundaries::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORunningCalls, "CRICKET26.Running.CallsSendBacksAndCloseCalls", CricketTestFlags)
+bool FSORunningCalls::RunTest(const FString&)
+{
+	// Sweep balls gathered at 8-55 m from the bat, at 0.6-6 s, some at full stretch, under the three human
+	// running modes (R: safe 0.6, normal 0.25, aggressive -0.1 s margin).
+	const float Margins[] = { 0.6f, 0.25f, -0.1f };
+	int32 Balls = 0, RunOuts[3] = {}, Runs[3] = {}, SentBack = 0, SavedBySendBack = 0, Close = 0, Bad = 0;
+	for (int32 Mode = 0; Mode < 3; ++Mode)
+	{
+		FRandomStream Pick(11);
+		for (int32 I = 0; I < 1500; ++I)
+		{
+			FFieldingOutcome Fd;
+			Fd.Fielder = 3;
+			const float Dist = Pick.FRandRange(8.f, 55.f), Ang = Pick.FRandRange(-PI, PI);
+			Fd.FieldPos = FVector(Dist * FMath::Cos(Ang), Dist * FMath::Sin(Ang), 0.1f);
+			Fd.FieldTime = Pick.FRandRange(0.6f, 6.f);
+			Fd.bDive = Pick.GetFraction() < 0.2f;
+			FRandomStream Rng(I);
+			const FRunningOutcome R = CricketField::SolveRunning(Fd, FCricketPlayer(), FCricketPlayer(), FCricketPlayer(), false, Margins[Mode], Rng);
+			Balls += Mode == 0;
+			RunOuts[Mode] += R.bRunOut;
+			Runs[Mode] += R.Completed;
+			// Consistency: a run-out is a lost race, every run scored beat the break, a send-back comes before halfway.
+			const float Home = R.bSentBack ? R.BackIn : R.RunTimes.Num() ? R.RunTimes.Last() : 0.f;
+			const bool bOk = (R.bRunOut == (R.Attempted > 0 && Home > R.BreakTime))
+				&& R.Completed == R.Attempted - (R.bRunOut || R.bSentBack ? 1 : 0)
+				&& (!R.bSentBack || (R.SentBackFrom < 0.5f && R.SentBackAt >= Fd.FieldTime && R.BackIn > R.SentBackAt));
+			if (!bOk && Bad++ < 5)
+			{
+				AddError(FString::Printf(TEXT("mode %d case %d: attempted %d completed %d out %d sent back %d (%.2f at %.2f, in %.2f) break %.2f"),
+					Mode, I, R.Attempted, R.Completed, R.bRunOut, R.bSentBack, R.SentBackFrom, R.SentBackAt, R.BackIn, R.BreakTime));
+			}
+			if (Mode == 1)
+			{
+				SentBack += R.bSentBack;
+				SavedBySendBack += R.bSentBack && !R.bRunOut;
+				Close += !R.bRunOut && R.Completed > 0 && R.BreakTime - Home < 0.3f;
+			}
+		}
+	}
+	UE_LOG(LogTemp, Display, TEXT("Running sweep (%d balls): runs safe/normal/aggressive %d/%d/%d, run outs %d/%d/%d; normal: %d sent back (%d safe), %d close calls"),
+		Balls, Runs[0], Runs[1], Runs[2], RunOuts[0], RunOuts[1], RunOuts[2], SentBack, SavedBySendBack, Close);
+	TestEqual(TEXT("consistent outcomes"), Bad, 0);
+	TestTrue(TEXT("aggressive running scores more"), Runs[2] > Runs[1] && Runs[1] > Runs[0]);
+	TestTrue(TEXT("aggressive running risks more"), RunOuts[2] > RunOuts[1] && RunOuts[1] >= RunOuts[0]);
+	TestTrue(TEXT("safe running is rarely run out"), RunOuts[0] <= Balls / 100);
+	TestTrue(TEXT("misjudged calls are sent back, mostly in time"), SentBack > 0 && SavedBySendBack > SentBack / 2);
+	TestTrue(TEXT("close calls happen"), Close > 0);
+	return true;
+}
+
 // ---------------------------------------------------------------- Full match with AI on both sides
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOAIMatch, "CRICKET26.Match.AIvsAICompletesLegally", CricketTestFlags)
@@ -1168,6 +1220,7 @@ bool FSOAIMatch::RunTest(const FString&)
 	Band(TEXT("singles"), Ran[1], 0.08f, 0.35f);
 	Band(TEXT("twos"), Ran[2], 0.005f, 0.12f);
 	Band(TEXT("wickets"), Wickets, 0.06f, 0.18f);
+	Band(TEXT("run outs"), RunOuts, 0.f, 0.02f);
 	TestTrue(*FString::Printf(TEXT("catching efficiency %d/%d"), Taken, Chances), Chances > 0 && Taken >= 0.65f * Chances && Taken <= 0.92f * Chances);
 	TestTrue(TEXT("not everything is middled"), Middled < 0.8f * Contacts);
 	TestTrue(*FString::Printf(TEXT("batters use their feet to spin (%d advances)"), Advances), Advances >= Deliveries / 50 && Advances <= Deliveries / 6);

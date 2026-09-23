@@ -6,6 +6,10 @@ namespace
 	constexpr float Accel = 6.f;
 	constexpr float BatReach = 1.2f;    // a runner grounds the bat this far ahead of their body
 	constexpr float LegLength = RunLength - BatReach;
+	constexpr float SetOff = 0.3f;      // leaving the crease after the stroke (s)
+	constexpr float Turn = 0.6f;        // ground the bat, stop, push back off (s)
+	// ponytail: one misjudgement spread for every pair; per-batter running judgement belongs with the attribute curves.
+	constexpr float JudgeSigma = 0.3f;  // error (s) in the batters' read of how soon the ball is gathered
 
 	// Batter-relative polar placement. Ring fielders are measured from the striker's stumps,
 	// boundary riders from the pitch centre so they sit just inside the rope.
@@ -149,7 +153,8 @@ FRunningOutcome CricketField::SolveRunning(const FFieldingOutcome& Fd, const FCr
 
 	const float V = FMath::Max(3.f, FMath::Min(Striker.RunSpeed, NonStriker.RunSpeed));
 	// Set off after the stroke, then each turn: ground the bat, stop, push back off.
-	auto RunTime = [V](int32 N) { return 0.3f + TimeToCover(LegLength, V) + (N - 1) * (LegLength / V + 0.6f); };
+	auto RunTime = [V](int32 N) { return N <= 0 ? 0.f : SetOff + TimeToCover(LegLength, V) + (N - 1) * (LegLength / V + Turn); };
+	auto Leave = [&RunTime](int32 N) { return N == 1 ? SetOff : RunTime(N - 1) + 0.5f * Turn; };
 
 	const FVector2D From(Fd.FieldPos.X, Fd.FieldPos.Y);
 	const float ToStriker = From.Size();
@@ -163,17 +168,41 @@ FRunningOutcome CricketField::SolveRunning(const FFieldingOutcome& Fd, const FCr
 	const float PDirect = Dist < 3.f ? 1.f : FMath::Clamp(0.15f + 0.35f * Throw - Dist / 150.f, 0.03f, 0.5f);
 	const float Expected = R.ThrowArrive + 0.4f * (1.f - PDirect);
 
-	while (R.Attempted < 4 && RunTime(R.Attempted + 1) + Margin <= Expected) R.Attempted++;
 	R.bDirectHit = Rng.GetFraction() < PDirect;
 	R.BreakTime = R.ThrowArrive + (R.bDirectHit ? 0.f : 0.4f);
-	for (int32 N = 1; N <= R.Attempted; ++N) R.RunTimes.Add(RunTime(N));
-	R.Completed = R.Attempted;
-	if (R.Attempted > 0 && RunTime(R.Attempted) > R.BreakTime)
+
+	// What the batters believe at time Now: the truth once the ball is in hand, else their read of it.
+	const float Misjudge = CricketMath::Gauss(Rng) * JudgeSigma;
+	auto Believed = [&](float Now)
+	{
+		return Now >= Fd.FieldTime ? Expected : FMath::Max(Fd.FieldTime + Misjudge, Now) + (Expected - Fd.FieldTime);
+	};
+
+	for (int32 N = 1; N <= 4; ++N)
+	{
+		const float CallAt = RunTime(N - 1); // at the stroke, then at each turn
+		if (RunTime(N) + Margin > Believed(CallAt)) break;
+		R.Attempted = N;
+		// The ball is gathered with this run on and the run is lost: "No! Get back!" - if not yet halfway.
+		const float Along = (Fd.FieldTime - Leave(N)) / (RunTime(N) - Leave(N));
+		if (Fd.FieldTime > CallAt && Along < 0.5f && RunTime(N) + 0.5f * Margin > Expected)
+		{
+			R.bSentBack = true;
+			R.SentBackAt = FMath::Max(Fd.FieldTime, Leave(N));
+			R.SentBackFrom = FMath::Max(0.f, Along);
+			R.BackIn = R.SentBackAt + 0.5f * Turn + R.SentBackFrom * LegLength / V;
+			break;
+		}
+		R.RunTimes.Add(RunTime(N));
+	}
+	R.Completed = R.RunTimes.Num();
+	const float Home = R.bSentBack ? R.BackIn : R.RunTimes.Num() ? R.RunTimes.Last() : 0.f;
+	if (R.Attempted > 0 && Home > R.BreakTime)
 	{
 		R.bRunOut = true;
 		R.Completed = R.Attempted - 1;
-		// On run N the original striker heads for the bowler's end when N is odd.
-		const bool bStrikerHeadingToBowlerEnd = R.Attempted % 2 == 1;
+		// On run N the original striker heads for the bowler's end when N is odd; sent back, the other way.
+		const bool bStrikerHeadingToBowlerEnd = (R.Attempted % 2 == 1) != R.bSentBack;
 		R.bRunOutStriker = R.bThrowToStrikerEnd != bStrikerHeadingToBowlerEnd;
 	}
 	return R;
