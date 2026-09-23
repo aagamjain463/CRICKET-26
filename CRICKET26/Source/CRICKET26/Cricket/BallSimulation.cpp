@@ -121,7 +121,8 @@ TArray<EDeliveryType> CricketBowling::Repertoire(EBowlerType Type)
 	{
 	case EBowlerType::OffSpin: return { EDeliveryType::OffBreak, EDeliveryType::ArmBall, EDeliveryType::TopSpinner };
 	case EBowlerType::LegSpin: return { EDeliveryType::LegBreak, EDeliveryType::Googly, EDeliveryType::TopSpinner };
-	default: return { EDeliveryType::Stock, EDeliveryType::Outswing, EDeliveryType::Inswing, EDeliveryType::Cutter, EDeliveryType::Slower };
+	default: return { EDeliveryType::Stock, EDeliveryType::Outswing, EDeliveryType::Inswing, EDeliveryType::Cutter, EDeliveryType::Slower,
+			EDeliveryType::Seam, EDeliveryType::CrossSeam };
 	}
 }
 
@@ -140,7 +141,8 @@ FDeliveryRelease CricketBowling::Execute(const FCricketPlayer& Bowler, ECricketH
 
 	// Execution: accuracy sets the scatter, a poor release widens it and biases length
 	// (early = overpitched, late = dragged down).
-	const float Scatter = 0.5f + 1.5f * (1.f - Q);
+	// A scrambled seam gives up movement for control: it is the easiest ball to land.
+	const float Scatter = (0.5f + 1.5f * (1.f - Q)) * (Plan.Type == EDeliveryType::CrossSeam ? 0.75f : 1.f);
 	const float Skill = FMath::Clamp(Bowler.Accuracy, 0.f, 1.f);
 	const float LengthSigma = (0.15f + 0.9f * (1.f - Skill)) * Scatter;
 	const float LineSigma = (0.04f + 0.25f * (1.f - Skill)) * Scatter;
@@ -155,6 +157,7 @@ FDeliveryRelease CricketBowling::Execute(const FCricketPlayer& Bowler, ECricketH
 	case EDeliveryType::Outswing: case EDeliveryType::Inswing: SpeedFactor = 0.98f; break;
 	case EDeliveryType::Cutter: SpeedFactor = 0.9f; break;
 	case EDeliveryType::Slower: SpeedFactor = 0.78f; break;
+	case EDeliveryType::CrossSeam: SpeedFactor = 0.96f; break;
 	case EDeliveryType::ArmBall: SpeedFactor = 1.06f; break;
 	case EDeliveryType::Googly: SpeedFactor = 0.97f; break;
 	default: break;
@@ -178,9 +181,14 @@ FDeliveryRelease CricketBowling::Execute(const FCricketPlayer& Bowler, ECricketH
 		case EDeliveryType::Inswing: B.SwingAccel = -Swing * Off; break;
 		case EDeliveryType::Slower: B.SwingAccel = 0.3f * Swing * CricketMath::Gauss(Rng); break;
 		case EDeliveryType::Cutter: Spin.X = Arm * 70.f * Move; break; // off-cutter: into the right-hander
+		case EDeliveryType::Seam: B.SwingAccel = 0.1f * Swing * CricketMath::Gauss(Rng); break;
+		case EDeliveryType::CrossSeam: break; // no seam to swing on or land on
 		default: B.SwingAccel = 0.25f * Swing * CricketMath::Gauss(Rng); break;
 		}
-		B.SeamKick = 0.35f * Move * CricketMath::Gauss(Rng);
+		// Off the pitch the ball deviates whichever way the seam lands, unknown to bowler and batter alike.
+		// An upright seam lands on it more often and moves further; the scrambled seam lands on leather.
+		const float SeamLands = Plan.Type == EDeliveryType::Seam ? 0.65f : Plan.Type == EDeliveryType::CrossSeam ? 0.f : 0.35f;
+		B.SeamKick = SeamLands * Move * CricketMath::Gauss(Rng);
 	}
 	else
 	{

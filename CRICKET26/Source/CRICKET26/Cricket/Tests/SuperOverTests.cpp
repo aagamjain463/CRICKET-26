@@ -542,7 +542,60 @@ bool FSOBallReleaseErrors::RunTest(const FString&)
 	return Bad == 0;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallDeterminism, "CRICKET26.Ball.DeterministicAndNoBall", CricketTestFlags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallPaceVariations, "CRICKET26.Ball.PaceVariationsAndExecution", CricketTestFlags)
+bool FSOBallPaceVariations::RunTest(const FString&)
+{
+	const FPitchConditions C;
+	auto Bowl = [&C](EDeliveryType Type, float Accuracy, float Timing, int32 Seed)
+	{
+		FCricketPlayer Bowler;
+		Bowler.Accuracy = Accuracy;
+		FDeliveryPlan Plan;
+		Plan.Type = Type;
+		Plan.Length = 6.5f;
+		return CricketBowling::Execute(Bowler, ECricketHand::Right, Plan, Timing, Seed, C);
+	};
+	// Sideways change in velocity where the ball pitches (m/s; + toward off for the right-hander).
+	auto OffThePitch = [&C](const FDeliveryRelease& R)
+	{
+		FBallState B = R.Ball;
+		float Before = 0.f;
+		while (B.Bounces == 0 && B.Time < 3.f) { Before = B.Vel.Y; CricketBall::Step(B, C); }
+		return float(B.Vel.Y) - Before;
+	};
+	auto Spread = [](TFunctionRef<float(int32)> Sample)
+	{
+		float Sum = 0.f, Sq = 0.f;
+		for (int32 Seed = 0; Seed < 60; ++Seed) { const float V = Sample(Seed); Sum += V; Sq += V * V; }
+		return FMath::Sqrt(FMath::Max(0.f, Sq / 60.f - FMath::Square(Sum / 60.f)));
+	};
+	// Friction at the bounce also checks the ball's angle across the pitch, the same for every seed; the
+	// seam's unpredictable part is the spread.
+	auto SeamSpread = [&](EDeliveryType Type) { return Spread([&](int32 Seed) { return OffThePitch(Bowl(Type, 1.f, 0.f, Seed)); }); };
+	auto LengthSpread = [&](EDeliveryType Type, float Accuracy, float Timing)
+	{
+		return Spread([&](int32 Seed) { return float(Bowl(Type, Accuracy, Timing, Seed).AimedPitch.X); });
+	};
+
+	const float Stock = SeamSpread(EDeliveryType::Stock), Seam = SeamSpread(EDeliveryType::Seam), Cross = SeamSpread(EDeliveryType::CrossSeam);
+	TestTrue(*FString::Printf(TEXT("seam up moves more off the pitch (%.2f vs stock %.2f m/s)"), Seam, Stock), Seam > 1.5f * Stock);
+	TestTrue(*FString::Printf(TEXT("cross-seam barely moves (%.3f m/s)"), Cross), Cross < 0.03f);
+	float Cut = 0.f;
+	for (int32 Seed = 0; Seed < 20; ++Seed) Cut += OffThePitch(Bowl(EDeliveryType::Cutter, 1.f, 0.f, Seed)) / 20.f;
+	TestTrue(*FString::Printf(TEXT("off-cutter comes back into the right-hander (%.2f m/s)"), Cut), Cut < -0.1f);
+	const FBallState CrossAtBat = AtCrease(Bowl(EDeliveryType::CrossSeam, 1.f, 0.f, 1)), StockAtBat = AtCrease(Bowl(EDeliveryType::Stock, 1.f, 0.f, 1));
+	TestTrue(TEXT("cross-seam a touch slower"), CrossAtBat.Time > StockAtBat.Time);
+
+	// Execution: skill and release quality set the scatter; cross-seam is the easiest to land.
+	const float Good = LengthSpread(EDeliveryType::Stock, 0.9f, 0.f), Poor = LengthSpread(EDeliveryType::Stock, 0.3f, 0.f);
+	const float Mistimed = LengthSpread(EDeliveryType::Stock, 0.9f, 0.6f), Control = LengthSpread(EDeliveryType::CrossSeam, 0.9f, 0.f);
+	TestTrue(*FString::Printf(TEXT("accurate bowler tighter (%.2f vs %.2f m)"), Good, Poor), Good < 0.6f * Poor);
+	TestTrue(*FString::Printf(TEXT("poor release wider (%.2f vs %.2f m)"), Mistimed, Good), Mistimed > 1.3f * Good);
+	TestTrue(*FString::Printf(TEXT("cross-seam tighter than stock (%.2f vs %.2f m)"), Control, Good), Control < Good);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallDeterminism,"CRICKET26.Ball.DeterministicAndNoBall", CricketTestFlags)
 bool FSOBallDeterminism::RunTest(const FString&)
 {
 	FCricketPlayer Bowler; // default accuracy: scatter on

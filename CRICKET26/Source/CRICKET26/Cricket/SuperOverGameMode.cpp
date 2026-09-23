@@ -314,8 +314,8 @@ void ASuperOverGameMode::HandleInput(APlayerController* PC, float Dt)
 		if (DPhase == EDeliveryPhase::Waiting)
 		{
 			const TArray<EDeliveryType> Rep = CricketBowling::Repertoire(BowlerPlayer().BowlerType);
-			const FKey Numbers[] = { EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four, EKeys::Five };
-			for (int32 I = 0; I < Rep.Num() && I < 5; ++I) if (Pressed(Numbers[I])) HumanPlan.Type = Rep[I];
+			const FKey Numbers[] = { EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four, EKeys::Five, EKeys::Six, EKeys::Seven };
+			for (int32 I = 0; I < Rep.Num() && I < UE_ARRAY_COUNT(Numbers); ++I) if (Pressed(Numbers[I])) HumanPlan.Type = Rep[I];
 			if (!Rep.Contains(HumanPlan.Type)) HumanPlan.Type = Rep[0];
 			// The camera looks down the pitch from behind the bowler: screen left is world +Y.
 			const float Off = OffSideSign(StrikerPlayer().BatHand);

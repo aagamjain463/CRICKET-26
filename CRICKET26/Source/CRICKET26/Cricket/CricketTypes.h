@@ -58,7 +58,8 @@ UENUM(BlueprintType)
 enum class EDeliveryType : uint8
 {
 	Stock, Outswing, Inswing, Cutter, Slower,          // pace
-	OffBreak, ArmBall, LegBreak, Googly, TopSpinner    // spin
+	OffBreak, ArmBall, LegBreak, Googly, TopSpinner,   // spin
+	Seam, CrossSeam                                    // pace: seam-up and scrambled seam
 };
 
 /** What the batter intends; the concrete shot is chosen from the read of the ball. */

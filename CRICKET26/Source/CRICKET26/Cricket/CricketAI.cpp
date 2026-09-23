@@ -51,6 +51,8 @@ FBowlingChoice CricketAI::ChooseDelivery(const FCricketPlayer& Bowler, ECricketH
 		{ TEXT("Bouncer"), EDeliveryType::Stock, 11.5f, 0.f, 1.f },
 		{ TEXT("Hard length"), EDeliveryType::Cutter, 8.f, 0.2f, 1.f },
 		{ TEXT("Full outswinger"), EDeliveryType::Outswing, 4.f, 0.25f, 1.f },
+		{ TEXT("Seam up, good length"), EDeliveryType::Seam, 6.5f, 0.2f, 0.8f },
+		{ TEXT("Cross-seam, back of a length"), EDeliveryType::CrossSeam, 8.5f, 0.1f, 0.6f },
 	};
 	static const FPlanOption OffSpin[] = {
 		{ TEXT("Stump to stump"), EDeliveryType::OffBreak, 4.8f, 0.1f, 3.f },

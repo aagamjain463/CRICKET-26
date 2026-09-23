@@ -14,6 +14,8 @@ namespace
 		case EDeliveryType::Inswing: return TEXT("Inswinger");
 		case EDeliveryType::Cutter: return TEXT("Off-cutter");
 		case EDeliveryType::Slower: return TEXT("Slower ball");
+		case EDeliveryType::Seam: return TEXT("Seam up");
+		case EDeliveryType::CrossSeam: return TEXT("Cross-seam");
 		case EDeliveryType::OffBreak: return TEXT("Off break");
 		case EDeliveryType::ArmBall: return TEXT("Arm ball");
 		case EDeliveryType::LegBreak: return TEXT("Leg break");
