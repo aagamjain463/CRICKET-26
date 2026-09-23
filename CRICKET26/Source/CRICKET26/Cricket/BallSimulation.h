@@ -34,7 +34,9 @@ struct FSurface
 
 struct FPitchConditions
 {
-	FSurface Pitch{ 0.52f, 0.32f, 1.5f };
+	// Vertical restitution is the effective value for an oblique impact at bowling speed, calibrated so
+	// a 135 km/h ball passes the crease at ~0.75 m off a 6 m length and ~1.45 m off 10 m (ball-tracking).
+	FSurface Pitch{ 0.63f, 0.32f, 1.5f };
 	FSurface Outfield{ 0.38f, 0.45f, 1.1f };
 };
 

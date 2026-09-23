@@ -48,6 +48,14 @@ const FShotProfile& CricketBatting::Profile(EShotType Shot, EFootwork Foot)
 	static const FShotProfile DriveA = Make(EShotType::Drive, F::Advance, false, 0.03f, 0.85f, -0.35f, 0.75f, 24.f, 3.f, -50.f, 75.f, 0.58f);
 	static const FShotProfile LoftA = Make(EShotType::Loft, F::Advance, false, 0.1f, 1.0f, -0.45f, 0.8f, 26.f, 30.f, -70.f, 80.f, 0.6f);
 	static const FShotProfile Sweep = Make(EShotType::Sweep, F::Front, true, 0.0f, 0.65f, -0.35f, 0.6f, 20.f, 6.f, -150.f, -55.f, 0.3f);
+	// Wrists through the leg side off a full ball on the pads; fine enough it is a glance.
+	static const FShotProfile Flick = Make(EShotType::Flick, F::Front, false, 0.03f, 0.9f, -0.45f, 0.3f, 20.f, 2.f, -150.f, -20.f, 0.26f);
+	// Cross-bat strokes. Loft intent adds 20 deg to all but the lofted drive, so these start low.
+	static const FShotProfile Hook = Make(EShotType::Hook, F::Back, true, 1.1f, 2.1f, -0.5f, 0.5f, 25.f, 4.f, -170.f, -60.f, 0.24f);
+	static const FShotProfile SlogSweep = Make(EShotType::SlogSweep, F::Front, true, 0.0f, 0.8f, -0.4f, 0.6f, 25.f, 10.f, -110.f, -30.f, 0.3f);
+	static const FShotProfile ReverseSweep = Make(EShotType::ReverseSweep, F::Front, true, 0.0f, 0.6f, -0.3f, 0.7f, 17.f, 6.f, 70.f, 160.f, 0.3f);
+	// Face opened to the sky: little bat speed, the pace comes off the ball.
+	static const FShotProfile Scoop = Make(EShotType::Scoop, F::Front, true, 0.0f, 0.7f, -0.3f, 0.4f, 8.f, 15.f, -178.f, -135.f, 0.3f);
 	switch (Shot)
 	{
 	case EShotType::Defend: return Foot == F::Front ? DefendF : DefendB;
@@ -57,6 +65,11 @@ const FShotProfile& CricketBatting::Profile(EShotType Shot, EFootwork Foot)
 	case EShotType::Cut: return Cut;
 	case EShotType::Pull: return Pull;
 	case EShotType::Sweep: return Sweep;
+	case EShotType::Flick: return Flick;
+	case EShotType::Hook: return Hook;
+	case EShotType::SlogSweep: return SlogSweep;
+	case EShotType::ReverseSweep: return ReverseSweep;
+	case EShotType::Scoop: return Scoop;
 	default: return Leave;
 	}
 }
@@ -71,16 +84,21 @@ FShotProfile CricketBatting::ChooseShot(EBatIntent Intent, float Dir, float Read
 {
 	const bool bShort = ReadPitchX > 7.f || ReadHeight > 0.95f;
 	const bool bAdvance = BowlerType != EBowlerType::Pace && LeadTime > AdvanceLead && !bShort;
+	const bool bSweepable = BowlerType != EBowlerType::Pace && !bAdvance;
 	switch (Intent)
 	{
 	case EBatIntent::Leave: return Profile(EShotType::Leave);
 	case EBatIntent::Defend: return Profile(EShotType::Defend, bShort || ReadPitchX > 5.5f ? EFootwork::Back : EFootwork::Front);
 	case EBatIntent::Ground:
 		if (bShort) return Profile(Dir > 35.f ? EShotType::Cut : Dir < -35.f ? EShotType::Pull : EShotType::Punch);
-		if (Dir < -60.f && BowlerType != EBowlerType::Pace && !bAdvance) return Profile(EShotType::Sweep);
+		if (Dir < -60.f && bSweepable) return Profile(EShotType::Sweep);
+		if (Dir > 80.f && bSweepable) return Profile(EShotType::ReverseSweep);
+		if (Dir < -50.f && !bAdvance) return Profile(EShotType::Flick);
 		return Profile(EShotType::Drive, bAdvance ? EFootwork::Advance : EFootwork::Front);
 	case EBatIntent::Loft:
-		if (bShort) return Profile(Dir > 35.f ? EShotType::Cut : EShotType::Pull);
+		if (bShort) return Profile(Dir > 35.f ? EShotType::Cut : ReadHeight > 1.1f && Dir < 0.f ? EShotType::Hook : EShotType::Pull);
+		if (Dir < -135.f && !bAdvance) return Profile(EShotType::Scoop);
+		if (Dir < -45.f && bSweepable) return Profile(EShotType::SlogSweep);
 		return Profile(EShotType::Loft, bAdvance ? EFootwork::Advance : EFootwork::Front);
 	}
 	return Profile(EShotType::Leave);

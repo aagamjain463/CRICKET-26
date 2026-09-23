@@ -55,6 +55,11 @@ FString CricketDelivery::ShotName(EShotType S)
 	case EShotType::Cut: return TEXT("Cut");
 	case EShotType::Pull: return TEXT("Pull");
 	case EShotType::Sweep: return TEXT("Sweep");
+	case EShotType::Flick: return TEXT("Flick");
+	case EShotType::Hook: return TEXT("Hook");
+	case EShotType::SlogSweep: return TEXT("Slog sweep");
+	case EShotType::ReverseSweep: return TEXT("Reverse sweep");
+	case EShotType::Scoop: return TEXT("Scoop");
 	default: return TEXT("Leave");
 	}
 }
@@ -277,6 +282,8 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 		if (B.Pos.X < -0.5f) break;
 	}
 	R.bWide = (bWideLine || bOverHeadWide) && !bContact && !R.bPadImpact && !R.bNoBall;
+	// Struck, an over-head ball is not a wide (Law 22.4) - it is a bouncer, a no-ball once over the limit.
+	if (bOverHeadWide && !R.bWide && Ctx.BouncersBowled >= Ctx.Rules.MaxBouncersPerOver) R.bNoBall = true;
 
 	// Hit wicket: rocking deep into the crease against a rising ball and getting there late, the batter
 	// can tread on or swing into the stumps.

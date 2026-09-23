@@ -487,6 +487,13 @@ bool FSOBallLengths::RunTest(const FString&)
 	const FDeliveryRelease Slow = Release(EDeliveryType::Slower, 5.f), Stock = Release(EDeliveryType::Stock, 5.f);
 	TestTrue(TEXT("slower ball slower"), Slow.SpeedKph < Stock.SpeedKph * 0.85f);
 	TestTrue(TEXT("slower ball takes longer"), AtCrease(Slow).Time > AtCrease(Stock).Time + 0.05f);
+	FString Table;
+	for (float L = 2.f; L <= 12.f; L += 2.f)
+	{
+		Table += FString::Printf(TEXT(" %.0fm:%.2f/%.2f"), L, AtCrease(Release(EDeliveryType::Stock, L)).Pos.Z,
+			AtCrease(Release(EDeliveryType::TopSpinner, L * 0.6f, 0.f, 0.f, EBowlerType::OffSpin)).Pos.Z);
+	}
+	UE_LOG(LogTemp, Display, TEXT("Bounce table (pace length: height at crease / spin at 0.6 x length):%s"), *Table);
 	return true;
 }
 
@@ -654,6 +661,34 @@ bool FSOBatContinuous::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBatFamilies, "CRICKET26.Batting.ShotFamiliesGoWhereTheyShould", CricketTestFlags)
+bool FSOBatFamilies::RunTest(const FString&)
+{
+	struct FCase { EBowlerType Style; EDeliveryType Type; float Length, Line; EBatIntent Intent; float Dir; EShotType Want; float Centre, Half; };
+	const FCase Cases[] = {
+		{ EBowlerType::Pace, EDeliveryType::Stock, 4.f, -0.1f, EBatIntent::Ground, -110.f, EShotType::Flick, -110.f, 45.f },
+		{ EBowlerType::Pace, EDeliveryType::Stock, 10.5f, 0.f, EBatIntent::Loft, -100.f, EShotType::Hook, -110.f, 55.f },
+		{ EBowlerType::OffSpin, EDeliveryType::OffBreak, 4.5f, 0.1f, EBatIntent::Loft, -70.f, EShotType::SlogSweep, -70.f, 45.f },
+		{ EBowlerType::LegSpin, EDeliveryType::LegBreak, 4.5f, 0.2f, EBatIntent::Ground, 110.f, EShotType::ReverseSweep, 115.f, 50.f },
+		{ EBowlerType::Pace, EDeliveryType::Stock, 2.5f, 0.f, EBatIntent::Loft, -165.f, EShotType::Scoop, -160.f, 30.f },
+	};
+	for (const FCase& K : Cases)
+	{
+		const FDeliveryRelease R = Release(K.Type, K.Length, K.Line, 0.f, K.Style);
+		const FDeliveryResult Res = CricketDelivery::Resolve(R, Perfect(R, K.Intent, K.Dir, K.Style), Ctx(K.Style));
+		const FVector V = Res.Contact.ExitVel;
+		const float Angle = FMath::RadiansToDegrees(FMath::Atan2(V.Y, V.X)); // right-hander: + is the off side
+		const FString What = FString::Printf(TEXT("%s: %s, exit %.1f m/s at %.0f deg, %.0f up"), *CricketDelivery::ShotName(K.Want),
+			*Res.Summary, V.Size(), Angle, FMath::RadiansToDegrees(FMath::Atan2(V.Z, FVector2D(V.X, V.Y).Size())));
+		UE_LOG(LogTemp, Display, TEXT("Shot family %s (read: pitch %.1f m, %.2f m high at the front plane)"), *What,
+			CricketDelivery::Read(R.Ball, 0.f, FPitchConditions()).PitchX, CricketDelivery::Read(R.Ball, 0.f, FPitchConditions()).HeightAtBat);
+		TestEqual(*What, Res.Shot.Shot, K.Want);
+		TestTrue(*(What + TEXT(" - hit")), Res.Contact.HasContact());
+		TestTrue(*(What + TEXT(" - direction")), FMath::Abs(FMath::FindDeltaAngleDegrees(K.Centre, Angle)) <= K.Half);
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBatWicket, "CRICKET26.Batting.BowledAndLBW", CricketTestFlags)
 bool FSOBatWicket::RunTest(const FString&)
 {
@@ -723,6 +758,26 @@ bool FSOUmpireHeights::RunTest(const FString&)
 	FResolveContext NbRules = Ctx();
 	NbRules.Rules.bOverHeadIsWide = false;
 	TestTrue(TEXT("or a no-ball under other playing conditions"), CricketDelivery::Resolve(High, FBatInput(), NbRules).bNoBall);
+	// Law 22.4: once struck it is not a wide; over the bouncer limit it is still a no-ball.
+	FResolveContext Spent = Ctx();
+	Spent.BouncersBowled = Spent.Rules.MaxBouncersPerOver;
+	// A ball just over head height at the crease that a hook can still reach.
+	FDeliveryRelease Hookable = High;
+	for (float Vz = -13.f; Vz < -5.f; Vz += 0.1f) // shallower pitches further up, bounces lower
+	{
+		Hookable.Ball.Vel.Z = Vz;
+		const float Z = AtCrease(Hookable).Pos.Z;
+		if (Z > CricketGeo::HeadHeight && Z < 1.95f) break;
+	}
+	const FDeliveryResult Hit = CricketDelivery::Resolve(Hookable, Perfect(Hookable, EBatIntent::Loft, -60.f), Spent);
+	if (Hit.Contact.HasContact())
+	{
+		TestTrue(*FString::Printf(TEXT("struck over-head bouncer past the limit is a no-ball, not a wide (%s)"), *Hit.Summary), Hit.bNoBall && !Hit.bWide);
+	}
+	else
+	{
+		AddError(FString::Printf(TEXT("perfect hook should reach the over-head ball (%s, %.2f m at the crease)"), *Hit.Summary, AtCrease(Hookable).Pos.Z));
+	}
 	UE_LOG(LogTemp, Display, TEXT("Highest stock-delivery length over head height: %.2f (-1 = none up to 13 m)"), OverHead);
 	return true;
 }
@@ -880,6 +935,8 @@ bool FSOAIMatch::RunTest(const FString&)
 			C.Bowler = Bowler;
 			C.Field = CricketField::Make(CricketField::PresetFor(Bowler.BowlerType), C.Striker.BatHand, Bowler.BowlHand);
 			C.bFreeHit = M.bFreeHit;
+			C.Rules = M.Rules;
+			C.BouncersBowled = M.Cur().Bouncers;
 			C.Seed = Rng.RandHelper(1 << 20);
 			const float Aggr = CricketAI::Aggression(M);
 			C.RunMargin = CricketAI::RunMargin(M, Aggr);

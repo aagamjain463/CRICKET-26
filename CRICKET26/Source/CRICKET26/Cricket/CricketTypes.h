@@ -60,7 +60,7 @@ UENUM(BlueprintType)
 enum class EBatIntent : uint8 { Leave, Defend, Ground, Loft };
 
 UENUM(BlueprintType)
-enum class EShotType : uint8 { Leave, Defend, Drive, Loft, Punch, Cut, Pull, Sweep };
+enum class EShotType : uint8 { Leave, Defend, Drive, Loft, Punch, Cut, Pull, Sweep, Flick, Hook, SlogSweep, ReverseSweep, Scoop };
 
 UENUM(BlueprintType)
 enum class EFootwork : uint8 { Front, Back, Advance }; // Advance: down the track, out of the crease
