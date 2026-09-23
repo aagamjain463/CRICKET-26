@@ -38,6 +38,12 @@ namespace CricketMath
 		const float U1 = FMath::Max(R.GetFraction(), 1e-6f);
 		return FMath::Sqrt(-2.f * FMath::Loge(U1)) * FMath::Cos(2.f * PI * R.GetFraction());
 	}
+
+	/**
+	 * When a key seen at the start of a frame actually went down: somewhere in the Dt just gone, so the
+	 * midpoint is the unbiased estimate at any frame rate (error within +-Dt/2, mean zero).
+	 */
+	inline float PressTime(float FrameStartTime, float Dt) { return FrameStartTime + 0.5f * Dt; }
 }
 
 UENUM(BlueprintType)

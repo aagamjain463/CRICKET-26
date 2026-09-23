@@ -325,7 +325,7 @@ void ASuperOverGameMode::HandleInput(APlayerController* PC, float Dt)
 		}
 		else if (DPhase == EDeliveryPhase::RunUp && Pressed(EKeys::SpaceBar))
 		{
-			DoRelease(Meter);
+			DoRelease(FMath::Min(1.f, -1.f + 2.f * CricketMath::PressTime(PhaseTime, Dt) / RunUpSeconds));
 		}
 	}
 	else if (HumanBats())
@@ -344,7 +344,7 @@ void ASuperOverGameMode::HandleInput(APlayerController* PC, float Dt)
 			{
 				BatInput.Intent = Intent;
 				BatInput.DirectionDeg = Intent == EBatIntent::Defend ? 0.f : ShotDirection;
-				BatInput.PressTime = PhaseTime;
+				BatInput.PressTime = CricketMath::PressTime(PhaseTime, Dt);
 				// Deterministic re-resolve: everything already shown is identical.
 				Ctx.RunMargin = HumanRunMargin;
 				Result = CricketDelivery::Resolve(Release, BatInput, Ctx);

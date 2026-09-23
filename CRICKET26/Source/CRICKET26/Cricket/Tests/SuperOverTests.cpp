@@ -855,6 +855,43 @@ bool FSOStumping::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOPressTimeFrameRate, "CRICKET26.Batting.PressTimeFrameRateIndependent", CricketTestFlags)
+bool FSOPressTimeFrameRate::RunTest(const FString&)
+{
+	// The game mode samples keys at the start of a tick, before the clock advances by that tick's Dt, so a press
+	// seen there happened somewhere in the Dt just gone. Stamping it must be unbiased at 30, 60 and 120 fps
+	// (with frame-time jitter), or timing windows would drift with the device's frame rate.
+	for (const float Fps : { 30.f, 60.f, 120.f })
+	{
+		FRandomStream Rng(FMath::RoundToInt(Fps));
+		double SumErr = 0.0;
+		float MaxErr = 0.f, MaxDt = 0.f;
+		const int32 N = 2000;
+		for (int32 I = 0; I < N; ++I)
+		{
+			const float TruePress = Rng.FRandRange(0.5f, 1.5f);
+			float Clock = 0.f;
+			for (;;)
+			{
+				const float Dt = (1.f / Fps) * Rng.FRandRange(0.8f, 1.2f);
+				MaxDt = FMath::Max(MaxDt, Dt);
+				if (Clock + Dt >= TruePress) // key went down during this tick's interval
+				{
+					const float Err = CricketMath::PressTime(Clock, Dt) - TruePress;
+					SumErr += Err;
+					MaxErr = FMath::Max(MaxErr, FMath::Abs(Err));
+					break;
+				}
+				Clock += Dt;
+			}
+		}
+		const float Bias = float(SumErr / N);
+		TestTrue(*FString::Printf(TEXT("%.0f fps: mean bias %.2f ms under 1 ms"), Fps, Bias * 1000.f), FMath::Abs(Bias) < 0.001f);
+		TestTrue(*FString::Printf(TEXT("%.0f fps: max error %.1f ms within half a frame"), Fps, MaxErr * 1000.f), MaxErr <= 0.5f * MaxDt + 1e-4f);
+	}
+	return true;
+}
+
 // ---------------------------------------------------------------- Fielding
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOFieldKeeper, "CRICKET26.Fielding.KeeperTakesBeatenBall", CricketTestFlags)
