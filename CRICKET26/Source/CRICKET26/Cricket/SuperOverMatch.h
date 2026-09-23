@@ -27,6 +27,10 @@ struct FSuperOverRules
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) int32 MaxLegalBalls = 6;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) int32 MaxWickets = 2;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bFreeHitAfterNoBall = true;
+	/** Bouncers (above shoulder height) allowed per over; the next one is a no-ball. Playing conditions vary (1 or 2). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) int32 MaxBouncersPerOver = 1;
+	/** A short ball passing above head height: wide (true) or no-ball (false), depending on the playing conditions. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bOverHeadIsWide = true;
 };
 
 /** Result of one delivery as decided by the simulation (umpire's view). */
@@ -34,9 +38,12 @@ USTRUCT(BlueprintType)
 struct FDeliveryOutcome
 {
 	GENERATED_BODY()
-	UPROPERTY(EditAnywhere, BlueprintReadWrite) int32 RunsRun = 0;   // completed runs (byes when no bat contact)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) int32 RunsRun = 0;   // completed runs (byes / leg byes when no bat contact)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) int32 Boundary = 0;  // 0, 4 or 6
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bBatContact = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bLegBye = false;     // runs came off the body, not the bat
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bOverthrow = false;  // a throw went to the boundary: RunsRun + 4
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bBouncer = false;    // passed above shoulder height; counts toward the over's limit
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bWide = false;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bNoBall = false;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) EDismissal Dismissal = EDismissal::None;
@@ -75,6 +82,9 @@ struct FInningsState
 	UPROPERTY(BlueprintReadOnly) int32 LegalBalls = 0;
 	UPROPERTY(BlueprintReadOnly) int32 Deliveries = 0;
 	UPROPERTY(BlueprintReadOnly) int32 Extras = 0;
+	UPROPERTY(BlueprintReadOnly) int32 Byes = 0;
+	UPROPERTY(BlueprintReadOnly) int32 LegByes = 0;
+	UPROPERTY(BlueprintReadOnly) int32 Bouncers = 0;   // this over (a Super Over innings is one over)
 	UPROPERTY(BlueprintReadOnly) int32 Striker = 0;    // index into the batting order
 	UPROPERTY(BlueprintReadOnly) int32 NonStriker = 1;
 	UPROPERTY(BlueprintReadOnly) int32 NextBatter = 2;
@@ -113,6 +123,7 @@ struct FSuperOverMatch
 	bool IsChase() const { return CurrentInnings == 1; }
 	int32 RunsRequired() const { return IsChase() ? FMath::Max(0, Target - Cur().Runs) : 0; }
 	int32 BallsRemaining() const { return Rules.MaxLegalBalls - Cur().LegalBalls; }
+	bool BouncerAllowed() const { return Cur().Bouncers < Rules.MaxBouncersPerOver; }
 	/** Broadcast pressure line, e.g. "11 REQUIRED FROM 4". */
 	FString PressureText() const;
 	bool CheckInvariants(FString& OutError) const;

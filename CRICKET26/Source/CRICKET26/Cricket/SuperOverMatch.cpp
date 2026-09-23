@@ -34,22 +34,31 @@ bool FSuperOverMatch::CompleteDelivery(const FDeliveryOutcome& O, TArray<ECricke
 	if (Phase != EMatchPhase::DeliveryInProgress) return false;
 	if (O.RunsRun < 0 || O.RunsRun > 7) return false;
 	if (O.Boundary != 0 && O.Boundary != 4 && O.Boundary != 6) return false;
-	if (O.Boundary != 0 && (O.RunsRun != 0 || O.Dismissal != EDismissal::None)) return false;
-	if (O.bWide && (O.bNoBall || O.bBatContact)) return false;
-	if (O.Boundary == 6 && !O.bBatContact) return false;
+	// Runs completed plus a boundary only happens when an overthrow reaches the rope.
+	if (O.bOverthrow != (O.Boundary == 4 && O.RunsRun > 0)) return false;
+	if (O.Boundary != 0 && O.Dismissal != EDismissal::None) return false;
+	if (O.bWide && (O.bNoBall || O.bBatContact || O.bLegBye)) return false;
+	if (O.bLegBye && O.bBatContact) return false;
+	if (O.Boundary == 6 && (!O.bBatContact || O.bOverthrow)) return false;
+	// The umpire calls a bouncer over the limit; an uncalled one means the simulation broke the rules.
+	if (O.bBouncer && !BouncerAllowed() && !O.bNoBall && !O.bWide) return false;
 
 	const EDismissal D = O.Dismissal;
-	// Only a run out survives a no-ball or a free hit; a wide can't be bowled, caught or LBW.
+	// Only a run out survives a no-ball or a free hit (Law 21.18). Off a wide the striker can still be
+	// stumped, hit wicket or run out, but not bowled, caught or LBW.
 	if ((O.bNoBall || bFreeHit) && D != EDismissal::None && D != EDismissal::RunOut) return false;
 	if (O.bWide && (D == EDismissal::Bowled || D == EDismissal::Caught || D == EDismissal::LBW)) return false;
 	if (D == EDismissal::Caught && !O.bBatContact) return false;
+	if (D == EDismissal::LBW && O.bBatContact) return false;
+	// These end the ball at once: no runs can be completed alongside them.
+	if ((D == EDismissal::Bowled || D == EDismissal::LBW || D == EDismissal::Stumped || D == EDismissal::HitWicket) && O.RunsRun != 0) return false;
 
 	FInningsState& In = Mut();
 	const bool bLegal = !O.bWide && !O.bNoBall;
 	// A caught batter's runs never count.
 	const int32 Ran = D == EDismissal::Caught ? 0 : O.RunsRun;
 	const int32 OffBat = O.bBatContact ? Ran + O.Boundary : 0;
-	const int32 Byes = (O.bBatContact || O.bWide) ? 0 : Ran + O.Boundary;
+	const int32 Byes = (O.bBatContact || O.bWide) ? 0 : Ran + O.Boundary; // byes or leg byes
 	const int32 Wides = O.bWide ? 1 + Ran + O.Boundary : 0;
 	const int32 NoBall = O.bNoBall ? 1 : 0;
 	const int32 Total = OffBat + Byes + Wides + NoBall;
@@ -57,25 +66,29 @@ bool FSuperOverMatch::CompleteDelivery(const FDeliveryOutcome& O, TArray<ECricke
 	In.Deliveries++;
 	In.Runs += Total;
 	In.Extras += Byes + Wides + NoBall;
-	In.Bowler.Runs += OffBat + Wides + NoBall; // byes are not the bowler's fault
+	(O.bLegBye ? In.LegByes : In.Byes) += Byes;
+	In.Bowler.Runs += OffBat + Wides + NoBall; // byes and leg byes are not the bowler's fault
 	FBatterCard& S = In.Batters[In.Striker];
 	S.Runs += OffBat;
 	if (!O.bWide) S.Balls++;
 	if (bLegal) { In.LegalBalls++; In.Bowler.Balls++; }
 	if (O.bWide) In.Bowler.Wides++;
 	if (O.bNoBall) In.Bowler.NoBalls++;
-	if (O.bBatContact && O.Boundary == 4) S.Fours++;
+	if (O.bBouncer) In.Bouncers++;
+	if (O.bBatContact && O.Boundary == 4 && !O.bOverthrow) S.Fours++;
 	if (O.Boundary == 6) S.Sixes++;
 
-	FString Log = D != EDismissal::None ? TEXT("W") : (Total == 0 ? TEXT(".") : FString::FromInt(Total));
+	FString Log = Total == 0 ? TEXT(".") : FString::FromInt(Total);
 	if (O.bWide) Log = FString::Printf(TEXT("%dwd"), Total);
-	if (O.bNoBall) Log = FString::Printf(TEXT("%dnb"), Total);
+	else if (O.bNoBall) Log = FString::Printf(TEXT("%dnb"), Total);
+	else if (Byes > 0) Log = FString::FromInt(Total) + (O.bLegBye ? TEXT("lb") : TEXT("b"));
+	if (D != EDismissal::None) Log = Total == 0 ? TEXT("W") : Log + TEXT("W");
 	In.BallLog.Add(Log);
 
 	OutEvents.Add(ECricketEvent::DeliveryCompleted);
 	if (O.bWide) OutEvents.Add(ECricketEvent::Wide);
 	if (O.bNoBall) OutEvents.Add(ECricketEvent::NoBall);
-	if (O.Boundary == 4) OutEvents.Add(ECricketEvent::BoundaryFour);
+	if (O.Boundary == 4 && !O.bOverthrow) OutEvents.Add(ECricketEvent::BoundaryFour);
 	if (O.Boundary == 6) OutEvents.Add(ECricketEvent::BoundarySix);
 	if (Total == 0 && D == EDismissal::None) OutEvents.Add(ECricketEvent::DotBall);
 	if (Total > 0 && O.Boundary == 0) OutEvents.Add(ECricketEvent::RunsScored);
@@ -109,7 +122,7 @@ bool FSuperOverMatch::CompleteDelivery(const FDeliveryOutcome& O, TArray<ECricke
 		}
 		else
 		{
-			// Bowled / LBW / stumped / caught: striker out, new batter on strike (Law 18.11).
+			// Bowled / LBW / stumped / hit wicket / caught: striker out, new batter on strike (Law 18.11).
 			OutSlot = In.Striker;
 			bNewAtStrikerEnd = true;
 			In.Striker = -1;

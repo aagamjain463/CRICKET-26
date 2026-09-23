@@ -84,6 +84,7 @@ FBallRead CricketDelivery::Read(const FBallState& Release, float AtTime, const F
 		R.HeightAtBat = At.Z;
 		R.ArrivalTime = T;
 	}
+	R.bPitched = bPitched;
 	if (!bPitched)
 	{
 		while (P.Bounces == 0 && P.Time < 4.f && P.Pos.X > -2.f) Step(P, C);
@@ -108,10 +109,12 @@ FDeliveryOutcome FDeliveryResult::ToOutcome() const
 	O.bBatContact = Contact.HasContact();
 	O.bWide = bWide;
 	O.bNoBall = bNoBall;
+	O.bBouncer = bBouncer;
+	O.bLegBye = bPadImpact && !O.bBatContact;
 	O.Dismissal = Dismissal;
 	O.bRunOutStriker = Running.bRunOutStriker;
-	O.Boundary = Fielding.Boundary;
-	O.RunsRun = Fielding.Boundary ? 0 : Running.Completed;
+	O.Boundary = bRunsAllowed ? Fielding.Boundary : 0;
+	O.RunsRun = bRunsAllowed && !Fielding.Boundary ? Running.Completed : 0;
 	return O;
 }
 
@@ -127,6 +130,26 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 	R.bNoBall = Release.bNoBall;
 	R.Shot = CricketBatting::Profile(EShotType::Leave);
 
+	// The umpire judges height where the ball passes, or would have passed, the striker standing
+	// upright at the popping crease - independent of what the batter does with it.
+	bool bOverHeadWide = false;
+	FBallState Ghost = Release.Ball;
+	if (SimulateToPlane(Ghost, CricketGeo::PoppingCrease, C))
+	{
+		if (Ghost.Bounces == 0 && Ghost.Pos.Z > CricketGeo::WaistHeight)
+		{
+			R.bBeamer = true;
+			R.bNoBall = true;
+		}
+		else if (Ghost.Bounces > 0 && Ghost.Pos.Z > CricketGeo::ShoulderHeight)
+		{
+			R.bBouncer = true;
+			const bool bOverHead = Ghost.Pos.Z > CricketGeo::HeadHeight;
+			if (bOverHead && Ctx.Rules.bOverHeadIsWide) bOverHeadWide = true;
+			else if (bOverHead || Ctx.BouncersBowled >= Ctx.Rules.MaxBouncersPerOver) R.bNoBall = true;
+		}
+	}
+
 	// Shot choice uses the batter's read at the moment the player commits; bat placement uses the
 	// read ReadLead seconds before the ball arrives at the chosen contact plane.
 	FVector Aim = FVector::ZeroVector;
@@ -134,7 +157,8 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 	if (Input.IsShot())
 	{
 		const FBallRead Seen = Read(Release.Ball, Input.PressTime, C);
-		R.Shot = CricketBatting::ChooseShot(Input.Intent, Input.DirectionDeg, Seen.PitchX, Seen.HeightAtBat, Ctx.Bowler.BowlerType);
+		const float Lead = Seen.bPitched ? 0.f : Seen.ArrivalTime - Input.PressTime;
+		R.Shot = CricketBatting::ChooseShot(Input.Intent, Input.DirectionDeg, Seen.PitchX, Seen.HeightAtBat, Ctx.Bowler.BowlerType, Lead);
 		FBallState Probe = Release.Ball;
 		if (SimulateToPlane(Probe, R.Shot.ContactX(), C) && Input.PressTime <= Probe.Time)
 		{
@@ -153,15 +177,16 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 	}
 
 	const bool bShot = R.Shot.Shot != EShotType::Leave;
-	const bool bFront = bShot && R.Shot.Foot == EFootwork::Front;
-	const float PadX = bFront ? 1.75f : 0.8f;
-	const float PadMin = bFront ? -0.22f : -0.32f, PadMax = bFront ? 0.10f : 0.0f;
+	const EFootwork Foot = bShot ? R.Shot.Foot : EFootwork::Back;
+	const float PadX = Foot == EFootwork::Advance ? 2.75f : Foot == EFootwork::Front ? 1.75f : 0.8f;
+	const float PadMin = Foot == EFootwork::Back ? -0.32f : -0.22f, PadMax = Foot == EFootwork::Back ? 0.0f : 0.10f;
 	const float InLine = CricketGeo::StumpsHalfWidth + CricketGeo::BallRadius;
 
 	// Phase 1: release until bat, pad, stumps, or past the batter.
 	FBallState B = Release.Ball;
 	R.BallPath.Add(B.Pos);
 	bool bContact = false, bWideLine = false, bDead = false;
+	float PassedBat = -1.f, HeightAtBat = 0.f; // when/how high the ball crossed the bat's plane
 	while (B.Time < 4.f)
 	{
 		const FBallState Prev = B;
@@ -175,6 +200,8 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 		if (bShot && Crossed(R.Shot.ContactX()))
 		{
 			const FBallState AtBat = AtPlane(Prev, B, R.Shot.ContactX());
+			PassedBat = AtBat.Time;
+			HeightAtBat = AtBat.Pos.Z;
 			R.Contact = CricketBatting::ResolveContact(AtBat, Aim, R.Shot, Input.DirectionDeg, Timing, Bat, Input.Intent == EBatIntent::Loft);
 			if (R.Contact.HasContact())
 			{
@@ -208,12 +235,21 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 				const bool bImpactInLine = FMath::Abs(Lat) <= InLine;
 				const bool bNoShotOutsideOff = !bShot && Lat > InLine;
 				if (!bPitchedOutsideLeg && (bImpactInLine || bNoShotOutsideOff) && bWouldHit) R.Dismissal = EDismissal::LBW;
+
+				// The pads are rounded: a ball striking off-centre glances away toward that side, one
+				// struck square-on drops dead in front. Pads absorb most of the impact.
+				const float HalfPad = 0.5f * (PadMax - PadMin) + CricketGeo::BallRadius;
+				const float Across = FMath::Clamp((Lat - 0.5f * (PadMin + PadMax)) / HalfPad, -0.9f, 0.9f);
+				const FVector N(FMath::Sqrt(1.f - Across * Across), Across * Off, 0.f);
+				const float Vn = FVector::DotProduct(S.Vel, N);
 				B = S;
-				B.Vel = FVector(1.2f, Rng.FRandRange(-1.5f, 1.5f), 0.8f);
+				B.Vel = 0.5f * (S.Vel - Vn * N) - 0.15f * Vn * N;
 				B.Spin = FVector::ZeroVector;
-				B.SwingAccel = 0.f;
+				B.SwingAccel = B.SeamKick = 0.f;
 				B.bRolling = false;
-				bDead = true;
+				// Leg byes only when the batter offered a stroke (Law 23.2).
+				R.bRunsAllowed = bShot;
+				bDead = R.Dismissal == EDismissal::LBW;
 				break;
 			}
 		}
@@ -233,9 +269,20 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 		R.BallPath.Add(B.Pos);
 		if (B.Pos.X < -0.5f) break;
 	}
-	R.bWide = bWideLine && !bContact && !R.bPadImpact && !R.bNoBall;
+	R.bWide = (bWideLine || bOverHeadWide) && !bContact && !R.bPadImpact && !R.bNoBall;
 
-	// Phase 2: the ball after the bat / past the batter.
+	// Hit wicket: rocking deep into the crease against a rising ball and getting there late, the batter
+	// can tread on or swing into the stumps.
+	// ponytail: one balance roll scaled by technique, not a foot/body simulation; replace once the
+	// animation rig tracks the back foot against the stumps.
+	if (bShot && R.Dismissal == EDismissal::None && R.Shot.Foot == EFootwork::Back && R.Shot.bCrossBat
+		&& Timing > 0.06f && HeightAtBat > 1.2f && Rng.GetFraction() < 0.3f * (1.f - FMath::Clamp(Bat.Technique, 0.f, 1.f)))
+	{
+		R.Dismissal = EDismissal::HitWicket;
+		bDead = true;
+	}
+
+	// Phase 2: the ball after the bat / pad / past the batter.
 	const int32 PreCount = R.BallPath.Num();
 	const float T0 = B.Time;
 	TArray<FBallState> Post;
@@ -245,9 +292,9 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 	{
 		const FBallState Prev = B;
 		const EStep Ev = Step(B, C);
-		if (bContact && !R.bStumpsHit && Prev.Pos.X > 0.f && B.Pos.X <= 0.f && HitsStumps(AtPlane(Prev, B, 0.f).Pos))
+		if ((bContact || R.bPadImpact) && !bDead && !R.bStumpsHit && Prev.Pos.X > 0.f && B.Pos.X <= 0.f && HitsStumps(AtPlane(Prev, B, 0.f).Pos))
 		{
-			R.bStumpsHit = true; // played on
+			R.bStumpsHit = true; // played on (off bat or pad)
 			R.StumpsTime = B.Time;
 			R.Dismissal = EDismissal::Bowled;
 			B.Vel *= 0.3f;
@@ -268,8 +315,11 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 
 	if (!bDead && R.Dismissal == EDismissal::None)
 	{
-		R.Fielding = CricketField::SolveFielding(Post, Dt, Ctx.Field, Ctx.Fielding, bContact, Rng);
+		// A beaten ball: the keeper has been tracking it since it pitched (or since release for a full toss).
+		const float KeeperLead = bContact ? 0.f : T0 - FMath::Max(R.PitchTime, 0.f);
+		R.Fielding = CricketField::SolveFielding(Post, Dt, Ctx.Field, Ctx.Fielding, bContact, Rng, KeeperLead);
 		const FFieldingOutcome& F = R.Fielding;
+		const bool bKeeperUp = F.Fielder >= 0 && Ctx.Field[F.Fielder].bKeeper && Ctx.Field[F.Fielder].Home.Size() < 3.f;
 		if (F.Boundary)
 		{
 			TruncateAt(F.BoundaryTime + 0.7f);
@@ -284,10 +334,30 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 				Hold(R.BallPath, F.FieldPos, 2.f);
 				R.DeadTime = T0 + F.FieldTime + 2.f;
 			}
-			else if (bContact)
+			else if (bShot && Foot == EFootwork::Advance && !bContact && !R.bPadImpact && bKeeperUp && PassedBat >= 0.f)
+			{
+				// Beaten down the track: the keeper, standing up, races the striker back to the crease.
+				// The striker has to get the bat grounded ~1 m behind where they met the ball.
+				const float OutOfGround = R.Shot.ContactX() - CricketGeo::PoppingCrease - 1.f;
+				const float Regain = PassedBat - T0 + 0.2f + CricketField::TimeToCover(OutOfGround, Bat.RunSpeed);
+				const bool bCleanTake = Rng.GetFraction() < 0.75f + 0.25f * FMath::Clamp(Ctx.Fielding.Catching, 0.f, 1.f);
+				const float Break = F.FieldTime + (bCleanTake ? 0.25f : 0.9f);
+				if (Break < Regain) R.Dismissal = EDismissal::Stumped;
+				Hold(R.BallPath, FVector(0.f, 0.f, 0.5f), 1.5f);
+				R.DeadTime = T0 + Break + 1.5f;
+			}
+			else if (R.bRunsAllowed)
 			{
 				R.Running = CricketField::SolveRunning(F, Ctx.Striker, Ctx.NonStriker, Ctx.Fielding,
 					Ctx.Field[F.Fielder].bKeeper, Ctx.RunMargin, Rng);
+			}
+
+			if (R.DeadTime > 0.f)
+			{
+				// Already decided above (catch or stumping).
+			}
+			else if (bContact || R.Running.Attempted > 0)
+			{
 				const FVector Hand = FVector(F.FieldPos.X, F.FieldPos.Y, 1.4f);
 				const FVector Stumps(R.Running.bThrowToStrikerEnd ? 0.f : CricketGeo::PitchLength, 0.f, 0.6f);
 				Hold(R.BallPath, Hand, R.Running.ThrowRelease - F.FieldTime);
@@ -318,24 +388,33 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 	if (bProtected && R.Dismissal != EDismissal::None && R.Dismissal != EDismissal::RunOut) R.Dismissal = EDismissal::None;
 
 	// Commentary-style summary for the HUD.
-	FString What = bShot ? FString::Printf(TEXT("%s - %s"), *ShotName(R.Shot.Shot), *ZoneName(R.Contact.Zone))
+	FString What = bShot ? FString::Printf(TEXT("%s%s - %s"), Foot == EFootwork::Advance ? TEXT("Down the track, ") : TEXT(""),
+			*ShotName(R.Shot.Shot), *ZoneName(R.Contact.Zone))
 		: (R.bTooLate ? TEXT("Too late on the shot") : TEXT("Left alone"));
+	const FDeliveryOutcome O = R.ToOutcome();
+	const TCHAR* Extra = O.bLegBye ? TEXT("leg bye") : TEXT("bye");
 	FString Result;
 	switch (R.Dismissal)
 	{
 	case EDismissal::Bowled: Result = TEXT("BOWLED!"); break;
 	case EDismissal::LBW: Result = TEXT("LBW!"); break;
-	case EDismissal::Caught: Result = FString::Printf(TEXT("CAUGHT by %s!"), *Ctx.Field[R.Fielding.Fielder].Position); break;
+	case EDismissal::Caught: Result = Ctx.Field[R.Fielding.Fielder].bKeeper ? FString(TEXT("CAUGHT BEHIND!"))
+		: FString::Printf(TEXT("CAUGHT by %s!"), *Ctx.Field[R.Fielding.Fielder].Position); break;
 	case EDismissal::RunOut: Result = TEXT("RUN OUT!"); break;
+	case EDismissal::Stumped: Result = TEXT("STUMPED!"); break;
+	case EDismissal::HitWicket: Result = TEXT("HIT WICKET!"); break;
 	default:
-		if (R.Fielding.Boundary) Result = R.Fielding.Boundary == 6 ? TEXT("SIX!") : TEXT("FOUR!");
-		else if (R.bWide) Result = TEXT("WIDE");
-		else if (R.bPadImpact) Result = TEXT("Hit on the pad - not out");
+		if (O.Boundary && !O.bBatContact) Result = FString::Printf(TEXT("FOUR %sS"), *FString(Extra).ToUpper());
+		else if (O.Boundary) Result = O.Boundary == 6 ? TEXT("SIX!") : TEXT("FOUR!");
+		else if (R.bPadImpact && !R.bRunsAllowed) Result = TEXT("Off the pad, no stroke offered - no leg byes");
 		else if (R.Fielding.bCatchChance && !R.Fielding.bCaught) Result = TEXT("DROPPED!");
-		else Result = R.Running.Completed > 0 ? FString::Printf(TEXT("%d run%s"), R.Running.Completed, R.Running.Completed > 1 ? TEXT("s") : TEXT(""))
-			: TEXT("No run");
+		else if (O.RunsRun > 0 && !O.bBatContact) Result = FString::Printf(TEXT("%d %s%s"), O.RunsRun, Extra, O.RunsRun > 1 ? TEXT("s") : TEXT(""));
+		else if (R.bPadImpact) Result = TEXT("Hit on the pad - not out");
+		else if (O.RunsRun > 0) Result = FString::Printf(TEXT("%d run%s"), O.RunsRun, O.RunsRun > 1 ? TEXT("s") : TEXT(""));
+		else Result = TEXT("No run");
 	}
-	if (R.bNoBall) Result += TEXT("  (NO BALL)");
+	if (R.bWide) Result += bOverHeadWide ? TEXT("  (WIDE - over head height)") : TEXT("  (WIDE)");
+	if (R.bNoBall) Result += R.bBeamer ? TEXT("  (NO BALL - above waist)") : R.bBouncer && !Release.bNoBall ? TEXT("  (NO BALL - bouncer)") : TEXT("  (NO BALL)");
 	R.Summary = What + TEXT("  >  ") + Result;
 	return R;
 }

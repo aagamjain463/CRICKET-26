@@ -69,7 +69,7 @@ float CricketField::TimeToCover(float Dist, float Top)
 }
 
 FFieldingOutcome CricketField::SolveFielding(const TArray<FBallState>& Samples, float Dt, const TArray<FFielder>& Field,
-	const FCricketPlayer& Skill, bool bContact, FRandomStream& Rng)
+	const FCricketPlayer& Skill, bool bContact, FRandomStream& Rng, float KeeperLead)
 {
 	FFieldingOutcome O;
 	if (Samples.Num() == 0) return O;
@@ -101,14 +101,15 @@ FFieldingOutcome CricketField::SolveFielding(const TArray<FBallState>& Samples, 
 			const float Reach = F.bKeeper ? 1.5f : 1.0f;
 			const float DiveReach = F.bKeeper ? 2.8f : 2.3f;
 			const float D = FVector2D::Distance(P, F.Home);
-			const float Need = Reaction + TimeToCover(FMath::Max(0.f, D - DiveReach), Skill.RunSpeed);
+			const float Lead = F.bKeeper ? KeeperLead : 0.f;
+			const float Need = Reaction + TimeToCover(FMath::Max(0.f, D - DiveReach), Skill.RunSpeed) - Lead;
 			if (Need > T) continue;
 			const float Slack = T - Need;
 			if (Slack > BestSlack)
 			{
 				Best = I;
 				BestSlack = Slack;
-				bBestDive = Reaction + TimeToCover(FMath::Max(0.f, D - Reach), Skill.RunSpeed) > T;
+				bBestDive = Reaction + TimeToCover(FMath::Max(0.f, D - Reach), Skill.RunSpeed) - Lead > T;
 			}
 		}
 		if (Best < 0) continue;

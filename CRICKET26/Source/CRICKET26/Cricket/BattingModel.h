@@ -24,7 +24,7 @@ struct FShotProfile
 	float LoftDeg = 0.f;
 	float DirMin = -180.f, DirMax = 180.f;   // allowed shot directions (deg, 0 = straight, + = off side)
 	float SwingTime = 0.25f;                 // input-to-contact time (s)
-	float ContactX() const { return Foot == EFootwork::Front ? 2.0f : 1.0f; }
+	float ContactX() const { return Foot == EFootwork::Advance ? 3.0f : Foot == EFootwork::Front ? 2.0f : 1.0f; }
 };
 
 struct FContactResult
@@ -45,8 +45,16 @@ namespace CricketBatting
 	/** Seconds before arrival at which the batter commits the bat's position. */
 	float ReadLead(const FCricketPlayer& Batter);
 
-	/** Contextual shot choice from intent, direction and the batter's read of the length. */
-	FShotProfile ChooseShot(EBatIntent Intent, float DirectionDeg, float ReadPitchX, float ReadHeightAtBat, EBowlerType BowlerType);
+	/**
+	 * Contextual shot choice from intent, direction and the batter's read of the length. Committing
+	 * LeadTime seconds before the ball arrives: against spin, an attacking stroke committed that early
+	 * (before the ball has pitched) means using the feet - down the track, out of the crease.
+	 */
+	FShotProfile ChooseShot(EBatIntent Intent, float DirectionDeg, float ReadPitchX, float ReadHeightAtBat, EBowlerType BowlerType,
+		float LeadTime = 0.f);
+
+	/** Commitment lead (s) beyond which an attacking stroke against spin goes down the track. */
+	constexpr float AdvanceLead = 0.5f;
 
 	/**
 	 * Resolves contact of the actual ball (state at the shot's contact plane) with a bat placed at

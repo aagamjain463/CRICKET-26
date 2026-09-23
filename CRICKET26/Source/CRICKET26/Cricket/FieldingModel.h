@@ -53,9 +53,13 @@ namespace CricketField
 	/** Seconds to cover Dist metres from standing, accelerating at 6 m/s^2 up to TopSpeed. */
 	float TimeToCover(float Dist, float TopSpeed);
 
-	/** Samples are post-contact ball states at a fixed Dt, starting at contact. */
+	/**
+	 * Samples are post-contact ball states at a fixed Dt, starting at contact. KeeperLead is how long
+	 * (s) the keeper has already been tracking the ball's line at the first sample - a keeper reacts to
+	 * a beaten ball off the pitch, not when it passes the stumps.
+	 */
 	FFieldingOutcome SolveFielding(const TArray<FBallState>& Samples, float Dt, const TArray<FFielder>& Field,
-		const FCricketPlayer& FieldingSkill, bool bBatContact, FRandomStream& Rng);
+		const FCricketPlayer& FieldingSkill, bool bBatContact, FRandomStream& Rng, float KeeperLead = 0.f);
 
 	/** Margin is the time buffer (s) the batters insist on; smaller = riskier. */
 	FRunningOutcome SolveRunning(const FFieldingOutcome& Fielding, const FCricketPlayer& Striker, const FCricketPlayer& NonStriker,

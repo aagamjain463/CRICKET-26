@@ -44,12 +44,15 @@ const FShotProfile& CricketBatting::Profile(EShotType Shot, EFootwork Foot)
 	static const FShotProfile Punch = Make(EShotType::Punch, F::Back, false, 0.5f, 1.3f, -0.2f, 0.7f, 20.f, 2.f, -35.f, 70.f, 0.24f);
 	static const FShotProfile Cut = Make(EShotType::Cut, F::Back, true, 0.45f, 1.3f, 0.15f, 1.05f, 22.f, 3.f, 70.f, 135.f, 0.24f);
 	static const FShotProfile Pull = Make(EShotType::Pull, F::Back, true, 0.75f, 1.75f, -0.4f, 0.55f, 26.f, 14.f, -135.f, -35.f, 0.26f);
+	// Down the track: the stroke is played ~1.8 m out of the crease; the walk adds to the swing time.
+	static const FShotProfile DriveA = Make(EShotType::Drive, F::Advance, false, 0.03f, 0.85f, -0.35f, 0.75f, 24.f, 3.f, -50.f, 75.f, 0.58f);
+	static const FShotProfile LoftA = Make(EShotType::Loft, F::Advance, false, 0.1f, 1.0f, -0.45f, 0.8f, 26.f, 30.f, -70.f, 80.f, 0.6f);
 	static const FShotProfile Sweep = Make(EShotType::Sweep, F::Front, true, 0.0f, 0.65f, -0.35f, 0.6f, 20.f, 6.f, -150.f, -55.f, 0.3f);
 	switch (Shot)
 	{
 	case EShotType::Defend: return Foot == F::Front ? DefendF : DefendB;
-	case EShotType::Drive: return Drive;
-	case EShotType::Loft: return Loft;
+	case EShotType::Drive: return Foot == F::Advance ? DriveA : Drive;
+	case EShotType::Loft: return Foot == F::Advance ? LoftA : Loft;
 	case EShotType::Punch: return Punch;
 	case EShotType::Cut: return Cut;
 	case EShotType::Pull: return Pull;
@@ -63,20 +66,22 @@ float CricketBatting::ReadLead(const FCricketPlayer& Batter)
 	return 0.10f + 0.14f * (1.f - FMath::Clamp(Batter.Technique, 0.f, 1.f));
 }
 
-FShotProfile CricketBatting::ChooseShot(EBatIntent Intent, float Dir, float ReadPitchX, float ReadHeight, EBowlerType BowlerType)
+FShotProfile CricketBatting::ChooseShot(EBatIntent Intent, float Dir, float ReadPitchX, float ReadHeight, EBowlerType BowlerType,
+	float LeadTime)
 {
 	const bool bShort = ReadPitchX > 7.f || ReadHeight > 0.95f;
+	const bool bAdvance = BowlerType != EBowlerType::Pace && LeadTime > AdvanceLead && !bShort;
 	switch (Intent)
 	{
 	case EBatIntent::Leave: return Profile(EShotType::Leave);
 	case EBatIntent::Defend: return Profile(EShotType::Defend, bShort || ReadPitchX > 5.5f ? EFootwork::Back : EFootwork::Front);
 	case EBatIntent::Ground:
 		if (bShort) return Profile(Dir > 35.f ? EShotType::Cut : Dir < -35.f ? EShotType::Pull : EShotType::Punch);
-		if (Dir < -60.f && BowlerType != EBowlerType::Pace) return Profile(EShotType::Sweep);
-		return Profile(EShotType::Drive);
+		if (Dir < -60.f && BowlerType != EBowlerType::Pace && !bAdvance) return Profile(EShotType::Sweep);
+		return Profile(EShotType::Drive, bAdvance ? EFootwork::Advance : EFootwork::Front);
 	case EBatIntent::Loft:
 		if (bShort) return Profile(Dir > 35.f ? EShotType::Cut : EShotType::Pull);
-		return Profile(EShotType::Loft);
+		return Profile(EShotType::Loft, bAdvance ? EFootwork::Advance : EFootwork::Front);
 	}
 	return Profile(EShotType::Leave);
 }

@@ -25,6 +25,8 @@ struct FResolveContext
 	FPitchConditions Conditions;
 	float RunMargin = 0.4f;
 	bool bFreeHit = false;
+	FSuperOverRules Rules;
+	int32 BouncersBowled = 0;  // this over, before this delivery
 	int32 Seed = 0;
 };
 
@@ -35,6 +37,7 @@ struct FBallRead
 	float PitchLine = 0.f;     // batter-relative, + off side
 	float HeightAtBat = 0.f;   // predicted height at the front-foot contact plane
 	float ArrivalTime = 0.f;   // predicted time at the front-foot contact plane
+	bool bPitched = false;     // the ball had already pitched when read
 };
 
 struct FDeliveryResult
@@ -44,6 +47,9 @@ struct FDeliveryResult
 	float SpeedKph = 0.f;
 	bool bNoBall = false;
 	bool bWide = false;
+	bool bBeamer = false;          // full toss above waist height: no-ball
+	bool bBouncer = false;         // passed (or would have) above shoulder height
+	bool bRunsAllowed = true;      // false: dead ball off the pad with no stroke offered (no leg byes)
 	FVector PitchPos = FVector::ZeroVector;
 	float PitchTime = -1.f;
 	FShotProfile Shot;

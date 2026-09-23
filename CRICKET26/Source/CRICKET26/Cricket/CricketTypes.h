@@ -23,6 +23,10 @@ namespace CricketGeo
 	constexpr float WideLineLeg = 0.40f;   // T20: past leg stump and clear of the batter
 	constexpr float BoundaryRadius = 65.f; // from pitch centre
 	constexpr float Gravity = 9.81f;
+	// Striker standing upright at the popping crease: the umpire's reference heights.
+	constexpr float WaistHeight = 1.0f;    // full toss above this is a no-ball
+	constexpr float ShoulderHeight = 1.45f; // short ball above this counts as a bouncer
+	constexpr float HeadHeight = 1.75f;
 	inline FVector PitchCentre() { return FVector(PitchLength * 0.5f, 0.f, 0.f); }
 }
 
@@ -59,7 +63,7 @@ UENUM(BlueprintType)
 enum class EShotType : uint8 { Leave, Defend, Drive, Loft, Punch, Cut, Pull, Sweep };
 
 UENUM(BlueprintType)
-enum class EFootwork : uint8 { Front, Back };
+enum class EFootwork : uint8 { Front, Back, Advance }; // Advance: down the track, out of the crease
 
 UENUM(BlueprintType)
 enum class EContactZone : uint8
@@ -68,7 +72,7 @@ enum class EContactZone : uint8
 };
 
 UENUM(BlueprintType)
-enum class EDismissal : uint8 { None, Bowled, Caught, LBW, RunOut, Stumped };
+enum class EDismissal : uint8 { None, Bowled, Caught, LBW, RunOut, Stumped, HitWicket };
 
 USTRUCT(BlueprintType)
 struct FCricketPlayer

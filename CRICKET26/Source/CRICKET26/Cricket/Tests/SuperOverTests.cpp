@@ -266,6 +266,182 @@ bool FSORulesIllegal::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesByes, "CRICKET26.Rules.ByesLegByesAndWideRuns", CricketTestFlags)
+bool FSORulesByes::RunTest(const FString&)
+{
+	FSuperOverMatch M;
+	M.Start(0);
+	FDeliveryOutcome LB;
+	LB.bLegBye = true;
+	LB.RunsRun = 1;
+	TestTrue(TEXT("leg bye accepted"), Bowl(M, LB));
+	const FInningsState& In = M.Cur();
+	TestEqual(TEXT("leg bye to the total"), In.Runs, 1);
+	TestEqual(TEXT("leg bye is an extra"), In.LegByes, 1);
+	TestEqual(TEXT("not the batter's run"), In.Batters[0].Runs, 0);
+	TestEqual(TEXT("but the batter faced it"), In.Batters[0].Balls, 1);
+	TestEqual(TEXT("not against the bowler"), In.Bowler.Runs, 0);
+	TestEqual(TEXT("legal ball"), In.LegalBalls, 1);
+	TestEqual(TEXT("strike rotates on a leg bye"), In.Striker, 1);
+	TestEqual(TEXT("scored as 1lb"), In.BallLog.Last(), FString(TEXT("1lb")));
+
+	FDeliveryOutcome FourByes;
+	FourByes.Boundary = 4;
+	TestTrue(TEXT("four byes accepted"), Bowl(M, FourByes));
+	TestEqual(TEXT("byes"), M.Cur().Byes, 4);
+	TestEqual(TEXT("scored as 4b"), M.Cur().BallLog.Last(), FString(TEXT("4b")));
+	TestEqual(TEXT("no four for the batter"), M.Cur().Batters[1].Fours, 0);
+
+	FDeliveryOutcome WideRun = Wide();
+	WideRun.RunsRun = 2;
+	TestTrue(TEXT("wide with runs"), Bowl(M, WideRun));
+	TestEqual(TEXT("1 + 2 wides"), M.Cur().Runs, 8);
+	TestEqual(TEXT("wide runs charged to the bowler"), M.Cur().Bowler.Runs, 3);
+	FDeliveryOutcome WideFour = Wide();
+	WideFour.Boundary = 4;
+	TestTrue(TEXT("wide to the rope"), Bowl(M, WideFour));
+	TestEqual(TEXT("5 wides"), M.Cur().Runs, 13);
+	TestEqual(TEXT("wides are not legal"), M.Cur().LegalBalls, 2);
+
+	FDeliveryOutcome NbLb = NoBall();
+	NbLb.bLegBye = true;
+	NbLb.RunsRun = 1;
+	TestTrue(TEXT("leg bye off a no-ball"), Bowl(M, NbLb));
+	TestEqual(TEXT("1 nb + 1 lb"), M.Cur().Runs, 15);
+
+	TArray<ECricketEvent> Ev;
+	M.BeginDelivery();
+	FDeliveryOutcome Bad = Runs(1);
+	Bad.bLegBye = true;
+	TestFalse(TEXT("leg bye with bat contact rejected"), M.CompleteDelivery(Bad, Ev));
+	FDeliveryOutcome BadWide = Wide();
+	BadWide.bLegBye = true;
+	TestFalse(TEXT("leg bye off a wide rejected"), M.CompleteDelivery(BadWide, Ev));
+	FDeliveryOutcome SixByes;
+	SixByes.Boundary = 6;
+	TestFalse(TEXT("six without the bat rejected"), M.CompleteDelivery(SixByes, Ev));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesDismissalLegality, "CRICKET26.Rules.StumpedHitWicketAndLegality", CricketTestFlags)
+bool FSORulesDismissalLegality::RunTest(const FString&)
+{
+	TArray<ECricketEvent> Ev;
+	FSuperOverMatch M;
+	M.Start(0);
+
+	FDeliveryOutcome StWide = Wide();
+	StWide.Dismissal = EDismissal::Stumped;
+	TestTrue(TEXT("stumped off a wide stands"), Bowl(M, StWide));
+	TestEqual(TEXT("one wide scored"), M.Cur().Runs, 1);
+	TestEqual(TEXT("wicket"), M.Cur().Wickets, 1);
+	TestEqual(TEXT("bowler credited for a stumping"), M.Cur().Bowler.Wickets, 1);
+	TestEqual(TEXT("how out"), M.Cur().Batters[0].HowOut, EDismissal::Stumped);
+	TestEqual(TEXT("new batter on strike"), M.Cur().Striker, 2);
+
+	M.BeginDelivery();
+	FDeliveryOutcome StNb = NoBall();
+	StNb.Dismissal = EDismissal::Stumped;
+	TestFalse(TEXT("stumped off a no-ball rejected"), M.CompleteDelivery(StNb, Ev));
+	FDeliveryOutcome HwNb = NoBall();
+	HwNb.Dismissal = EDismissal::HitWicket;
+	TestFalse(TEXT("hit wicket off a no-ball rejected"), M.CompleteDelivery(HwNb, Ev));
+	FDeliveryOutcome StRun = Out(EDismissal::Stumped);
+	StRun.RunsRun = 1;
+	TestFalse(TEXT("stumped while completing a run rejected"), M.CompleteDelivery(StRun, Ev));
+	FDeliveryOutcome LbwBat = Out(EDismissal::LBW);
+	LbwBat.bBatContact = true;
+	TestFalse(TEXT("LBW after hitting the bat rejected"), M.CompleteDelivery(LbwBat, Ev));
+	FDeliveryOutcome BowledWide = Wide();
+	BowledWide.Dismissal = EDismissal::Bowled;
+	TestFalse(TEXT("bowled off a wide rejected"), M.CompleteDelivery(BowledWide, Ev));
+	// Nothing was applied by the rejections.
+	TestEqual(TEXT("state untouched"), M.Cur().Deliveries, 1);
+	TestTrue(TEXT("still mid-delivery"), M.Phase == EMatchPhase::DeliveryInProgress);
+
+	// Free hit: only a run out.
+	TestTrue(TEXT("no-ball"), M.CompleteDelivery(NoBall(), Ev));
+	TestTrue(TEXT("free hit"), M.bFreeHit);
+	M.BeginDelivery();
+	TestFalse(TEXT("hit wicket on a free hit rejected"), M.CompleteDelivery(Out(EDismissal::HitWicket), Ev));
+	TestFalse(TEXT("stumped on a free hit rejected"), M.CompleteDelivery(Out(EDismissal::Stumped), Ev));
+	FDeliveryOutcome Ro = Out(EDismissal::RunOut);
+	Ro.bBatContact = true;
+	TestTrue(TEXT("run out on a free hit stands"), M.CompleteDelivery(Ro, Ev));
+	TestTrue(TEXT("second wicket ends the innings"), M.Cur().bComplete);
+
+	FSuperOverMatch H;
+	H.Start(0);
+	FDeliveryOutcome HwWide = Wide();
+	HwWide.Dismissal = EDismissal::HitWicket;
+	TestTrue(TEXT("hit wicket off a wide stands"), Bowl(H, HwWide));
+	TestEqual(TEXT("bowler credited for hit wicket"), H.Cur().Bowler.Wickets, 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesOverthrows, "CRICKET26.Rules.OverthrowsToTheBoundary", CricketTestFlags)
+bool FSORulesOverthrows::RunTest(const FString&)
+{
+	TArray<ECricketEvent> Ev;
+	FSuperOverMatch M;
+	M.Start(0);
+	FDeliveryOutcome O = Runs(1);
+	O.Boundary = 4;
+	M.BeginDelivery();
+	TestFalse(TEXT("runs + boundary without an overthrow rejected"), M.CompleteDelivery(O, Ev));
+	O.bOverthrow = true;
+	TestTrue(TEXT("overthrow accepted"), M.CompleteDelivery(O, Ev));
+	TestEqual(TEXT("1 run + 4 overthrows to the batter"), M.Cur().Batters[0].Runs, 5);
+	TestEqual(TEXT("not a hit four"), M.Cur().Batters[0].Fours, 0);
+	TestFalse(TEXT("no four event"), Ev.Contains(ECricketEvent::BoundaryFour));
+	TestEqual(TEXT("strike follows the completed run"), M.Cur().Striker, 1);
+	FDeliveryOutcome Six = O;
+	Six.Boundary = 6;
+	M.BeginDelivery();
+	TestFalse(TEXT("overthrows can't be six"), M.CompleteDelivery(Six, Ev));
+	FDeliveryOutcome ByeOver;
+	ByeOver.RunsRun = 2;
+	ByeOver.Boundary = 4;
+	ByeOver.bOverthrow = true;
+	TestTrue(TEXT("overthrows off byes"), M.CompleteDelivery(ByeOver, Ev));
+	TestEqual(TEXT("6 byes"), M.Cur().Byes, 6);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesBouncers, "CRICKET26.Rules.BouncerLimitAndConfigurableRules", CricketTestFlags)
+bool FSORulesBouncers::RunTest(const FString&)
+{
+	TArray<ECricketEvent> Ev;
+	FSuperOverMatch M;
+	M.Rules.MaxBouncersPerOver = 1;
+	M.Start(0);
+	FDeliveryOutcome B;
+	B.bBouncer = true;
+	TestTrue(TEXT("first bouncer fine"), Bowl(M, B));
+	TestFalse(TEXT("limit reached"), M.BouncerAllowed());
+	M.BeginDelivery();
+	TestFalse(TEXT("uncalled second bouncer rejected"), M.CompleteDelivery(B, Ev));
+	B.bNoBall = true;
+	TestTrue(TEXT("second bouncer called no-ball"), M.CompleteDelivery(B, Ev));
+	TestTrue(TEXT("free hit follows"), M.bFreeHit);
+
+	// Rules are data: a 3-ball, 1-wicket shoot-out.
+	FSuperOverMatch S;
+	S.Rules.MaxLegalBalls = 3;
+	S.Rules.MaxWickets = 1;
+	S.Start(0);
+	Bowl(S, Runs(1));
+	Bowl(S, Runs(1));
+	Bowl(S, Runs(1));
+	TestTrue(TEXT("3 legal balls end the innings"), S.Phase == EMatchPhase::InningsBreak);
+	S.StartSecondInnings();
+	Bowl(S, Out(EDismissal::Bowled));
+	TestTrue(TEXT("1 wicket ends the chase"), S.Phase == EMatchPhase::MatchComplete && S.Winner == 0);
+	FString Err;
+	TestTrue(Err, S.CheckInvariants(Err));
+	return true;
+}
+
 // ---------------------------------------------------------------- Ball physics
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallSolver, "CRICKET26.Ball.PitchesWhereAimed", CricketTestFlags)
@@ -467,6 +643,113 @@ bool FSOBatWicket::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOUmpireHeights, "CRICKET26.Umpire.BeamerBouncerAndOverHead", CricketTestFlags)
+bool FSOUmpireHeights::RunTest(const FString&)
+{
+	// Waist-high full toss: no-ball, whatever the batter does.
+	FDeliveryRelease Beamer;
+	Beamer.Ball.Pos = FVector(CricketGeo::PitchLength - 1.5f, 0.2f, 2.1f);
+	Beamer.Ball.Vel = FVector(-38.f, -0.2f, 1.f);
+	Beamer.SpeedKph = 137.f;
+	const FDeliveryResult Bm = CricketDelivery::Resolve(Beamer, FBatInput(), Ctx());
+	TestTrue(*FString::Printf(TEXT("beamer is a no-ball (%s)"), *Bm.Summary), Bm.bBeamer && Bm.bNoBall);
+	TestTrue(TEXT("beamer outcome legal"), [&] { FSuperOverMatch M; M.Start(0); return Bowl(M, Bm.ToOutcome()); }());
+
+	// Find a bouncer (above shoulder) and one that flies over head height.
+	float Shoulder = -1.f, OverHead = -1.f;
+	for (float L = 6.f; L <= 13.f; L += 0.25f)
+	{
+		const float Z = AtCrease(Release(EDeliveryType::Stock, L)).Pos.Z;
+		if (Shoulder < 0.f && Z > CricketGeo::ShoulderHeight + 0.05f && Z < CricketGeo::HeadHeight - 0.05f) Shoulder = L;
+		if (OverHead < 0.f && Z > CricketGeo::HeadHeight + 0.05f) OverHead = L;
+	}
+	if (!TestTrue(TEXT("a bouncer length exists"), Shoulder > 0.f)) return false;
+	FResolveContext C = Ctx();
+	const FDeliveryRelease Bouncer = Release(EDeliveryType::Stock, Shoulder);
+	const FDeliveryResult First = CricketDelivery::Resolve(Bouncer, FBatInput(), C);
+	TestTrue(*FString::Printf(TEXT("first bouncer legal (%s)"), *First.Summary), First.bBouncer && !First.bNoBall && !First.bWide);
+	C.BouncersBowled = 1;
+	const FDeliveryResult Second = CricketDelivery::Resolve(Bouncer, FBatInput(), C);
+	TestTrue(*FString::Printf(TEXT("second bouncer no-ball (%s)"), *Second.Summary), Second.bBouncer && Second.bNoBall);
+	FSuperOverMatch M;
+	M.Start(0);
+	Bowl(M, First.ToOutcome());
+	TestTrue(TEXT("match accepts the called second bouncer"), Bowl(M, Second.ToOutcome()));
+
+	// A steep short ball that climbs over head height at the crease.
+	FDeliveryRelease High;
+	High.Ball.Pos = FVector(CricketGeo::PitchLength - 1.5f, 0.1f, 2.2f);
+	High.Ball.Vel = FVector(-33.f, -0.1f, -13.f);
+	High.SpeedKph = 128.f;
+	FDeliveryRelease HighCopy = High;
+	if (!TestTrue(*FString::Printf(TEXT("test ball is over head height (%.2f m)"), AtCrease(HighCopy).Pos.Z), AtCrease(HighCopy).Pos.Z > CricketGeo::HeadHeight)) return false;
+	const FDeliveryResult W = CricketDelivery::Resolve(High, FBatInput(), Ctx());
+	TestTrue(*FString::Printf(TEXT("over head height is wide by default (%s)"), *W.Summary), W.bWide && !W.bNoBall);
+	FResolveContext NbRules = Ctx();
+	NbRules.Rules.bOverHeadIsWide = false;
+	TestTrue(TEXT("or a no-ball under other playing conditions"), CricketDelivery::Resolve(High, FBatInput(), NbRules).bNoBall);
+	UE_LOG(LogTemp, Display, TEXT("Highest stock-delivery length over head height: %.2f (-1 = none up to 13 m)"), OverHead);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLegByes, "CRICKET26.Umpire.LegByesNeedAStroke", CricketTestFlags)
+bool FSOLegByes::RunTest(const FString&)
+{
+	// Down the leg side onto the pads: padded away with no stroke - no leg byes; the same ball with
+	// a missed stroke - leg byes may be run.
+	int32 Checked = 0;
+	for (float Line = -0.1f; Line >= -0.3f && Checked < 2; Line -= 0.05f)
+	{
+		const FDeliveryRelease R = Release(EDeliveryType::Stock, 4.f, Line);
+		const FDeliveryResult NoShot = CricketDelivery::Resolve(R, FBatInput(), Ctx());
+		if (!NoShot.bPadImpact || NoShot.Dismissal != EDismissal::None) continue;
+		++Checked;
+		const FDeliveryOutcome O = NoShot.ToOutcome();
+		TestTrue(*FString::Printf(TEXT("no stroke, no leg byes (%s)"), *NoShot.Summary), !NoShot.bRunsAllowed && O.RunsRun == 0 && O.Boundary == 0);
+		TestTrue(TEXT("flagged as off the body"), O.bLegBye);
+		FResolveContext Reckless = Ctx();
+		Reckless.RunMargin = -3.f;
+		const FDeliveryResult Stroke = CricketDelivery::Resolve(R, FBatInput{ EBatIntent::Defend, 0.f, 10.f }, Reckless);
+		TestTrue(TEXT("a missed stroke allows leg byes"), Stroke.bTooLate || Stroke.bRunsAllowed);
+		FSuperOverMatch M;
+		M.Start(0);
+		TestTrue(*FString::Printf(TEXT("pad outcome legal (%s)"), *NoShot.Summary), Bowl(M, O));
+	}
+	TestTrue(TEXT("found a pad hit to check"), Checked > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOStumping, "CRICKET26.Umpire.StumpedDownTheTrack", CricketTestFlags)
+bool FSOStumping::RunTest(const FString&)
+{
+	// A leg-spinner's wide leg break: the batter charges, is beaten, the keeper standing up stumps
+	// them - and stumped stands off a wide.
+	const FDeliveryRelease R = Release(EDeliveryType::LegBreak, 4.5f, 1.3f, 0.f, EBowlerType::LegSpin);
+	const FResolveContext C = Ctx(EBowlerType::LegSpin);
+	const FBallRead Seen = CricketDelivery::Read(R.Ball, 0.f, FPitchConditions());
+	FBatInput Charge;
+	Charge.Intent = EBatIntent::Loft;
+	Charge.PressTime = Seen.ArrivalTime - 0.62f;
+	const FDeliveryResult S = CricketDelivery::Resolve(R, Charge, C);
+	TestTrue(*FString::Printf(TEXT("went down the track (%s)"), *S.Summary), S.Shot.Foot == EFootwork::Advance);
+	TestFalse(TEXT("beaten"), S.Contact.HasContact());
+	TestEqual(*FString::Printf(TEXT("stumped (%s)"), *S.Summary), S.Dismissal, EDismissal::Stumped);
+	FSuperOverMatch M;
+	M.Start(0);
+	TestTrue(TEXT("stumping outcome legal"), Bowl(M, S.ToOutcome()));
+	TestEqual(TEXT("recorded"), M.Cur().Batters[0].HowOut, EDismissal::Stumped);
+
+	// Same ball, batter stays in the crease: not stumped.
+	FBatInput Stay = Charge;
+	Stay.PressTime = Seen.ArrivalTime - 0.3f;
+	const FDeliveryResult In = CricketDelivery::Resolve(R, Stay, C);
+	TestTrue(*FString::Printf(TEXT("in the crease, not stumped (%s)"), *In.Summary), In.Shot.Foot != EFootwork::Advance && In.Dismissal != EDismissal::Stumped);
+
+	// Same charge against pace: no advance (keeper back, nobody charges 140 kph).
+	TestTrue(TEXT("no charging the quicks"), CricketBatting::ChooseShot(EBatIntent::Loft, 0.f, 4.f, 0.5f, EBowlerType::Pace, 0.7f).Foot != EFootwork::Advance);
+	return true;
+}
+
 // ---------------------------------------------------------------- Fielding
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOFieldKeeper, "CRICKET26.Fielding.KeeperTakesBeatenBall", CricketTestFlags)
@@ -538,6 +821,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOAIMatch, "CRICKET26.Match.AIvsAICompletesLeg
 bool FSOAIMatch::RunTest(const FString&)
 {
 	int32 Fours = 0, Sixes = 0, Wickets = 0, Wides = 0, Edges = 0, Deliveries = 0, Runs1 = 0, Caught = 0, RunOuts = 0, Dots = 0, ByeBoundaries = 0;
+	int32 Ran[4] = {}, Byes = 0, LegByes = 0, NoBalls = 0, Bouncers = 0, PadHits = 0, OtherOuts = 0;
 	for (int32 Game = 0; Game < 40; ++Game)
 	{
 		FSuperOverMatch M;
@@ -592,6 +876,8 @@ bool FSOAIMatch::RunTest(const FString&)
 	}
 	UE_LOG(LogTemp, Display, TEXT("AI stats: 40 games, %d deliveries, avg first-innings %.1f, %d dots, %d fours, %d sixes, %d wickets (%d caught, %d run out), %d wides, %d edges"),
 		Deliveries, Runs1 / 40.f, Dots, Fours, Sixes, Wickets, Caught, RunOuts, Wides, Edges);
+	UE_LOG(LogTemp, Display, TEXT("AI stats: off the bat 1s %d, 2s %d, 3s+ %d; byes %d, leg byes %d, no-balls %d, bouncers %d, pad hits %d, stumped/hit wicket %d"),
+		Ran[1], Ran[2], Ran[3], Byes, LegByes, NoBalls, Bouncers, PadHits, OtherOuts);
 	TestTrue(TEXT("some boundaries"), Fours + Sixes > 0);
 	TestTrue(TEXT("some wickets"), Wickets > 0);
 	TestTrue(*FString::Printf(TEXT("keeper stops balls that beat the bat (%d byes to the boundary)"), ByeBoundaries), ByeBoundaries <= Deliveries / 100);

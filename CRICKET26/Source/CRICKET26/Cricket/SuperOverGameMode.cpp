@@ -202,6 +202,8 @@ void ASuperOverGameMode::PlaceForDelivery()
 	Ctx.Fielding.Throwing = 0.65f;
 	Ctx.Field = CricketField::Make(CricketField::PresetFor(Bwl.BowlerType), Batter.BatHand, Bwl.BowlHand);
 	Ctx.bFreeHit = Match.bFreeHit;
+	Ctx.Rules = Match.Rules;
+	Ctx.BouncersBowled = Match.Cur().Bouncers;
 
 	const float Off = OffSideSign(Batter.BatHand);
 	const float Arm = Bwl.BowlHand == ECricketHand::Right ? 1.f : -1.f;
