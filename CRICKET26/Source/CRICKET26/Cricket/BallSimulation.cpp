@@ -39,12 +39,6 @@ namespace
 			B.bRolling = true;
 		}
 	}
-
-	float Gauss(FRandomStream& R)
-	{
-		const float U1 = FMath::Max(R.GetFraction(), 1e-6f);
-		return FMath::Sqrt(-2.f * FMath::Loge(U1)) * FMath::Cos(2.f * PI * R.GetFraction());
-	}
 }
 
 CricketBall::EStep CricketBall::Step(FBallState& B, const FPitchConditions& C, float Dt)
@@ -150,8 +144,8 @@ FDeliveryRelease CricketBowling::Execute(const FCricketPlayer& Bowler, ECricketH
 	const float Skill = FMath::Clamp(Bowler.Accuracy, 0.f, 1.f);
 	const float LengthSigma = (0.15f + 0.9f * (1.f - Skill)) * Scatter;
 	const float LineSigma = (0.04f + 0.25f * (1.f - Skill)) * Scatter;
-	const float Length = Plan.Length + Timing * 1.8f + Gauss(Rng) * LengthSigma;
-	const float LineY = (Plan.Line + Gauss(Rng) * LineSigma) * Off;
+	const float Length = Plan.Length + Timing * 1.8f + CricketMath::Gauss(Rng) * LengthSigma;
+	const float LineY = (Plan.Line + CricketMath::Gauss(Rng) * LineSigma) * Off;
 	Out.AimedPitch = FVector2D(Length, LineY);
 
 	float SpeedFactor = 1.f;
@@ -164,7 +158,7 @@ FDeliveryRelease CricketBowling::Execute(const FCricketPlayer& Bowler, ECricketH
 	case EDeliveryType::Googly: SpeedFactor = 0.97f; break;
 	default: break;
 	}
-	const float Speed = Bowler.PaceKph / 3.6f * SpeedFactor * (1.f - 0.05f * (1.f - Q) + 0.01f * Gauss(Rng));
+	const float Speed = Bowler.PaceKph / 3.6f * SpeedFactor * (1.f - 0.05f * (1.f - Q) + 0.01f * CricketMath::Gauss(Rng));
 	Out.SpeedKph = Speed * 3.6f;
 
 	FBallState& B = Out.Ball;
@@ -181,11 +175,11 @@ FDeliveryRelease CricketBowling::Execute(const FCricketPlayer& Bowler, ECricketH
 		{
 		case EDeliveryType::Outswing: B.SwingAccel = Swing * Off; break;
 		case EDeliveryType::Inswing: B.SwingAccel = -Swing * Off; break;
-		case EDeliveryType::Slower: B.SwingAccel = 0.3f * Swing * Gauss(Rng); break;
+		case EDeliveryType::Slower: B.SwingAccel = 0.3f * Swing * CricketMath::Gauss(Rng); break;
 		case EDeliveryType::Cutter: Spin.X = Arm * 70.f * Move; break; // off-cutter: into the right-hander
-		default: B.SwingAccel = 0.25f * Swing * Gauss(Rng); break;
+		default: B.SwingAccel = 0.25f * Swing * CricketMath::Gauss(Rng); break;
 		}
-		B.SeamKick = 0.35f * Move * Gauss(Rng);
+		B.SeamKick = 0.35f * Move * CricketMath::Gauss(Rng);
 	}
 	else
 	{

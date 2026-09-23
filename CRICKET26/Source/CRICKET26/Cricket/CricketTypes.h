@@ -26,6 +26,16 @@ namespace CricketGeo
 	inline FVector PitchCentre() { return FVector(PitchLength * 0.5f, 0.f, 0.f); }
 }
 
+namespace CricketMath
+{
+	/** Standard normal sample (Box-Muller) from a seeded stream, so execution error stays reproducible. */
+	inline float Gauss(FRandomStream& R)
+	{
+		const float U1 = FMath::Max(R.GetFraction(), 1e-6f);
+		return FMath::Sqrt(-2.f * FMath::Loge(U1)) * FMath::Cos(2.f * PI * R.GetFraction());
+	}
+}
+
 UENUM(BlueprintType)
 enum class ECricketHand : uint8 { Right, Left };
 

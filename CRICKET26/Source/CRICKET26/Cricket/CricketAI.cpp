@@ -9,12 +9,6 @@ namespace
 		float Length, Line, Weight;
 	};
 
-	float Gauss(FRandomStream& R)
-	{
-		const float U1 = FMath::Max(R.GetFraction(), 1e-6f);
-		return FMath::Sqrt(-2.f * FMath::Loge(U1)) * FMath::Cos(2.f * PI * R.GetFraction());
-	}
-
 	/** Batter-relative angle (deg) of a field position as seen from the striker. */
 	float AngleOf(const FFielder& F, float Off)
 	{
@@ -95,7 +89,7 @@ FBowlingChoice CricketAI::ChooseDelivery(const FCricketPlayer& Bowler, ECricketH
 	C.Plan.Type = O.Type;
 	C.Plan.Length = O.Length;
 	C.Plan.Line = O.Line;
-	C.ReleaseTiming = FMath::Clamp(Gauss(Rng) * (0.05f + 0.25f * (1.f - Bowler.Accuracy)), -0.8f, 0.8f);
+	C.ReleaseTiming = FMath::Clamp(CricketMath::Gauss(Rng) * (0.05f + 0.25f * (1.f - Bowler.Accuracy)), -0.8f, 0.8f);
 	return C;
 }
 
@@ -110,7 +104,7 @@ FBatInput CricketAI::ChooseShot(const FDeliveryRelease& Rel, const FCricketPlaye
 	const float Line = Seen.PitchLine * Off;
 	const bool bShort = Seen.PitchX > 7.f || Seen.HeightAtBat > 0.95f;
 	const bool bYorker = Seen.PitchX < 2.3f;
-	Aggr = FMath::Clamp(Aggr + 0.1f * Gauss(Rng), 0.f, 1.f);
+	Aggr = FMath::Clamp(Aggr + 0.1f * CricketMath::Gauss(Rng), 0.f, 1.f);
 
 	FBatInput In;
 	In.Intent = EBatIntent::Defend;
@@ -143,6 +137,6 @@ FBatInput CricketAI::ChooseShot(const FDeliveryRelease& Rel, const FCricketPlaye
 	FBallState Probe = Rel.Ball;
 	if (!CricketBall::SimulateToPlane(Probe, Shot.ContactX(), C)) { In.Intent = EBatIntent::Leave; return In; }
 	const float Sigma = 0.015f + 0.035f * (1.f - Batter.Timing) + (Rel.SpeedKph > 138.f ? 0.01f : 0.f);
-	In.PressTime = FMath::Max(DecideAt, Probe.Time - Shot.SwingTime + Gauss(Rng) * Sigma);
+	In.PressTime = FMath::Max(DecideAt, Probe.Time - Shot.SwingTime + CricketMath::Gauss(Rng) * Sigma);
 	return In;
 }

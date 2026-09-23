@@ -8,7 +8,7 @@
 
 namespace
 {
-	constexpr EAutomationTestFlags Flags = EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter;
+	constexpr EAutomationTestFlags CricketTestFlags = EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter;
 
 	FDeliveryOutcome Runs(int32 N) { FDeliveryOutcome O; O.bBatContact = true; O.RunsRun = N; return O; }
 	FDeliveryOutcome Four() { FDeliveryOutcome O; O.bBatContact = true; O.Boundary = 4; return O; }
@@ -76,7 +76,7 @@ namespace
 
 // ---------------------------------------------------------------- Rules
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesSixLegalBalls, "CRICKET26.Rules.SixLegalBallsEndInnings", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesSixLegalBalls, "CRICKET26.Rules.SixLegalBallsEndInnings", CricketTestFlags)
 bool FSORulesSixLegalBalls::RunTest(const FString&)
 {
 	FSuperOverMatch M;
@@ -92,7 +92,7 @@ bool FSORulesSixLegalBalls::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesExtras, "CRICKET26.Rules.WidesAndNoBallsAreNotLegal", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesExtras, "CRICKET26.Rules.WidesAndNoBallsAreNotLegal", CricketTestFlags)
 bool FSORulesExtras::RunTest(const FString&)
 {
 	FSuperOverMatch M;
@@ -123,7 +123,7 @@ bool FSORulesExtras::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesFreeHitCarries, "CRICKET26.Rules.FreeHitCarriesOverWide", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesFreeHitCarries, "CRICKET26.Rules.FreeHitCarriesOverWide", CricketTestFlags)
 bool FSORulesFreeHitCarries::RunTest(const FString&)
 {
 	FSuperOverMatch M;
@@ -136,7 +136,7 @@ bool FSORulesFreeHitCarries::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesWickets, "CRICKET26.Rules.TwoWicketsEndInnings", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesWickets, "CRICKET26.Rules.TwoWicketsEndInnings", CricketTestFlags)
 bool FSORulesWickets::RunTest(const FString&)
 {
 	FSuperOverMatch M;
@@ -153,7 +153,7 @@ bool FSORulesWickets::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesStrike, "CRICKET26.Rules.StrikeRotation", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesStrike, "CRICKET26.Rules.StrikeRotation", CricketTestFlags)
 bool FSORulesStrike::RunTest(const FString&)
 {
 	FSuperOverMatch M;
@@ -182,7 +182,7 @@ bool FSORulesStrike::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesChase, "CRICKET26.Rules.ChaseEndsWhenTargetReached", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesChase, "CRICKET26.Rules.ChaseEndsWhenTargetReached", CricketTestFlags)
 bool FSORulesChase::RunTest(const FString&)
 {
 	FSuperOverMatch M;
@@ -206,7 +206,7 @@ bool FSORulesChase::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesDefend, "CRICKET26.Rules.DefendingSideWins", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesDefend, "CRICKET26.Rules.DefendingSideWins", CricketTestFlags)
 bool FSORulesDefend::RunTest(const FString&)
 {
 	FSuperOverMatch M;
@@ -223,7 +223,7 @@ bool FSORulesDefend::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesTie, "CRICKET26.Rules.TieGoesToAnotherSuperOver", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesTie, "CRICKET26.Rules.TieGoesToAnotherSuperOver", CricketTestFlags)
 bool FSORulesTie::RunTest(const FString&)
 {
 	FSuperOverMatch M;
@@ -246,7 +246,7 @@ bool FSORulesTie::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesIllegal, "CRICKET26.Rules.IllegalInputRejected", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesIllegal, "CRICKET26.Rules.IllegalInputRejected", CricketTestFlags)
 bool FSORulesIllegal::RunTest(const FString&)
 {
 	FSuperOverMatch M;
@@ -268,7 +268,7 @@ bool FSORulesIllegal::RunTest(const FString&)
 
 // ---------------------------------------------------------------- Ball physics
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallSolver, "CRICKET26.Ball.PitchesWhereAimed", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallSolver, "CRICKET26.Ball.PitchesWhereAimed", CricketTestFlags)
 bool FSOBallSolver::RunTest(const FString&)
 {
 	for (float Length : { 2.f, 5.f, 8.f })
@@ -283,7 +283,7 @@ bool FSOBallSolver::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallSwing, "CRICKET26.Ball.SwingAndTurnDirections", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallSwing, "CRICKET26.Ball.SwingAndTurnDirections", CricketTestFlags)
 bool FSOBallSwing::RunTest(const FString&)
 {
 	// Right-handed batter: off side is +Y. Outswing / leg break move toward off after release / pitching.
@@ -301,7 +301,7 @@ bool FSOBallSwing::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallLengths, "CRICKET26.Ball.BouncerRisesYorkerDoesNot", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallLengths, "CRICKET26.Ball.BouncerRisesYorkerDoesNot", CricketTestFlags)
 bool FSOBallLengths::RunTest(const FString&)
 {
 	const FBallState Bouncer = AtCrease(Release(EDeliveryType::Stock, 11.5f));
@@ -314,7 +314,7 @@ bool FSOBallLengths::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallReleaseErrors, "CRICKET26.Ball.ReleaseErrorsStayPhysical", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallReleaseErrors, "CRICKET26.Ball.ReleaseErrorsStayPhysical", CricketTestFlags)
 bool FSOBallReleaseErrors::RunTest(const FString&)
 {
 	// Mistimed releases must still produce a flat, catchable trajectory that pitches where the
@@ -359,7 +359,7 @@ bool FSOBallReleaseErrors::RunTest(const FString&)
 	return Bad == 0;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallDeterminism, "CRICKET26.Ball.DeterministicAndNoBall", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallDeterminism, "CRICKET26.Ball.DeterministicAndNoBall", CricketTestFlags)
 bool FSOBallDeterminism::RunTest(const FString&)
 {
 	FCricketPlayer Bowler; // default accuracy: scatter on
@@ -384,7 +384,7 @@ bool FSOBallDeterminism::RunTest(const FString&)
 
 // ---------------------------------------------------------------- Batting
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBatMiddle, "CRICKET26.Batting.PerfectDriveMiddlesAndGoesStraight", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBatMiddle, "CRICKET26.Batting.PerfectDriveMiddlesAndGoesStraight", CricketTestFlags)
 bool FSOBatMiddle::RunTest(const FString&)
 {
 	const FDeliveryRelease R = Release(EDeliveryType::Stock, 4.f, 0.1f);
@@ -397,7 +397,7 @@ bool FSOBatMiddle::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBatTiming, "CRICKET26.Batting.LateGoesFinerAndVeryLateMisses", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBatTiming, "CRICKET26.Batting.LateGoesFinerAndVeryLateMisses", CricketTestFlags)
 bool FSOBatTiming::RunTest(const FString&)
 {
 	const FDeliveryRelease R = Release(EDeliveryType::Stock, 4.f, 0.1f);
@@ -415,7 +415,7 @@ bool FSOBatTiming::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBatEdge, "CRICKET26.Batting.LateMovementFindsTheEdge", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBatEdge, "CRICKET26.Batting.LateMovementFindsTheEdge", CricketTestFlags)
 bool FSOBatEdge::RunTest(const FString&)
 {
 	// Same timing, same batter, same intent: only the delivery's late movement differs.
@@ -443,7 +443,7 @@ bool FSOBatEdge::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBatWicket, "CRICKET26.Batting.BowledAndLBW", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBatWicket, "CRICKET26.Batting.BowledAndLBW", CricketTestFlags)
 bool FSOBatWicket::RunTest(const FString&)
 {
 	const FResolveContext C = Ctx();
@@ -469,7 +469,7 @@ bool FSOBatWicket::RunTest(const FString&)
 
 // ---------------------------------------------------------------- Fielding
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOFieldKeeper, "CRICKET26.Fielding.KeeperTakesBeatenBall", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOFieldKeeper, "CRICKET26.Fielding.KeeperTakesBeatenBall", CricketTestFlags)
 bool FSOFieldKeeper::RunTest(const FString&)
 {
 	// A ball left outside off must be gathered by the keeper, standing back to pace or up to spin.
@@ -487,7 +487,7 @@ bool FSOFieldKeeper::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOFieldBoundaries, "CRICKET26.Fielding.CatchFourSixRunning", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOFieldBoundaries, "CRICKET26.Fielding.CatchFourSixRunning", CricketTestFlags)
 bool FSOFieldBoundaries::RunTest(const FString&)
 {
 	const FPitchConditions C;
@@ -534,7 +534,7 @@ bool FSOFieldBoundaries::RunTest(const FString&)
 
 // ---------------------------------------------------------------- Full match with AI on both sides
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOAIMatch, "CRICKET26.Match.AIvsAICompletesLegally", Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOAIMatch, "CRICKET26.Match.AIvsAICompletesLegally", CricketTestFlags)
 bool FSOAIMatch::RunTest(const FString&)
 {
 	int32 Fours = 0, Sixes = 0, Wickets = 0, Wides = 0, Edges = 0, Deliveries = 0, Runs1 = 0, Caught = 0, RunOuts = 0, Dots = 0, ByeBoundaries = 0;
