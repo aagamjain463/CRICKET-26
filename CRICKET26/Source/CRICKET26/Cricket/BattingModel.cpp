@@ -130,11 +130,12 @@ FContactResult CricketBatting::ResolveContact(const FBallState& Ball, const FVec
 	// Good timers get a wider effective window.
 	const float Tau = Timing * (1.25f - 0.5f * FMath::Clamp(Batter.Timing, 0.f, 1.f));
 	R.TimingError = Timing;
-	if (P.Shot == EShotType::Leave || FMath::Abs(Tau) > MissWindow) return R;
-
 	const float Off = OffSideSign(Batter.BatHand);
 	const float AimLat = FMath::Clamp(Aim.Y * Off, P.ReachMin, P.ReachMax);
 	const float AimZ = FMath::Clamp(Aim.Z, P.MinZ, P.MaxZ);
+	if (P.Shot != EShotType::Leave) R.BatPos = FVector(Ball.Pos.X, AimLat * Off, AimZ);
+	if (P.Shot == EShotType::Leave || FMath::Abs(Tau) > MissWindow) return R;
+
 	const float BallLat = Ball.Pos.Y * Off;
 	// Off-time swings meet the ball with the blade rotated away from square-on.
 	const float CosPhi = FMath::Max(FMath::Cos(FMath::Clamp(Tau * 9.f, -1.2f, 1.2f)), 0.25f);

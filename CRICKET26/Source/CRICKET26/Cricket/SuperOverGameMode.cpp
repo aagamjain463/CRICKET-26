@@ -1,5 +1,7 @@
 #include "SuperOverGameMode.h"
 #include "SuperOverHUD.h"
+#include "CricketAnimInstance.h"
+#include "CricketPose.h"
 #include "CRICKET26.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -97,6 +99,17 @@ void ASuperOverGameMode::StartPlay()
 	bAutoPlay = FParse::Param(FCommandLine::Get(), TEXT("CricketAutoPlay")) && !bTouchScript; // soak/smoke runs
 	FParse::Value(FCommandLine::Get(), TEXT("CricketShotBall="), ShotBall);
 	QuitAfter = ShotBall;
+	FParse::Value(FCommandLine::Get(), TEXT("CricketShotEvery="), ShotEvery);
+	// -CricketDevCam=X,Y,Z,LookX,LookY,LookZ,Fov (simulation metres): a fixed camera for inspecting bodies;
+	// -CricketDevCam=fielder: 7 m from whoever fields the ball, on the pitch side.
+	FString Cam;
+	if (FParse::Value(FCommandLine::Get(), TEXT("CricketDevCam="), Cam, false))
+	{
+		bDevCamFielder = Cam == TEXT("fielder");
+		TArray<FString> V;
+		Cam.ParseIntoArray(V, TEXT(","));
+		if (V.Num() == 7) DevCam = { FCString::Atof(*V[0]), FCString::Atof(*V[1]), FCString::Atof(*V[2]), FCString::Atof(*V[3]), FCString::Atof(*V[4]), FCString::Atof(*V[5]), FCString::Atof(*V[6]) };
+	}
 	FParse::Value(FCommandLine::Get(), TEXT("CricketQuitAfter="), QuitAfter);
 	int32 Level = int32(Difficulty);
 	FParse::Value(FCommandLine::Get(), TEXT("CricketDifficulty="), Level);
@@ -127,6 +140,12 @@ void ASuperOverGameMode::EndPlay(const EEndPlayReason::Type Reason)
 			Perf.Num(), GDynamicRHI ? GDynamicRHI->GetName() : TEXT("?"),
 			*Stat([](const FPerfSample& S) { return S.Frame; }), *Stat([](const FPerfSample& S) { return S.Game; }),
 			*Stat([](const FPerfSample& S) { return S.Render; }), *Stat([](const FPerfSample& S) { return S.Gpu; }));
+	}
+	if (HandMiss.Num() > 0)
+	{
+		HandMiss.Sort();
+		UE_LOG(LogCRICKET26, Display, TEXT("Pose: striker hands from bat grip median %.1f cm, p95 %.1f cm, max %.1f cm over %d samples"),
+			HandMiss[HandMiss.Num() / 2], HandMiss[HandMiss.Num() * 95 / 100], HandMiss.Last(), HandMiss.Num());
 	}
 	Super::EndPlay(Reason);
 }
@@ -178,11 +197,20 @@ void ASuperOverGameMode::AddBody(AStaticMeshActor* Marker)
 	Body->SetSkeletalMesh(BodyMesh);
 	Body->SetUsingAbsoluteScale(true);
 	Body->SetupAttachment(Marker->GetRootComponent());
-	Body->SetRelativeLocationAndRotation(FVector(0.f, 0.f, -0.5f), FRotator(0.f, -90.f, 0.f)); // cylinder is 1.8 units tall: -0.5 = feet
+	// In the marker's unscaled space: the basic cylinder is 100 cm tall about its centre, so its base (the
+	// ground, whatever the marker's height scale) is at -50.
+	Body->SetRelativeLocationAndRotation(FVector(0.f, 0.f, -50.f), FRotator(0.f, -90.f, 0.f));
 	Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	Body->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+	Body->SetAnimationMode(EAnimationMode::AnimationBlueprint);
+	Body->SetAnimInstanceClass(UCricketAnimInstance::StaticClass());
+	// Pose the body after this game mode has set this frame's targets, so hands and bat move together.
+	Body->AddTickPrerequisiteActor(this);
 	Body->RegisterComponent();
-	Body->PlayAnimation(IdleAnim, true);
+	if (UCricketAnimInstance* Anim = Cast<UCricketAnimInstance>(Body->GetAnimInstance()))
+	{
+		Anim->Idle = IdleAnim;
+		Anim->Jog = JogAnim;
+	}
 	Marker->GetStaticMeshComponent()->SetVisibility(false);
 }
 
@@ -227,23 +255,80 @@ void ASuperOverGameMode::UpdateFigures(float Dt)
 		S.Last = Pos;
 		S.Speed = FMath::Lerp(S.Speed, FVector2D(Vel).Size() / 100.f, FMath::Clamp(Dt * 8.f, 0.f, 1.f));
 		if (A->IsHidden()) continue;
+		UCricketAnimInstance* Anim = AnimOf(A);
+		const USkeletalMeshComponent* Body = A->FindComponentByClass<USkeletalMeshComponent>();
+		// How far the striker's hands ended up from last frame's bat targets (the IK's reach), for the log.
+		for (int32 H = 0; H < 2 && Anim && A == Striker && Anim->Pose.HandWeight[0] >= 1.f && Anim->Pose.HandWeight[1] >= 1.f; ++H)
+		{
+			const float Miss = FVector::Dist(Body->GetSocketLocation(H == 0 ? TEXT("hand_l") : TEXT("hand_r")), Anim->Pose.Hand[H]);
+			HandMiss.Add(Miss);
+			if (Miss > 15.f) UE_LOG(LogTemp, Display, TEXT("Hand miss %.0f cm: hand %d phase %d time %.2f dt %.3f"), Miss, H, int32(DPhase), PhaseTime, Dt);
+		}
 		if (A->GetActorUpVector().Z > 0.95f)
 		{
-			// The striker holds a side-on stance, chest to the off side, until they set off for a run.
-			const FVector Look = S.Speed > 0.8f ? Vel : A == Striker ? FVector(0.f, Off, 0.f) : BallAt - Pos;
-			if (!FVector2D(Look).IsNearlyZero()) A->SetActorRotation(FRotator(0.f, Look.Rotation().Yaw, 0.f));
+			// The striker holds a side-on stance, chest to the off side, through the footwork of a stroke
+			// until they set off for a run. Everyone turns at a human rate rather than snapping.
+			const FVector Look = S.Speed > (A == Striker ? 2.f : 0.8f) ? Vel : A == Striker ? FVector(0.f, Off, 0.f) : BallAt - Pos;
+			if (!FVector2D(Look).IsNearlyZero())
+				A->SetActorRotation(FMath::RInterpConstantTo(A->GetActorRotation(), FRotator(0.f, Look.Rotation().Yaw, 0.f), Dt, 540.f));
 		}
-		USkeletalMeshComponent* Body = A->FindComponentByClass<USkeletalMeshComponent>();
-		if (!Body || !JogAnim) continue;
-		const bool bJog = S.Speed > 0.8f;
-		if (bJog != S.bJogging)
-		{
-			S.bJogging = bJog;
-			Body->PlayAnimation(bJog ? JogAnim : IdleAnim, true);
-		}
+		if (!Anim) continue;
 		// ponytail: one jog cycle time-scaled to speed (template jog ~4 m/s); a run/sprint blend when real locomotion lands.
-		Body->SetPlayRate(bJog ? FMath::Clamp(S.Speed / 4.f, 0.6f, 2.f) : 1.f);
+		Anim->Pose.JogWeight = FMath::Clamp((S.Speed - 0.4f) / 0.6f, 0.f, 1.f);
+		Anim->Pose.JogRate = FMath::Clamp(S.Speed / 4.f, 0.6f, 2.f);
+		// Actions are set afresh each frame by UpdatePoses; everyone watches the ball.
+		Anim->Pose.ClearActions();
+		Anim->Pose.LookWeight = 1.f;
+		Anim->Pose.LookAt = BallAt;
 	}
+}
+
+void ASuperOverGameMode::CheckFigures()
+{
+	// Self-check, once, standing between balls: every body's feet are on the ground (the ankle bones sit a
+	// few centimetres up). Scripts grep the log for the error.
+	bFiguresChecked = true;
+	float Worst = 10.f;
+	int32 Bodies = 0;
+	for (AStaticMeshActor* A : Figures)
+	{
+		const USkeletalMeshComponent* Body = A->FindComponentByClass<USkeletalMeshComponent>();
+		if (!Body || A->IsHidden() || A->GetActorUpVector().Z < 0.95f) continue;
+		const float Foot = FMath::Min(Body->GetSocketLocation(TEXT("foot_l")).Z, Body->GetSocketLocation(TEXT("foot_r")).Z);
+		Worst = FMath::Abs(Foot - 10.f) > FMath::Abs(Worst - 10.f) ? Foot : Worst;
+		++Bodies;
+	}
+	if (Bodies > 0 && FMath::Abs(Worst - 10.f) > 12.f)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Figure check FAILED: a body's lower ankle is %.0f cm above the ground"), Worst);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Display, TEXT("Figure check passed: %d bodies, worst ankle height %.0f cm"), Bodies, Worst);
+	}
+}
+
+UCricketAnimInstance* ASuperOverGameMode::AnimOf(AActor* Figure) const
+{
+	const USkeletalMeshComponent* Body = Figure ? Figure->FindComponentByClass<USkeletalMeshComponent>() : nullptr;
+	return Body ? Cast<UCricketAnimInstance>(Body->GetAnimInstance()) : nullptr;
+}
+
+float ASuperOverGameMode::TimeToRelease(float T, bool bLive) const
+{
+	if (bLive) return T;
+	if (DPhase != EDeliveryPhase::RunUp) return -100.f;
+	// The AI's release is known; a human's is assumed ideal until they press (the arm waits at the top).
+	const float At = 0.5f * ((HumanBowls() ? IdealRelease : ReleaseTiming) + 1.f) * RunUpSeconds;
+	return FMath::Min(PhaseTime - At, -0.02f);
+}
+
+float ASuperOverGameMode::RunUpX(float Time) const
+{
+	using namespace CricketGeo;
+	const float Ideal = 0.5f * (IdealRelease + 1.f) * RunUpSeconds;
+	// ponytail: constant run-up speed; an accelerating approach when the bowler animation has strides to match.
+	return FMath::Max(PitchLength - 1.f + RunUpLength * (1.f - Time / Ideal), PitchLength - 2.2f);
 }
 
 void ASuperOverGameMode::BuildScene()
@@ -314,7 +399,12 @@ void ASuperOverGameMode::BuildScene()
 	}
 
 	Ball = Spawn(SphereMesh, FVector(0.f, 0.f, -5.f), FVector(2.f * BallRadius), FLinearColor(0.85f, 0.85f, 0.8f));
-	Bat = Spawn(CubeMesh, FVector::ZeroVector, FVector(0.11f, 0.05f, 0.85f), Wood);
+	// Bats: a blade and a taped handle, the two parts placed together each frame.
+	for (TObjectPtr<AStaticMeshActor>* B : { &Bat, &NonStrikerBat })
+	{
+		*B = Spawn(CubeMesh, FVector::ZeroVector, FVector(0.108f, 0.045f, CricketPose::BatLength - CricketPose::HandleLength), Wood);
+		BatHandles.Add(Spawn(CylinderMesh, FVector::ZeroVector, FVector(0.034f, 0.034f, CricketPose::HandleLength), FLinearColor(0.08f, 0.08f, 0.1f)));
+	}
 	// Epic's template mannequin (UE EULA, ships with the project template) when present; plain markers otherwise.
 	BodyMesh = LoadObject<USkeletalMesh>(nullptr, TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple"));
 	IdleAnim = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle.MM_Idle"));
@@ -362,7 +452,7 @@ void ASuperOverGameMode::PlaceForDelivery()
 	const FLinearColor BatCol = Teams[Match.BattingTeam()].Colour, FieldCol = Teams[Match.BowlingTeam()].Colour;
 	Striker->SetActorLocation(ToWorld(FVector(0.9f, -0.35f * Off, 0.9f)));
 	NonStriker->SetActorLocation(ToWorld(FVector(CricketGeo::PitchLength - 1.3f, -1.1f * Arm, 0.9f)));
-	Bowler->SetActorLocation(ToWorld(FVector(CricketGeo::PitchLength + 14.f, 0.5f * Arm, 0.925f)));
+	Bowler->SetActorLocation(ToWorld(FVector(RunUpX(0.f), 0.5f * Arm, 0.925f)));
 	// Umpires: behind the bowler's stumps on the side away from the bowling arm, and at square leg.
 	Umpires[0]->SetActorLocation(ToWorld(FVector(CricketGeo::PitchLength + 1.8f, -0.9f * Arm, 0.9f)));
 	Umpires[1]->SetActorLocation(ToWorld(FVector(0.5f, -26.f * Off, 0.9f)));
@@ -378,7 +468,7 @@ void ASuperOverGameMode::PlaceForDelivery()
 		Fielders[I]->SetActorLocation(ToWorld(FVector(Ctx.Field[I].Home.X, Ctx.Field[I].Home.Y, 0.9f)));
 		Paint(Fielders[I], Ctx.Field[I].bKeeper ? FieldCol * 0.5f : FieldCol);
 	}
-	Ball->SetActorLocation(ToWorld(FVector(CricketGeo::PitchLength + 14.f, 0.5f * Arm, 1.2f)));
+	Ball->SetActorLocation(ToWorld(FVector(RunUpX(0.f), 0.5f * Arm, 1.2f)));
 	BatInput = FBatInput();
 	Result = FDeliveryResult();
 	BowlerIntent.Reset();
@@ -406,9 +496,10 @@ void ASuperOverGameMode::Tick(float Dt)
 	if (GetWorld()->GetTimeSeconds() > 3.f) // after start-up hitches
 		Perf.Add({ float(FApp::GetDeltaTime() * 1000.0), float(FPlatformTime::ToMilliseconds(GGameThreadTime)), float(FPlatformTime::ToMilliseconds(GRenderThreadTime)),
 			float(FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles())) });
+	if (!bFiguresChecked && GetWorld()->GetTimeSeconds() > 2.f) CheckFigures();
 	// Dev capture of the game view alone, 5 times a second (the desktop is never recorded).
 	const int32 LiveBall = DPhase == EDeliveryPhase::DeadBall ? BallsPlayed : BallsPlayed + 1; // dead ball: the one just finished
-	if (ShotBall == LiveBall && DPhase != EDeliveryPhase::Waiting && (ShotClock += Dt) >= 0.2f)
+	if (ShotBall == LiveBall && DPhase != EDeliveryPhase::Waiting && (ShotClock += Dt) >= ShotEvery)
 	{
 		ShotClock = 0.f;
 		static int32 Shot = 0;
@@ -747,6 +838,194 @@ void ASuperOverGameMode::Emit(const TArray<ECricketEvent>& Events)
 	}
 }
 
+void ASuperOverGameMode::UpdatePoses(float T, bool bLive, float Post, float Off, float Arm)
+{
+	using namespace CricketGeo;
+	using namespace CricketPose;
+	// The mannequin's shoulders are at CricketGeo::ShoulderHeight, this far either side of the spine; the
+	// marker actors the bodies stand in are centred MarkerHeight up.
+	constexpr float ShoulderHalfWidth = 0.18f, MarkerHeight = 0.9f;
+	auto Ramp = [](float X, float A, float B) { return FMath::SmoothStep(A, B, X); };
+	auto SimAt = [](const AActor* A) { return A->GetActorLocation() / 100.f; };
+	const float Ttr = TimeToRelease(T, bLive);
+
+	// Hands on a bat: the wrists just off the handle toward the chest, the top hand above the bottom; the
+	// top elbow leads toward the bowler and the bottom one tucks down.
+	auto Hold = [](FCricketBodyPose& P, const FBat& B, const FVector& Chest, int32 TopHand, float TopWeight, float BottomWeight)
+	{
+		for (int32 H = 0; H < 2; ++H)
+		{
+			const bool bTop = H == TopHand;
+			const FVector OnHandle = B.Grip + B.Axis * (bTop ? -0.05f : 0.05f);
+			P.Hand[H] = ToWorld(OnHandle + (Chest - OnHandle).GetSafeNormal() * 0.06f);
+			P.HandWeight[H] = bTop ? TopWeight : BottomWeight;
+			P.Elbow[H] = ToWorld(Chest + (bTop ? FVector(0.6f, 0.f, 0.1f) : FVector(-0.3f, 0.f, -0.6f)));
+		}
+	};
+	auto PlaceBat = [this](AActor* Blade, const FBat& B)
+	{
+		const FRotator R = FRotationMatrix::MakeFromZY(B.Axis, B.Face).Rotator();
+		Blade->SetActorLocationAndRotation(ToWorld(B.Top() + B.Axis * (HandleLength + 0.5f * (BatLength - HandleLength))), R);
+		BatHandles[Blade == Bat ? 0 : 1]->SetActorLocationAndRotation(ToWorld(B.Top() + B.Axis * (0.5f * HandleLength)), R);
+	};
+	// A bat carried in the bottom hand, angled down ahead: running, or waiting at the non-striker's end.
+	auto Carry = [](const AActor* Who, float Side)
+	{
+		const FVector F = Who->GetActorForwardVector(), R = Who->GetActorRightVector();
+		FBat B;
+		B.Grip = Who->GetActorLocation() / 100.f + F * 0.15f + R * (0.25f * Side) + FVector(0.f, 0.f, 0.05f);
+		B.Axis = (F * 0.6f - FVector::UpVector * 0.8f).GetSafeNormal();
+		B.Face = R;
+		return B;
+	};
+	const FRunningOutcome& Run = Result.Running;
+	const float RunW = bLive && Run.Attempted > 0 ? Ramp(Post, 0.35f, 0.6f) : 0.f;
+
+	// Striker: stance, backlift as the bowler gathers, then the stroke, built backwards from where the
+	// simulation put the bat so the sweet spot is on that point at the moment of contact.
+	{
+		const int32 TopHand = Off > 0.f ? 0 : 1; // a right-hander's top hand is the left
+		const FVector At = SimAt(Striker);
+		const FVector Feet(At.X, At.Y, 0.f);
+		const EShotType Shot = Result.Shot.Shot;
+		const bool bPlayed = bLive && BatInput.IsShot();
+		const bool bStroke = bPlayed && Shot != EShotType::Leave;
+		const float Press = BatInput.PressTime;
+		const bool bKneel = bStroke && (Shot == EShotType::Sweep || Shot == EShotType::ReverseSweep || Shot == EShotType::SlogSweep);
+		const float Back = 1.f - Ramp(Post, 0.9f, 1.5f); // settles back into the stance after the ball
+		const float Crouch = 0.08f + (bKneel ? 0.35f * Ramp(T, Press, Press + 0.15f) * Back : 0.f);
+		const FVector Pivot = Feet + FVector(0.f, 0.f, ShoulderHeight - Crouch);
+		// Stance: bat grounded by the back toe, face to the bowler.
+		const FSwing Stance = PlanSwing(EShotType::Defend, Pivot, Feet + FVector(0.2f, 0.4f * Off, 0.18f), FVector::ForwardVector);
+		const float Lift = DPhase == EDeliveryPhase::RunUp ? Ramp(Ttr, -0.6f, -0.1f) : bLive ? Back : 0.f;
+		FBat B = BatAt(Stance, -60.f * Lift);
+		FVector Lean = Stance.Lean;
+		float Open = 0.f, Into = 0.f;
+		if (bPlayed && !bStroke) B = BatAt(Stance, -FMath::Max(60.f * Lift, 125.f * Ramp(T, Press, Press + 0.25f) * Back)); // leave: bat up
+		if (bStroke)
+		{
+			const FVector Aim = !Result.Contact.BatPos.IsZero() ? Result.Contact.BatPos : FVector(Result.Shot.ContactX(), 0.f, 0.5f);
+			FVector Dir = CricketBatting::DirectionToWorld(BatInput.DirectionDeg, StrikerPlayer().BatHand);
+			Dir.Z = FMath::Tan(FMath::DegreesToRadians(FMath::Clamp(Result.Shot.LoftDeg, 0.f, 45.f)));
+			// A hit meets the ball when the simulation says; a miss swings through the aim when the timing says.
+			const float Impact = Result.Contact.HasContact() ? Result.ContactTime : Press + Result.Shot.SwingTime;
+			const FSwing Stroke = PlanSwing(Shot, Pivot, Aim, Dir);
+			Into = Ramp(T, Press, Press + FMath::Max(0.08f, 0.5f * (Impact - Press))) * Back;
+			B = Blend(B, BatAt(Stroke, StrokeAngle(Stroke, T, Press, Impact)), Into);
+			Lean = FMath::Lerp(Stance.Lean, Stroke.Lean, Into);
+			Open = Into * Ramp(T, Impact - 0.15f, Impact + FollowSeconds);
+		}
+		B = Blend(B, Carry(Striker, Off), RunW);
+		PlaceBat(Bat, B);
+		if (UCricketAnimInstance* Anim = AnimOf(Striker))
+		{
+			FCricketBodyPose& P = Anim->Pose;
+			Hold(P, B, Pivot + Lean, TopHand, 1.f - RunW, 1.f);
+			P.PelvisOffset = ToWorld(Lean * 0.8f - FVector(0.f, 0.f, Crouch)) * (1.f - RunW);
+			// Side-on in the stance (a little open to watch the bowler), the chest opening toward the ball's
+			// direction through the stroke.
+			const FVector Stand(0.35f, Off, 0.f), Through(1.f, 0.3f * Off, 0.f);
+			P.ChestFacing = FMath::Lerp(FMath::Lerp(Stand, Through, Open), Striker->GetActorForwardVector(), RunW);
+			P.ChestBend = (12.f + 18.f * Into) * (1.f - RunW);
+		}
+	}
+
+	// Non-striker: carries the bat.
+	{
+		const float Side = OffSideSign(Ctx.NonStriker.BatHand);
+		const FBat B = Carry(NonStriker, Side);
+		PlaceBat(NonStrikerBat, B);
+		if (UCricketAnimInstance* Anim = AnimOf(NonStriker))
+			Hold(Anim->Pose, B, SimAt(NonStriker) + FVector(0.f, 0.f, ShoulderHeight - MarkerHeight), Side > 0.f ? 0 : 1, 0.f, 1.f);
+	}
+
+	// Bowler: the arm windmills over the top to the release, the front arm pulls down through it, and the
+	// chest turns from side-on to the batter and bends over the front leg.
+	const float BowlW = BowlingArmWeight(Ttr);
+	if (UCricketAnimInstance* Anim = AnimOf(Bowler); Anim && BowlW > 0.f)
+	{
+		FCricketBodyPose& P = Anim->Pose;
+		const FVector Fwd(-1.f, 0.f, 0.f);
+		const FVector Side(0.f, -Arm, 0.f); // toward the bowling arm: a right-armer's right, running at the striker
+		const FVector Mid = SimAt(Bowler) + FVector(0.f, 0.f, ShoulderHeight - 0.925f);
+		const FVector Bowling = Mid + Side * ShoulderHalfWidth, Front = Mid - Side * ShoulderHalfWidth;
+		const int32 H = Arm > 0.f ? 1 : 0;
+		P.Hand[H] = ToWorld(ArmCircle(Bowling, Fwd, BowlingArmAngle(Ttr), 0.8f));
+		P.Elbow[H] = ToWorld(Bowling + Side);
+		P.HandWeight[H] = BowlW;
+		// The front arm reaches up at the batter, then pulls down and back past the hip.
+		P.Hand[1 - H] = ToWorld(ArmCircle(Front, Fwd, FMath::Lerp(25.f, -150.f, Ramp(Ttr, -0.2f, 0.15f)), 0.8f));
+		P.Elbow[1 - H] = ToWorld(Front - Side);
+		P.HandWeight[1 - H] = BowlW;
+		// Side-on at the gather (front shoulder at the batter, so the chest faces the bowling arm's side),
+		// turning through square to open past the batter in the follow-through.
+		const FVector Chest = FMath::Lerp(FMath::Lerp(Fwd, Side, 0.8f), Fwd - 0.6f * Side, Ramp(Ttr, -0.25f, 0.15f));
+		P.ChestFacing = FMath::Lerp(Bowler->GetActorForwardVector(), Chest, BowlW);
+		P.ChestBend = 30.f * BowlW * Ramp(Ttr, -0.1f, 0.15f);
+	}
+
+	// Fielders and keeper: the keeper squats until the ball is on its way; anyone the ball comes near gets
+	// down to it and puts both hands where it will be a moment later; a thrower windmills the arm over.
+	for (int32 I = 0; I < Ctx.Field.Num(); ++I)
+	{
+		const FFielder& F = Ctx.Field[I];
+		AStaticMeshActor* Who = F.bBowler ? Bowler.Get() : Fielders.IsValidIndex(I) ? Fielders[I].Get() : nullptr;
+		UCricketAnimInstance* Anim = Who && !Who->IsHidden() ? AnimOf(Who) : nullptr;
+		if (!Anim || (F.bBowler && BowlW > 0.f)) continue;
+		FCricketBodyPose& P = Anim->Pose;
+		const FVector At = SimAt(Who);
+		const FVector Fwd = Who->GetActorForwardVector();
+		float Drop = 0.f, ReadyW = 0.f;
+		if (F.bKeeper)
+		{
+			Drop = bLive ? FMath::Lerp(0.4f, 0.12f, Ramp(T, 0.f, Result.PitchTime > 0.f ? Result.PitchTime + 0.1f : 0.5f)) : 0.4f;
+			ReadyW = 1.f;
+		}
+		else if (!F.bBowler && (DPhase == EDeliveryPhase::RunUp || (bLive && T < Result.ContactTime + 0.4f))) Drop = 0.08f; // walking in, ready
+		const FVector Chest0 = At + FVector(0.f, 0.f, ShoulderHeight - MarkerHeight - 0.1f);
+		FVector Reach = Chest0 + Fwd * 0.4f - FVector(0.f, 0.f, 0.55f); // keeper's gloves by the knees
+		float Near = 0.f;
+		if (bLive)
+		{
+			const FVector Soon = Result.BallAt(T + 0.12f);
+			Near = 1.f - Ramp(FVector::Dist(Soon, Chest0), 0.8f, 1.8f);
+			Drop = FMath::Max(Drop, Near * FMath::Clamp(Chest0.Z - 0.55f - Soon.Z, 0.f, 0.5f));
+			const FVector Chest = Chest0 - FVector(0.f, 0.f, Drop);
+			Reach = FMath::Lerp(Reach, Chest + (Soon - Chest).GetClampedToMaxSize(0.65f), Near);
+		}
+		const FVector Chest = Chest0 - FVector(0.f, 0.f, Drop);
+		const FVector Across = FVector::CrossProduct(Reach - Chest, FVector::UpVector).GetSafeNormal(UE_SMALL_NUMBER, Who->GetActorRightVector());
+		for (int32 H = 0; H < 2; ++H)
+		{
+			const float S = H == 0 ? 1.f : -1.f;
+			P.Hand[H] = ToWorld(Reach + Across * (0.07f * S));
+			P.Elbow[H] = ToWorld(Chest + Across * (0.5f * S) - FVector(0.f, 0.f, 0.5f));
+			P.HandWeight[H] = FMath::Max(Near, ReadyW);
+		}
+		P.PelvisOffset = FVector(0.f, 0.f, -100.f * Drop);
+		P.ChestBend = 45.f * Drop;
+
+		const bool bThrower = I == Result.Fielding.Fielder && Run.ThrowRelease > 0.f;
+		const bool bRelay = I == Run.RelayMove.Fielder && Run.RelayRelease > 0.f;
+		const float Tt = Post - (bRelay ? Run.RelayRelease : Run.ThrowRelease);
+		const float ThrowW = bLive && (bThrower || bRelay) ? BowlingArmWeight(Tt) : 0.f;
+		if (ThrowW > 0.f)
+		{
+			const FVector Stumps(Run.bThrowToStrikerEnd ? 0.f : PitchLength, 0.f, 0.f);
+			const bool bToRelay = !bRelay && Fielders.IsValidIndex(Run.RelayMove.Fielder);
+			const FVector To = bToRelay ? SimAt(Fielders[Run.RelayMove.Fielder]) : Stumps;
+			const FVector Aim = FVector(To.X - At.X, To.Y - At.Y, 0.f).GetSafeNormal(UE_SMALL_NUMBER, Fwd);
+			const FVector Right(-Aim.Y, Aim.X, 0.f);
+			const FVector Shoulder = Chest + Right * ShoulderHalfWidth;
+			P.Hand[1] = ToWorld(ArmCircle(Shoulder, Aim, BowlingArmAngle(Tt), 0.8f));
+			P.Elbow[1] = ToWorld(Shoulder + Right);
+			P.HandWeight[1] = ThrowW;
+			P.HandWeight[0] *= 1.f - ThrowW;
+			P.ChestFacing = FMath::Lerp(Fwd, Aim, ThrowW);
+		}
+	}
+}
+
 void ASuperOverGameMode::UpdatePresentation(float Dt)
 {
 	using namespace CricketGeo;
@@ -779,15 +1058,16 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	const float Post = T - Result.ContactTime; // seconds after contact (or after passing the batter)
 
 	// Bowler: run-up, delivery stride, follow-through.
-	FVector BowlerPos(PitchLength + 14.f, 0.5f * Arm, 0.925f);
-	if (DPhase == EDeliveryPhase::RunUp) BowlerPos.X = FMath::Lerp(PitchLength + 14.f, PitchLength - 1.f, FMath::Clamp(PhaseTime / RunUpSeconds, 0.f, 1.f));
+	// The run-up reaches the crease on an ideally timed release; an early release lets go short of it.
+	FVector BowlerPos(RunUpX(DPhase == EDeliveryPhase::RunUp ? PhaseTime : 0.f), 0.5f * Arm, 0.925f);
 	// Follow-through ends at the bowler's fielding mark, where the fielding solver has them.
 	const int32 BowlerSlot = Ctx.Field.IndexOfByPredicate([](const FFielder& F) { return F.bBowler; });
 	const FVector2D FollowThrough = BowlerSlot >= 0 ? Ctx.Field[BowlerSlot].Home : FVector2D(PitchLength - 4.f, 0.5f * Arm);
 	if (bLive)
 	{
 		const float A = FMath::Clamp(T, 0.f, 1.f);
-		BowlerPos = FVector(FMath::Lerp(PitchLength - 1.f, FollowThrough.X, A), FMath::Lerp(0.5f * Arm, FollowThrough.Y, A), BowlerPos.Z);
+		const float From = RunUpX(0.5f * (ReleaseTiming + 1.f) * RunUpSeconds);
+		BowlerPos = FVector(FMath::Lerp(From, FollowThrough.X, A), FMath::Lerp(0.5f * Arm, FollowThrough.Y, A), BowlerPos.Z);
 	}
 	Bowler->SetActorLocation(ToWorld(BowlerPos));
 
@@ -795,7 +1075,10 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	TargetMarker->SetActorLocation(ToWorld(FVector(HumanPlan.Length, HumanPlan.Line * Off, 0.003f)));
 
 	// Ball.
-	FVector BallPos = ToWorld(FVector(BowlerPos.X - 0.3f, 0.4f * Arm, 1.1f));
+	// In the bowling hand until release (last frame's hand: the arm is posed after this).
+	const USkeletalMeshComponent* BowlerBody = Bowler->FindComponentByClass<USkeletalMeshComponent>();
+	const FName BowlingHand = Arm > 0.f ? FName(TEXT("hand_r")) : FName(TEXT("hand_l"));
+	FVector BallPos = BowlerBody ? BowlerBody->GetSocketLocation(BowlingHand) + FVector(0.f, 0.f, -8.f) : ToWorld(FVector(BowlerPos.X - 0.3f, 0.4f * Arm, 1.1f));
 	if (bLive) BallPos = ToWorld(Result.BallAt(T));
 	Ball->SetActorLocation(BallPos);
 	// Drawn stretched along its path by the distance it covers in a 1/60 s shutter, as a broadcast camera
@@ -861,8 +1144,11 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 			Along = (Run.RunTimes.Num() % 2 == 0) ? A : 1.f - A;
 		}
 		const float SX = FMath::Lerp(0.9f, PitchLength - 1.3f, Along), NX = FMath::Lerp(PitchLength - 1.3f, 0.9f, Along);
-		Striker->SetActorLocation(ToWorld(FVector(SX, -0.9f * Off, 0.9f)));
-		NonStriker->SetActorLocation(ToWorld(FVector(NX, 0.9f * Off, 0.9f)));
+		// Each batter eases from where they stood into their own lane, either side of the pitch: the
+		// non-striker's on the side they backed up (away from the bowler's arm), the striker's the other.
+		const float Lane = FMath::SmoothStep(0.35f, 0.9f, Post);
+		Striker->SetActorLocation(ToWorld(FVector(SX, FMath::Lerp(-0.35f * Off, 1.1f * Arm, Lane), 0.9f)));
+		NonStriker->SetActorLocation(ToWorld(FVector(NX, -1.1f * Arm, 0.9f)));
 	}
 	else if (bLive && BatInput.IsShot())
 	{
@@ -872,19 +1158,6 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 		const float X = FMath::Lerp(FMath::Lerp(0.9f, Result.Shot.ContactX() - 0.45f, FMath::SmoothStep(0.f, 1.f, S)), 0.9f, Back);
 		Striker->SetActorLocation(ToWorld(FVector(X, -0.35f * Off, 0.9f)));
 	}
-
-	// Bat: backlift while the ball is coming, swing over the shot's swing time, then follow-through.
-	float Angle = -25.f;
-	if (DPhase == EDeliveryPhase::RunUp || (bLive && !BatInput.IsShot() && T < 1.5f)) Angle = -110.f;
-	if (bLive && BatInput.IsShot())
-	{
-		const float S = FMath::Clamp((T - BatInput.PressTime) / FMath::Max(Result.Shot.SwingTime, 0.05f), 0.f, 1.f);
-		Angle = FMath::Lerp(-110.f, 140.f, S);
-	}
-	const FVector Hands = Striker->GetActorLocation() + ToWorld(FVector(0.25f, 0.3f * Off, 0.1f));
-	const float R = FMath::DegreesToRadians(Angle);
-	const FVector Along(FMath::Sin(R), 0.f, -FMath::Cos(R));
-	Bat->SetActorLocationAndRotation(Hands + Along * 45.f, FRotationMatrix::MakeFromZ(-Along).Rotator());
 
 	// Camera: broadcast telephoto from behind the bowler, then pull wide and follow the ball after the shot.
 	const bool bFollow = bLive && !bReplay && T > Result.ContactTime + 0.15f && (Result.Contact.HasContact() || Result.Fielding.Fielder >= 0);
@@ -901,6 +1174,22 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 		LookAt = T < Result.ContactTime + 0.3f ? ToWorld(FVector(Result.Shot.ContactX(), 0.f, 1.f)) : BallPos;
 		WantFov = T < Result.ContactTime + 0.3f ? 12.f : 35.f;
 	}
+	if (bDevCamFielder && bLive && Fielders.IsValidIndex(Result.Fielding.Fielder) && !Ctx.Field[Result.Fielding.Fielder].bBowler)
+	{
+		const FVector At = Fielders[Result.Fielding.Fielder]->GetActorLocation();
+		const FVector In = FVector(FVector2D(PitchCentre() * 100.f - At), 0.f).GetSafeNormal();
+		WantLoc = At + In * 700.f + FVector(0.f, 0.f, 80.f);
+		LookAt = At;
+		WantFov = 30.f;
+		bCutCamera = true;
+	}
+	else if (DevCam.Num() == 7)
+	{
+		WantLoc = ToWorld(FVector(DevCam[0], DevCam[1], DevCam[2]));
+		LookAt = ToWorld(FVector(DevCam[3], DevCam[4], DevCam[5]));
+		WantFov = DevCam[6];
+		bCutCamera = true;
+	}
 	const float K = FMath::Clamp(Dt * 3.f, 0.f, 1.f);
 	UCameraComponent* Cam = Camera->GetCameraComponent();
 	const FVector Loc = bCutCamera ? WantLoc : FMath::Lerp(Camera->GetActorLocation(), WantLoc, bViewSet ? K : 1.f);
@@ -909,6 +1198,7 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	Cam->SetFieldOfView(bCutCamera ? WantFov : FMath::Lerp(Cam->FieldOfView, WantFov, K));
 	bCutCamera = false;
 	UpdateFigures(Dt);
+	UpdatePoses(T, bLive, Post, Off, Arm);
 
 	if (bTrajectory && Result.BallPath.Num() > 1)
 	{

@@ -42,6 +42,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Super Over") int32 HumanTeam = 0;
 	UPROPERTY(EditAnywhere, Category = "Super Over") int32 MatchSeed = 2026;
 	UPROPERTY(EditAnywhere, Category = "Super Over") float RunUpSeconds = 1.8f;
+	static constexpr float IdealRelease = 0.f; // bowling meter value of a perfectly timed release
+	static constexpr float RunUpLength = 8.f;  // metres of approach shown before the crease
 	UPROPERTY(EditAnywhere, Category = "Super Over") float ExposureBias = -1.5f;
 
 	/** Semantic match events for HUD, camera, audio and (later) commentary. */
@@ -66,7 +68,10 @@ public:
 	CricketAI::EDifficulty Difficulty = CricketAI::EDifficulty::Hard; // F6 or -CricketDifficulty=0..3
 	float AiSkill() const { return CricketAI::SkillOf(Difficulty); }
 	int32 BallsPlayed = 0, ShotBall = 0; // -CricketShotBall=N: save the game view while delivery N is live
-	int32 QuitAfter = 0;                 // -CricketQuitAfter=N: quit after N deliveries (default: after the shot ball)
+	int32 QuitAfter = 0;
+	float ShotEvery = 0.2f;  // -CricketShotEvery: capture interval (s)
+	TArray<float> DevCam;    // -CricketDevCam
+	bool bDevCamFielder = false;                 // -CricketQuitAfter=N: quit after N deliveries (default: after the shot ball)
 	float ShotClock = 0.f;
 	/** Action replay of the key moment after a wicket or boundary, from side-on at half speed. */
 	static constexpr float ReplayDelay = 1.2f, ReplaySpeed = 0.5f, ReplayLead = 0.8f, ReplayAction = 1.6f;
@@ -100,6 +105,8 @@ private:
 	UPROPERTY() TObjectPtr<UMaterialInterface> ShapeMaterial;
 	UPROPERTY() TObjectPtr<AStaticMeshActor> Ball;
 	UPROPERTY() TObjectPtr<AStaticMeshActor> Bat;
+	UPROPERTY() TObjectPtr<AStaticMeshActor> NonStrikerBat;
+	UPROPERTY() TArray<TObjectPtr<AStaticMeshActor>> BatHandles; // striker's, non-striker's
 	UPROPERTY() TObjectPtr<AStaticMeshActor> Striker;
 	UPROPERTY() TObjectPtr<AStaticMeshActor> NonStriker;
 	UPROPERTY() TObjectPtr<AStaticMeshActor> Bowler;
@@ -111,7 +118,7 @@ private:
 	UPROPERTY() TObjectPtr<UAnimSequence> IdleAnim;
 	UPROPERTY() TObjectPtr<UAnimSequence> JogAnim;
 	UPROPERTY() TArray<TObjectPtr<AStaticMeshActor>> Figures; // everyone who stands on the field
-	struct FFigureState { FVector Last = FVector::ZeroVector; float Speed = 0.f; bool bJogging = false; };
+	struct FFigureState { FVector Last = FVector::ZeroVector; float Speed = 0.f; };
 	TMap<TObjectPtr<AStaticMeshActor>, FFigureState> FigureStates;
 	// Sound: one channel for the ball's cues (bat, edge, pitching, stumps) and a looping crowd bed whose
 	// level swells on boundaries and wickets.
@@ -125,6 +132,7 @@ private:
 	/** Frame timings for the performance summary logged at the end of play (ms; draw calls). */
 	struct FPerfSample { float Frame, Game, Render, Gpu; };
 	TArray<FPerfSample> Perf;
+	TArray<float> HandMiss; // striker's hands from their bat targets (cm), logged with the perf summary
 	bool bRecordAudio = false, bRecording = false;
 	bool bTouchWasDown[10] = {};
 	// -CricketTouchScript: plays a whole match through the touch layer by injecting touches into the
@@ -150,6 +158,14 @@ private:
 	void UpdatePresentation(float Dt);
 	void AddBody(AStaticMeshActor* Marker);
 	void UpdateFigures(float Dt);
+	void UpdatePoses(float T, bool bLive, float Post, float Off, float Arm);
+	class UCricketAnimInstance* AnimOf(AActor* Figure) const;
+	void CheckFigures();
+	bool bFiguresChecked = false;
+	/** Seconds from the bowler's release (negative before it; very negative when no delivery is under way). */
+	float TimeToRelease(float T, bool bLive) const;
+	/** Where the bowler is along the run-up, arriving at the crease on an ideally timed release. */
+	float RunUpX(float Time) const;
 	void SetupAudio();
 	FCricketControls ReadTouch(class APlayerController* PC);
 	void InjectTouch(class APlayerController* PC, int32 Finger, uint8 Type, const FVector2D& At);
