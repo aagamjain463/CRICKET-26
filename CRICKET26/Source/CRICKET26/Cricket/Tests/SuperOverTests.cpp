@@ -619,6 +619,41 @@ bool FSOBatEdge::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBatContinuous, "CRICKET26.Batting.ContactQualityIsContinuous", CricketTestFlags)
+bool FSOBatContinuous::RunTest(const FString&)
+{
+	// Slide the impact point down the blade and then across the face, 5 mm at a time: exit speed and
+	// quality must fall off smoothly from the sweet spot, with no jumps at zone boundaries.
+	FBallState Ball;
+	Ball.Pos = FVector(2.f, 0.1f, 0.4f);
+	Ball.Vel = FVector(-30.f, 0.f, 3.f);
+	const FShotProfile Drive = CricketBatting::Profile(EShotType::Drive);
+	const FCricketPlayer Batter;
+	auto Hit = [&](float Along, float Across)
+	{
+		return CricketBatting::ResolveContact(Ball, Ball.Pos + FVector(0.f, -Across, Along), Drive, 0.f, 0.f, Batter, false);
+	};
+	const FContactResult Sweet = Hit(0.f, 0.f);
+	TestEqual(TEXT("sweet spot middles"), Sweet.Zone, EContactZone::Middle);
+	TestTrue(*FString::Printf(TEXT("perfect quality %.2f"), Sweet.Quality), Sweet.Quality > 0.95f);
+	for (int32 Axis = 0; Axis < 2; ++Axis)
+	{
+		float PrevSpeed = Sweet.ExitVel.Size(), PrevQ = Sweet.Quality;
+		for (float D = 0.005f; D <= (Axis == 0 ? 0.16f : 0.05f); D += 0.005f)
+		{
+			const FContactResult C = Axis == 0 ? Hit(D, 0.f) : Hit(0.f, D);
+			if (!C.HasContact()) break;
+			const float Speed = C.ExitVel.Size();
+			TestTrue(*FString::Printf(TEXT("axis %d at %.3f: speed %.1f after %.1f"), Axis, D, Speed, PrevSpeed), Speed <= PrevSpeed + 0.05f && Speed > PrevSpeed - 3.f);
+			TestTrue(TEXT("quality never rises away from the sweet spot"), C.Quality <= PrevQ + 1e-3f);
+			PrevSpeed = Speed;
+			PrevQ = C.Quality;
+		}
+		TestTrue(*FString::Printf(TEXT("axis %d loses real power toward the edge/toe (%.2f)"), Axis, PrevQ), PrevQ < 0.8f);
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBatWicket, "CRICKET26.Batting.BowledAndLBW", CricketTestFlags)
 bool FSOBatWicket::RunTest(const FString&)
 {

@@ -395,8 +395,12 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 	if (bProtected && R.Dismissal != EDismissal::None && R.Dismissal != EDismissal::RunOut) R.Dismissal = EDismissal::None;
 
 	// Commentary-style summary for the HUD.
-	FString What = bShot ? FString::Printf(TEXT("%s%s - %s"), Foot == EFootwork::Advance ? TEXT("Down the track, ") : TEXT(""),
-			*ShotName(R.Shot.Shot), *ZoneName(R.Contact.Zone))
+	// Timing readout so the player can learn the window: perfect / good, else early or late by how much.
+	const int32 Ms = FMath::RoundToInt(Timing * 1000.f);
+	const FString TimingText = FMath::Abs(Ms) <= 15 ? FString(TEXT("perfect timing")) : FMath::Abs(Ms) <= 40 ? FString(TEXT("good timing"))
+		: FString::Printf(TEXT("%d ms %s"), FMath::Abs(Ms), Ms < 0 ? TEXT("early") : TEXT("late"));
+	FString What = bShot ? FString::Printf(TEXT("%s%s - %s, %s"), Foot == EFootwork::Advance ? TEXT("Down the track, ") : TEXT(""),
+			*ShotName(R.Shot.Shot), *ZoneName(R.Contact.Zone), *TimingText)
 		: (R.bTooLate ? TEXT("Too late on the shot") : TEXT("Left alone"));
 	const FDeliveryOutcome O = R.ToOutcome();
 	const TCHAR* Extra = O.bLegBye ? TEXT("leg bye") : TEXT("bye");

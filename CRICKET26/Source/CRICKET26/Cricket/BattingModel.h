@@ -35,6 +35,7 @@ struct FContactResult
 	FVector ContactPos = FVector::ZeroVector;
 	FVector ExitVel = FVector::ZeroVector;
 	float ContactTime = 0.f;
+	float Quality = 0.f;     // 0..1: timing and how near the sweet spot, i.e. the share of a perfect hit's energy
 	bool HasContact() const { return Zone != EContactZone::Miss; }
 };
 

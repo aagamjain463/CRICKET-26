@@ -137,25 +137,21 @@ FContactResult CricketBatting::ResolveContact(const FBallState& Ball, const FVec
 	const float ShotDir = FMath::Clamp(FMath::Clamp(Dir, P.DirMin, P.DirMax) + Side * Tau * 400.f, -175.f, 175.f);
 	float Loft = P.LoftDeg + (bAerial && P.Shot != EShotType::Loft ? 20.f : 0.f);
 	Loft += P.bCrossBat ? FMath::Abs(Tau) * 200.f : -Tau * 250.f;
-	if (R.Zone == EContactZone::Toe) Loft -= 10.f;
-	if (R.Zone == EContactZone::Upper) Loft += 15.f;
+	// How far from the sweet spot, 0..1 along the blade (toe falls off faster than the splice) and across it.
+	const float OffLength = FMath::Min(1.f, FMath::Square(A > 0.f ? A / 0.13f : -A / 0.22f));
+	const float OffWidth = FMath::Clamp((FMath::Abs(B) - 0.015f) / (BladeHalfWidth - 0.015f), 0.f, 1.f); // flat middle, then twist grows with the moment arm
+	Loft += A > 0.f ? -10.f * OffLength : 15.f * OffLength; // toe keeps it down, the splice pops it up
+
 	Loft = FMath::Clamp(Loft, -25.f, 60.f);
 
-	// Effective bat mass (kg) at the impact point: ~0.65 at the sweet spot, falling off toward the
-	// toe, the splice and the edges.
-	float E = 0.5f, M = 0.65f;
-	switch (R.Zone)
-	{
-	case EContactZone::InnerHalf: case EContactZone::OuterHalf: E = 0.44f; M = 0.5f; break;
-	case EContactZone::Toe: E = 0.3f; M = 0.25f; break;
-	case EContactZone::Upper: E = 0.35f; M = 0.3f; break;
-	case EContactZone::Middle: break;
-	default: E = 0.35f; M = 0.3f; break; // edges
-	}
+	// Effective bat mass (kg) and restitution fall off smoothly with that distance.
+	float M = FMath::Max(0.2f, 0.65f - 0.4f * OffLength - 0.35f * OffWidth);
+	float E = FMath::Max(0.25f, 0.5f - 0.2f * OffLength - 0.15f * OffWidth);
 	if (P.bSoftHands) { E = FMath::Min(E, 0.3f); M = FMath::Min(M, 0.3f); }
 
-	const float Speed = P.BatSpeed * (0.75f + 0.5f * FMath::Clamp(Batter.Power, 0.f, 1.f))
-		* FMath::Max(0.25f, 1.f - FMath::Square(Tau / 0.1f));
+	const float TimingQuality = FMath::Max(0.25f, 1.f - FMath::Square(Tau / 0.1f));
+	const float Speed = P.BatSpeed * (0.75f + 0.5f * FMath::Clamp(Batter.Power, 0.f, 1.f)) * TimingQuality;
+	R.Quality = TimingQuality * M / 0.65f;
 
 	// The batter angles the face so a sweet-spot hit would travel the intended way.
 	const FVector Want = Dir3(ShotDir, Loft, Off);
