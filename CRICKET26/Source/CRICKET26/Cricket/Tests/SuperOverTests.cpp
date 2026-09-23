@@ -595,7 +595,62 @@ bool FSOBallPaceVariations::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallDeterminism,"CRICKET26.Ball.DeterministicAndNoBall", CricketTestFlags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallSpinVariations, "CRICKET26.Ball.SpinVariationsDiffer", CricketTestFlags)
+bool FSOBallSpinVariations::RunTest(const FString&)
+{
+	const FPitchConditions C;
+	struct FFlight { float Dip, Turn, Bounce; };
+	auto Fly = [&C](EDeliveryType Type, float Movement = 0.6f, float Timing = 0.f)
+	{
+		FCricketPlayer Bowler;
+		Bowler.BowlerType = EBowlerType::LegSpin;
+		Bowler.PaceKph = 88.f;
+		Bowler.Accuracy = 1.f;
+		Bowler.Movement = Movement;
+		FDeliveryPlan Plan;
+		Plan.Type = Type;
+		Plan.Length = 4.6f;
+		const FDeliveryRelease R = CricketBowling::Execute(Bowler, ECricketHand::Right, Plan, Timing, 3, C);
+		FBallState B = R.Ball;
+		FFlight F{};
+		FVector Pitch = FVector::ZeroVector, In = FVector::ZeroVector;
+		while (B.Pos.X > CricketGeo::PoppingCrease && B.Time < 3.f)
+		{
+			const FVector V = B.Vel;
+			if (CricketBall::Step(B, C) == CricketBall::EStep::Bounce && B.Bounces == 1)
+			{
+				F.Dip = FMath::RadiansToDegrees(FMath::Atan2(-V.Z, -V.X)); // descent angle onto the pitch
+				Pitch = B.Pos;
+				In = V;
+			}
+		}
+		// Deviation off the pitch: angle out minus angle in, + away from the right-hander (an angle, so neither
+		// length nor the line across from the bowling arm confounds it).
+		F.Turn = FMath::RadiansToDegrees(FMath::Atan2(B.Pos.Y - Pitch.Y, Pitch.X - B.Pos.X) - FMath::Atan2(In.Y, -In.X));
+		F.Bounce = B.Pos.Z;
+		return F;
+	};
+	const FFlight Leg = Fly(EDeliveryType::LegBreak), Top = Fly(EDeliveryType::TopSpinner), Slide = Fly(EDeliveryType::Slider), Goog = Fly(EDeliveryType::Googly);
+	UE_LOG(LogTemp, Display, TEXT("Leg spin (dip deg / turn deg / height at crease m): leg break %.1f/%.2f/%.2f, googly %.1f/%.2f/%.2f, top-spinner %.1f/%.2f/%.2f, slider %.1f/%.2f/%.2f"),
+		Leg.Dip, Leg.Turn, Leg.Bounce, Goog.Dip, Goog.Turn, Goog.Bounce, Top.Dip, Top.Turn, Top.Bounce, Slide.Dip, Slide.Turn, Slide.Bounce);
+
+	TestTrue(TEXT("top-spinner dips more than the leg break"), Top.Dip > Leg.Dip + 0.5f);
+	// The extra dip is only ~0.5 deg at 88 kph (Magnus lift ~1 m/s^2), so it bounces a touch higher, not a lot.
+	TestTrue(TEXT("top-spinner bounces at least as high as the leg break"), Top.Bounce >= Leg.Bounce);
+	TestTrue(TEXT("top-spinner goes straight on"), FMath::Abs(Top.Turn) < 0.3f * Leg.Turn);
+	TestTrue(TEXT("slider is flatter than the leg break"), Slide.Dip < Leg.Dip - 0.5f);
+	TestTrue(TEXT("slider keeps lower than the leg break"), Slide.Bounce < Leg.Bounce - 0.03f);
+	TestTrue(TEXT("slider turns a little, the leg-break way"), Slide.Turn > 0.f && Slide.Turn < 0.5f * Leg.Turn);
+	TestTrue(TEXT("googly turns the other way, less than the leg break"), Goog.Turn < 0.f && -Goog.Turn < Leg.Turn);
+
+	// More revs, more turn; a poor release loses revs.
+	const float Big = Fly(EDeliveryType::LegBreak, 0.95f).Turn, Small = Fly(EDeliveryType::LegBreak, 0.3f).Turn, Poor = Fly(EDeliveryType::LegBreak, 0.6f, 0.7f).Turn;
+	TestTrue(*FString::Printf(TEXT("big spinner turns it more (%.1f vs %.1f deg)"), Big, Small), Big > 1.3f * Small);
+	TestTrue(*FString::Printf(TEXT("poor release turns less (%.1f vs %.1f deg)"), Poor, Leg.Turn), Poor < 0.85f * Leg.Turn);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallDeterminism, "CRICKET26.Ball.DeterministicAndNoBall", CricketTestFlags)
 bool FSOBallDeterminism::RunTest(const FString&)
 {
 	FCricketPlayer Bowler; // default accuracy: scatter on

@@ -120,7 +120,7 @@ TArray<EDeliveryType> CricketBowling::Repertoire(EBowlerType Type)
 	switch (Type)
 	{
 	case EBowlerType::OffSpin: return { EDeliveryType::OffBreak, EDeliveryType::ArmBall, EDeliveryType::TopSpinner };
-	case EBowlerType::LegSpin: return { EDeliveryType::LegBreak, EDeliveryType::Googly, EDeliveryType::TopSpinner };
+	case EBowlerType::LegSpin: return { EDeliveryType::LegBreak, EDeliveryType::Googly, EDeliveryType::TopSpinner, EDeliveryType::Slider };
 	default: return { EDeliveryType::Stock, EDeliveryType::Outswing, EDeliveryType::Inswing, EDeliveryType::Cutter, EDeliveryType::Slower,
 			EDeliveryType::Seam, EDeliveryType::CrossSeam };
 	}
@@ -158,7 +158,7 @@ FDeliveryRelease CricketBowling::Execute(const FCricketPlayer& Bowler, ECricketH
 	case EDeliveryType::Cutter: SpeedFactor = 0.9f; break;
 	case EDeliveryType::Slower: SpeedFactor = 0.78f; break;
 	case EDeliveryType::CrossSeam: SpeedFactor = 0.96f; break;
-	case EDeliveryType::ArmBall: SpeedFactor = 1.06f; break;
+	case EDeliveryType::ArmBall: case EDeliveryType::Slider: SpeedFactor = 1.06f; break;
 	case EDeliveryType::Googly: SpeedFactor = 0.97f; break;
 	default: break;
 	}
@@ -196,10 +196,12 @@ FDeliveryRelease CricketBowling::Execute(const FCricketPlayer& Bowler, ECricketH
 		// Side spin about the direction of travel turns the ball; Spin.X > 0 turns it toward -Y.
 		switch (Plan.Type)
 		{
-		case EDeliveryType::OffBreak: case EDeliveryType::Googly: Spin = FVector(Arm * Revs, -0.35f * Revs, 0.f); break;
+		case EDeliveryType::OffBreak: Spin = FVector(Arm * Revs, -0.35f * Revs, 0.f); break;
+		case EDeliveryType::Googly: Spin = 0.8f * FVector(Arm * Revs, -0.35f * Revs, 0.f); break; // out of the back of the hand: fewer revs
 		case EDeliveryType::LegBreak: Spin = FVector(-Arm * Revs, -0.3f * Revs, 0.f); break;
 		case EDeliveryType::TopSpinner: Spin = FVector(0.f, -0.9f * Revs, 0.f); break;
 		case EDeliveryType::ArmBall: B.SwingAccel = 0.9f * Arm * Move; Spin = FVector(0.f, 0.4f * Revs, 0.f); break;
+		case EDeliveryType::Slider: Spin = FVector(-0.2f * Arm * Revs, 0.5f * Revs, 0.f); break; // backspin: flatter, lower, little turn
 		default: break;
 		}
 	}

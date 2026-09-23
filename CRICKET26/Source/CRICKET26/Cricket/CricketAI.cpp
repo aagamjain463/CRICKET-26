@@ -65,6 +65,7 @@ FBowlingChoice CricketAI::ChooseDelivery(const FCricketPlayer& Bowler, ECricketH
 		{ TEXT("Googly"), EDeliveryType::Googly, 4.6f, 0.15f, 1.5f },
 		{ TEXT("Quick top-spinner"), EDeliveryType::TopSpinner, 3.6f, 0.0f, 1.f },
 		{ TEXT("Wide leg break"), EDeliveryType::LegBreak, 5.0f, 0.55f, 1.f },
+		{ TEXT("Slider"), EDeliveryType::Slider, 4.2f, 0.1f, 1.f },
 	};
 	TArrayView<const FPlanOption> Options = Bowler.BowlerType == EBowlerType::Pace ? TArrayView<const FPlanOption>(Pace)
 		: Bowler.BowlerType == EBowlerType::OffSpin ? TArrayView<const FPlanOption>(OffSpin) : TArrayView<const FPlanOption>(LegSpin);

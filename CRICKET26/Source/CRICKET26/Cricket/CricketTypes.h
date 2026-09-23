@@ -59,7 +59,8 @@ enum class EDeliveryType : uint8
 {
 	Stock, Outswing, Inswing, Cutter, Slower,          // pace
 	OffBreak, ArmBall, LegBreak, Googly, TopSpinner,   // spin
-	Seam, CrossSeam                                    // pace: seam-up and scrambled seam
+	Seam, CrossSeam,                                   // pace: seam-up and scrambled seam
+	Slider                                             // leg spin: backspin, skids on
 };
 
 /** What the batter intends; the concrete shot is chosen from the read of the ball. */

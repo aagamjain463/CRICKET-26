@@ -21,6 +21,7 @@ namespace
 		case EDeliveryType::LegBreak: return TEXT("Leg break");
 		case EDeliveryType::Googly: return TEXT("Googly");
 		case EDeliveryType::TopSpinner: return TEXT("Top-spinner");
+		case EDeliveryType::Slider: return TEXT("Slider");
 		default: return TEXT("Stock");
 		}
 	}
