@@ -38,11 +38,29 @@ struct FPitchConditions
 	// a 135 km/h ball passes the crease at ~0.75 m off a 6 m length and ~1.45 m off 10 m (ball-tracking).
 	FSurface Pitch{ 0.63f, 0.32f, 1.5f };
 	FSurface Outfield{ 0.38f, 0.45f, 1.1f };
+	float Swing = 1.f; // scales the swing in the air: cloud cover helps it, dew on the ball takes some away
+	float Seam = 1.f;  // scales the movement off the seam: grass on the pitch helps it
+	float Grip = 1.f;  // scales how much of a spinner's revs the pitch turns into turn: dust and wear raise it
+	float Rough = 0.f; // 0 smooth to 1 torn up: how much harder the footmarks outside the stumps grip, and how much lower they keep
 };
+
+/** A pitch's character, set by the venue. */
+enum class EPitchType : uint8 { Green, Flat, Dusty };
 
 namespace CricketBall
 {
 	constexpr float FixedDt = 1.f / 240.f;
+
+	/**
+	 * The conditions for a pitch of this type, worn by Wear (0 fresh, 1 at the end of the match: the surface breaks
+	 * up, keeps lower and grips more), under Cloud (0 clear, 1 overcast), with or without dew on the outfield.
+	 * The flat, fresh, clear, dry pitch is the default FPitchConditions.
+	 */
+	FPitchConditions Conditions(EPitchType Type, float Wear = 0.f, float Cloud = 0.f, bool bDew = false);
+
+	/** The rough: footmarks outside the stumps on a spinner's length at the batter's end, dug by bowlers following
+	 *  through from the other end. The pitch material draws the same patches. */
+	bool IsInRough(const FVector& P);
 
 	enum class EStep : uint8 { None, Bounce, Stopped };
 

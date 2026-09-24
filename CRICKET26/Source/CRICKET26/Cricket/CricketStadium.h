@@ -8,6 +8,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "BallSimulation.h"
 
 class UStaticMesh;
 class UMaterialInterface;
@@ -43,7 +44,22 @@ namespace CricketStadium
 		bool bLedBoards = false;
 		/** The crowd as Fans, for instanced spectators (Scripts/stadium/make_fan.py); the block meshes stay empty. */
 		bool bFanCrowd = false;
+		/** The seats' colours, one scheme per venue. */
+		int32 Scheme = 0;
 	};
+
+	/** A ground (all fictional): the pitch it prepares, how used that pitch is by the time of the Super Over, and
+	 *  its weather. Under lights the outfield takes dew. */
+	struct FVenue
+	{
+		const TCHAR* Name;
+		EPitchType Pitch;
+		float Wear;   // 0 fresh to 1 at the end of a long match
+		float Cloud;  // 0 clear to 1 overcast
+		bool bNight;
+	};
+	constexpr int32 NumVenues = 3;
+	const FVenue& Venue(int32 Index);
 
 	/** One spectator of the instanced crowd: the floor under their seat (metres), the way they face, and their look. */
 	struct FFan
@@ -81,6 +97,8 @@ namespace CricketStadium
 		TArray<FColouredMesh> Crowd; // [Section * NumGroups + Group]
 		TArray<FFan> Fans;           // with bFanCrowd
 		TArray<FScreen> Screens;     // their frames are in Structure; the game draws what they show
+		FColouredMesh Lamps;         // the floodlights' lamps, which glow at night
+		TArray<FVector> Floodlights; // the middle of each tower's lamp bank, where its light comes from
 		int32 Spectators = 0;
 	};
 

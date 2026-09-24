@@ -68,7 +68,24 @@ def grass_logo():
     img.save(os.path.join(OUT, "T_GrassLogo.png"))
 
 
+def mark():
+    # The stamp the game draws a ball mark or footmark with: a soft-edged, slightly ragged disc in white.
+    import math, random
+    random.seed(26)
+    S = 64
+    img = Image.new("RGBA", (S, S), (255, 255, 255, 0))
+    px = img.load()
+    for y in range(S):
+        for x in range(S):
+            dx, dy = (x - S / 2 + 0.5) / (S / 2), (y - S / 2 + 0.5) / (S / 2)
+            r = math.hypot(dx, dy) * (1.0 + 0.12 * math.sin(5 * math.atan2(dy, dx)))
+            a = max(0.0, min(1.0, (1.0 - r) / 0.35)) * (0.75 + 0.25 * random.random())
+            px[x, y] = (255, 255, 255, int(255 * a))
+    img.save(os.path.join(OUT, "T_Mark.png"))
+
+
 os.makedirs(OUT, exist_ok=True)
+mark()
 ads()
 grass_logo()
 print("STADIUM textures written to", OUT)

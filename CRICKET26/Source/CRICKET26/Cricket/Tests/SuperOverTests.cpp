@@ -670,6 +670,69 @@ bool FSOBallSpinVariations::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallPitchCharacter, "CRICKET26.Ball.PitchCharacterAndWear", CricketTestFlags)
+bool FSOBallPitchCharacter::RunTest(const FString&)
+{
+	// Turn off the pitch (degrees) and height at the crease for one delivery under the given conditions.
+	struct FFlight { float Turn, Bounce, Swing, Seam; };
+	auto Fly = [](const FPitchConditions& C, EBowlerType Style, EDeliveryType Type, float Line = 0.f)
+	{
+		FCricketPlayer Bowler;
+		Bowler.BowlerType = Style;
+		if (Style != EBowlerType::Pace) Bowler.PaceKph = 88.f;
+		Bowler.Accuracy = 1.f;
+		Bowler.Movement = 0.6f;
+		FDeliveryPlan Plan;
+		Plan.Type = Type;
+		Plan.Length = Style == EBowlerType::Pace ? 7.f : 4.f;
+		Plan.Line = Line;
+		const FDeliveryRelease R = CricketBowling::Execute(Bowler, ECricketHand::Right, Plan, 0.f, 3, C);
+		FBallState B = R.Ball;
+		FVector Pitch = FVector::ZeroVector, In = FVector::ZeroVector;
+		while (B.Pos.X > CricketGeo::PoppingCrease && B.Time < 3.f)
+		{
+			const FVector V = B.Vel;
+			if (CricketBall::Step(B, C) == CricketBall::EStep::Bounce && B.Bounces == 1) { Pitch = B.Pos; In = V; }
+		}
+		return FFlight{ FMath::RadiansToDegrees(FMath::Atan2(B.Pos.Y - Pitch.Y, Pitch.X - B.Pos.X) - FMath::Atan2(In.Y, -In.X)), B.Pos.Z,
+			FMath::Abs(R.Ball.SwingAccel), FMath::Abs(R.Ball.SeamKick) };
+	};
+	using namespace CricketBall;
+	const FPitchConditions Default;
+	const FPitchConditions Flat = Conditions(EPitchType::Flat);
+	TestEqual(TEXT("a fresh flat pitch on a clear day is the default"), Flat.Pitch.Restitution, Default.Pitch.Restitution);
+	TestEqual(TEXT("the default grips as before"), Flat.Grip, Default.Grip);
+
+	const float Green = Fly(Conditions(EPitchType::Green), EBowlerType::LegSpin, EDeliveryType::LegBreak).Turn;
+	const FFlight Fresh = Fly(Flat, EBowlerType::LegSpin, EDeliveryType::LegBreak);
+	const FFlight Worn = Fly(Conditions(EPitchType::Flat, 1.f), EBowlerType::LegSpin, EDeliveryType::LegBreak);
+	const float Dusty = Fly(Conditions(EPitchType::Dusty), EBowlerType::LegSpin, EDeliveryType::LegBreak).Turn;
+	const float Dewy = Fly(Conditions(EPitchType::Flat, 0.f, 0.f, true), EBowlerType::LegSpin, EDeliveryType::LegBreak).Turn;
+	UE_LOG(LogTemp, Display, TEXT("Leg break turn: green %.2f, flat %.2f, worn %.2f, dusty %.2f, dew %.2f deg"), Green, Fresh.Turn, Worn.Turn, Dusty, Dewy);
+	TestTrue(TEXT("a dusty pitch turns more than a flat one"), Dusty > 1.15f * Fresh.Turn);
+	TestTrue(TEXT("a green pitch turns less than a flat one"), Green < 0.9f * Fresh.Turn);
+	TestTrue(TEXT("a worn pitch turns more than a fresh one"), Worn.Turn > 1.15f * Fresh.Turn);
+	TestTrue(*FString::Printf(TEXT("a worn pitch keeps lower (%.2f vs %.2f m)"), Worn.Bounce, Fresh.Bounce), Worn.Bounce < Fresh.Bounce - 0.02f);
+	TestTrue(TEXT("dew takes the grip away"), Dewy < 0.9f * Fresh.Turn);
+
+	const FFlight GreenPace = Fly(Conditions(EPitchType::Green), EBowlerType::Pace, EDeliveryType::Seam);
+	const FFlight DustyPace = Fly(Conditions(EPitchType::Dusty), EBowlerType::Pace, EDeliveryType::Seam);
+	TestTrue(*FString::Printf(TEXT("a green pitch bounces higher (%.2f vs %.2f m)"), GreenPace.Bounce, DustyPace.Bounce), GreenPace.Bounce > DustyPace.Bounce + 0.05f);
+	TestTrue(TEXT("a green pitch seams more"), GreenPace.Seam > 1.5f * DustyPace.Seam);
+	const float Clear = Fly(Flat, EBowlerType::Pace, EDeliveryType::Outswing).Swing;
+	const float Overcast = Fly(Conditions(EPitchType::Flat, 0.f, 1.f), EBowlerType::Pace, EDeliveryType::Outswing).Swing;
+	TestTrue(TEXT("cloud cover swings the ball more"), Overcast > 1.4f * Clear);
+
+	// Out of the rough outside the off stump the ball spits: more turn, and lower, than off the smooth.
+	const FPitchConditions Turner = Conditions(EPitchType::Dusty, 1.f);
+	TestTrue(TEXT("the rough is outside the stumps on a spinner's length"), IsInRough(FVector(4.f, 0.7f, 0.f)) && !IsInRough(FVector(4.f, 0.f, 0.f)));
+	const FFlight Smooth = Fly(Turner, EBowlerType::LegSpin, EDeliveryType::LegBreak, 0.f);
+	const FFlight Rough = Fly(Turner, EBowlerType::LegSpin, EDeliveryType::LegBreak, 0.7f);
+	UE_LOG(LogTemp, Display, TEXT("Rough: turn %.2f vs %.2f deg, height %.2f vs %.2f m"), Rough.Turn, Smooth.Turn, Rough.Bounce, Smooth.Bounce);
+	TestTrue(TEXT("the rough turns it more"), Rough.Turn > 1.2f * Smooth.Turn);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallDeterminism, "CRICKET26.Ball.DeterministicAndNoBall", CricketTestFlags)
 bool FSOBallDeterminism::RunTest(const FString&)
 {

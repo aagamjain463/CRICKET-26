@@ -48,6 +48,7 @@ public:
 	static constexpr float RunUpLength = 8.f;  // metres of approach shown before the crease
 	UPROPERTY(EditAnywhere, Category = "Super Over") float ExposureEV100 = 15.f; // fixed camera exposure: the sunny-16 rule for a 100000 lux sun
 	static constexpr float SunLux = 100000.f;
+	static constexpr float NightLux = 2000.f; // on the field under the floodlights
 	/** The sun's light travels from the bowler's end toward the striker, 42 degrees above the horizon. */
 	static inline const FRotator SunRotation = FRotator(-42.f, 215.f, 0.f);
 	static class ADirectionalLight* SpawnSun(UWorld* World);
@@ -212,6 +213,14 @@ private:
 	UPROPERTY() TObjectPtr<class UTextureRenderTarget2D> ScreenTarget; // what every big screen shows
 	FString ScreenShown;
 	void UpdateBigScreens();
+	/** The ground: -CricketVenue=0..2, otherwise a random one (the first on AutoPlay runs). */
+	int32 VenueIndex = 0;
+	/** This ball's conditions: the venue's pitch, worn a little more by every ball bowled on it, and its weather. */
+	FPitchConditions Conditions() const;
+	/** The pitch's material, and the marks this match has left on it: ball marks and the bowlers' footmarks. */
+	UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> PitchFace;
+	UPROPERTY() TObjectPtr<class UTextureRenderTarget2D> MarksTarget;
+	void DrawPitchMarks(const FBallMark& Mark);
 	UPROPERTY() TObjectPtr<AStaticMeshActor> Ball;
 	UPROPERTY() TObjectPtr<AStaticMeshActor> Bat;
 	UPROPERTY() TObjectPtr<AStaticMeshActor> NonStrikerBat;

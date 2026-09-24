@@ -30,6 +30,9 @@
 #include "Engine/PostProcessVolume.h"
 #include "Scalability.h"
 #include "Engine/SkyLight.h"
+#include "Engine/SpotLight.h"
+#include "Components/SpotLightComponent.h"
+#include "Components/VolumetricCloudComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
@@ -137,6 +140,10 @@ void ASuperOverGameMode::StartPlay()
 	ApplyQuality();
 	bTouchUI = PLATFORM_IOS || PLATFORM_ANDROID || bTouchScript || FParse::Param(FCommandLine::Get(), TEXT("CricketTouch"));
 	bRecordAudio = FParse::Param(FCommandLine::Get(), TEXT("CricketRecordAudio")) && ShotBall > 0;
+	VenueIndex = bAutoPlay ? 0 : FMath::RandRange(0, CricketStadium::NumVenues - 1);
+	FParse::Value(FCommandLine::Get(), TEXT("CricketVenue="), VenueIndex);
+	VenueIndex = FMath::Clamp(VenueIndex, 0, CricketStadium::NumVenues - 1);
+	UE_LOG(LogCRICKET26, Display, TEXT("Venue: %s"), CricketStadium::Venue(VenueIndex).Name);
 	BuildScene();
 	SetupAudio();
 	Match.Start(HumanTeam);
@@ -519,7 +526,35 @@ void ASuperOverGameMode::BuildScene()
 	using namespace CricketGeo;
 	UWorld* W = GetWorld();
 
-	SpawnSun(W);
+	ADirectionalLight* Sun = SpawnSun(W);
+	const CricketStadium::FVenue& V = CricketStadium::Venue(VenueIndex);
+	float Exposure = ExposureEV100;
+	if (V.bNight)
+	{
+		// Night: a faint, cool moon for the sky and the fill; the floodlights (BuildStadium) light the ground to
+		// about 2000 lux, which the exposure is set for.
+		Sun->GetComponent()->SetIntensity(80.f);
+		Sun->GetComponent()->SetLightColor(FLinearColor(0.6f, 0.7f, 1.f));
+		Exposure = FMath::Log2(NightLux / 2.5f);
+	}
+	else if (V.Cloud > 0.5f)
+	{
+		// Overcast: the cloud takes most of the direct sun and softens its shadows. The exposure opens up a stop, as a
+		// broadcast camera's would, so the ground reads a little darker than on a sunny day but not gloomy.
+		const float Through = 1.f - 0.7f * V.Cloud;
+		Sun->GetComponent()->SetLightSourceAngle(6.f);
+		Exposure -= 1.f;
+		Sun->GetComponent()->SetIntensity(SunLux * Through);
+		// Cloud to see, from Epic's sky content (UE EULA), thickened into a grey blanket; phones keep the plain sky.
+		UMaterialInterface* CloudMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineSky/VolumetricClouds/m_SimpleVolumetricCloud_Inst.m_SimpleVolumetricCloud_Inst"));
+		if (Quality >= 2 && CloudMaterial)
+		{
+			UMaterialInstanceDynamic* Cover = UMaterialInstanceDynamic::Create(CloudMaterial, this);
+			Cover->SetScalarParameterValue(TEXT("Cloud_GlobalCoverage"), -0.2f + 0.6f * V.Cloud);
+			Cover->SetScalarParameterValue(TEXT("StormClouds"), 0.4f * V.Cloud);
+			W->SpawnActor<AVolumetricCloud>()->FindComponentByClass<UVolumetricCloudComponent>()->SetMaterial(Cover);
+		}
+	}
 	// The sky light is made Movable before it registers: there is no baked capture, and a real-time one needs it.
 	ASkyLight* Sky = W->SpawnActorDeferred<ASkyLight>(ASkyLight::StaticClass(), FTransform::Identity);
 	Sky->GetLightComponent()->SetMobility(EComponentMobility::Movable);
@@ -552,11 +587,11 @@ void ASuperOverGameMode::BuildScene()
 	PP->Settings.bOverride_AutoExposureApplyPhysicalCameraExposure = true;
 	PP->Settings.AutoExposureApplyPhysicalCameraExposure = false;
 	PP->Settings.bOverride_AutoExposureBias = true;
-	PP->Settings.AutoExposureBias = -ExposureEV100;
+	PP->Settings.AutoExposureBias = -Exposure;
 	// A soft broadcast glow on sunlit whites (ball, kit, sightscreen) and contact shadow under the players where Lumen is
 	// off (below High), which otherwise leaves them floating on the grass.
 	PP->Settings.bOverride_BloomIntensity = true;
-	PP->Settings.BloomIntensity = 0.3f;
+	PP->Settings.BloomIntensity = V.bNight ? 0.6f : 0.3f; // and the floodlights' glare at night
 	PP->Settings.bOverride_AmbientOcclusionIntensity = true;
 	PP->Settings.AmbientOcclusionIntensity = 0.5f;
 
@@ -568,7 +603,21 @@ void ASuperOverGameMode::BuildScene()
 	AStaticMeshActor* Ground = Spawn(CylinderMesh, FVector(C.X, 0.f, -0.06f), FVector(800.f, 800.f, 0.1f), Grass);
 	if (GrassMaterial) Ground->GetStaticMeshComponent()->SetMaterial(0, GrassMaterial);
 	AStaticMeshActor* Pitch = Spawn(CubeMesh, FVector(C.X, 0.f, -0.005f), FVector(PitchLength + 2.4f, 2.f * PitchHalfWidth, 0.01f), Strip);
-	if (PitchMaterial) Pitch->GetStaticMeshComponent()->SetMaterial(0, PitchMaterial);
+	if (PitchMaterial)
+	{
+		// The venue's kind of pitch and its wear, and a canvas for the marks this match leaves on it
+		// (DrawPitchMarks), which the material spreads over the strip: 23 m by 3.2 m round its middle.
+		PitchFace = UMaterialInstanceDynamic::Create(PitchMaterial, this);
+		PitchFace->SetScalarParameterValue(TEXT("Green"), V.Pitch == EPitchType::Green ? 1.f : 0.f);
+		PitchFace->SetScalarParameterValue(TEXT("Dust"), V.Pitch == EPitchType::Dusty ? 1.f : 0.f);
+		PitchFace->SetScalarParameterValue(TEXT("Wear"), V.Wear);
+		PitchFace->SetScalarParameterValue(TEXT("RoughSpots"), CricketBall::Conditions(V.Pitch, V.Wear).Rough);
+		MarksTarget = UKismetRenderingLibrary::CreateRenderTarget2D(this, 1024, 128, RTF_RGBA8);
+		UKismetRenderingLibrary::ClearRenderTarget2D(this, MarksTarget, FLinearColor::Black);
+		PitchFace->SetTextureParameterValue(TEXT("Marks"), MarksTarget);
+		PitchFace->SetScalarParameterValue(TEXT("MarksOn"), 1.f);
+		Pitch->GetStaticMeshComponent()->SetMaterial(0, PitchFace);
+	}
 	for (float X : { 0.f, PitchLength })
 	{
 		const float Dir = X == 0.f ? 1.f : -1.f;
@@ -675,6 +724,7 @@ void ASuperOverGameMode::BuildStadium()
 	Spec.CrowdDensity = Quality == 0 ? 0.35f : Quality == 1 ? 0.5f : 0.7f;
 	Spec.Home = Teams[0].Colour;
 	Spec.Away = Teams[1].Colour;
+	Spec.Scheme = VenueIndex;
 	UMaterialInterface* LedMaterial = LoadStadiumMaterial(TEXT("M_LED"));
 	Spec.bLedBoards = LedMaterial != nullptr;
 	// The 3D crowd when its assets are built (Scripts/stadium/make_stadium.sh), otherwise blocks.
@@ -692,6 +742,41 @@ void ASuperOverGameMode::BuildStadium()
 		return A;
 	};
 	Place(Stadium.Structure, 0.f, VertexColourMaterial);
+	// The floodlights: at night their lamps glare and each tower throws a spot light over the whole field.
+	UMaterialInterface* LampMaterial = VertexColourMaterial;
+	if (CricketStadium::Venue(VenueIndex).bNight)
+	{
+		UMaterialInterface* Glow = LoadStadiumMaterial(TEXT("M_Screen"));
+		UTexture* Blank = LoadObject<UTexture>(nullptr, TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture"));
+		if (Glow && Blank)
+		{
+			UMaterialInstanceDynamic* Lit = UMaterialInstanceDynamic::Create(Glow, this);
+			Lit->SetTextureParameterValue(TEXT("Screen"), Blank);
+			Lit->SetScalarParameterValue(TEXT("Glow"), 40000.f);
+			LampMaterial = Lit;
+		}
+		const FVector Middle = CricketGeo::PitchCentre();
+		for (const FVector& Bank : Stadium.Floodlights)
+		{
+			// Aimed a little short of the middle, so the near side of the field is as bright as the far side.
+			const FVector Aim = Middle + (Bank - Middle).GetSafeNormal2D() * 12.f;
+			ASpotLight* Flood = GetWorld()->SpawnActorDeferred<ASpotLight>(ASpotLight::StaticClass(), FTransform::Identity);
+			USpotLightComponent* L = Flood->SpotLightComponent;
+			L->SetMobility(EComponentMobility::Movable);
+			L->SetIntensityUnits(ELightUnits::Candelas);
+			// NightLux over the four towers at the middle: E = I / d^2.
+			L->SetIntensity(NightLux / 4.f * FVector::DistSquared(Bank, Middle));
+			L->SetLightColor(FLinearColor(1.f, 0.96f, 0.9f));
+			L->SetAttenuationRadius(30000.f);
+			L->SetOuterConeAngle(40.f);
+			L->SetInnerConeAngle(28.f);
+			L->SetCastShadows(Quality >= 2);
+			Flood->FinishSpawning(FTransform::Identity);
+			// Set after spawning, as with the sun: a spawn rotation is added to the light's own built-in tilt.
+			Flood->SetActorLocationAndRotation(ToWorld(Bank), (Aim - Bank).Rotation());
+		}
+	}
+	Place(Stadium.Lamps, 0.f, LampMaterial)->GetStaticMeshComponent()->SetCastShadow(false);
 	Place(Stadium.Boards, 0.f, LedMaterial ? LedMaterial : VertexColourMaterial.Get());
 	// Without the grass material the stripes are meshes, in the shape material: the vertex colour material's sheen
 	// washes out a flat field seen at a grazing angle.
@@ -739,8 +824,8 @@ void ASuperOverGameMode::BuildStadium()
 		{
 			// The plane is 1 m square facing up, its texture across X: turn its face to the field, its X to the right.
 			const FVector Right = FVector::CrossProduct(FVector::UpVector, -Sc.Facing);
-			const FRotator Turn = FRotationMatrix::MakeFromZX(Sc.Facing, Right).Rotator();
-			AStaticMeshActor* A = GetWorld()->SpawnActor<AStaticMeshActor>(ToWorld(Sc.Centre + Sc.Facing * 0.05f), Turn);
+			const FRotator Orient = FRotationMatrix::MakeFromZX(Sc.Facing, Right).Rotator();
+			AStaticMeshActor* A = GetWorld()->SpawnActor<AStaticMeshActor>(ToWorld(Sc.Centre + Sc.Facing * 0.05f), Orient);
 			UStaticMeshComponent* C = A->GetStaticMeshComponent();
 			C->SetMobility(EComponentMobility::Movable);
 			C->SetStaticMesh(Plane);
@@ -779,7 +864,7 @@ void ASuperOverGameMode::UpdateBigScreens()
 	const FCricketTeam& Batting = Teams[Match.BattingTeam()];
 	const FString Score = FString::Printf(TEXT("%s  %d-%d"), *Batting.Short, In.Runs, In.Wickets);
 	const FString Overs = FString::Printf(TEXT("OVERS  %d.%d"), In.LegalBalls / 6, In.LegalBalls % 6);
-	const FString Foot = IsReplaying() ? FString(TEXT("REPLAY")) : Match.Target > 0 ? FString::Printf(TEXT("TARGET  %d"), Match.Target) : FString(TEXT("CRICKET 26"));
+	const FString Foot = IsReplaying() ? FString(TEXT("REPLAY")) : Match.Target > 0 ? FString::Printf(TEXT("TARGET  %d"), Match.Target) : FString(CricketStadium::Venue(VenueIndex).Name);
 	const FString Shown = Score + Overs + Foot;
 	if (Shown == ScreenShown) return;
 	ScreenShown = Shown;
@@ -803,6 +888,44 @@ void ASuperOverGameMode::UpdateBigScreens()
 	Line(Score, Size.Y * 0.03f, 4.2f, FLinearColor::White);
 	Line(Overs, Size.Y * 0.47f, 2.6f, FLinearColor::White);
 	Line(Foot, Size.Y * 0.72f, 2.6f, FLinearColor(1.f, 0.78f, 0.2f));
+	UKismetRenderingLibrary::EndDrawCanvasToRenderTarget(this, Context);
+}
+
+FPitchConditions ASuperOverGameMode::Conditions() const
+{
+	const CricketStadium::FVenue& V = CricketStadium::Venue(VenueIndex);
+	return CricketBall::Conditions(V.Pitch, V.Wear + 0.02f * Marks.Num(), V.Cloud, V.bNight);
+}
+
+void ASuperOverGameMode::DrawPitchMarks(const FBallMark& Mark)
+{
+	UTexture2D* Stamp = LoadObject<UTexture2D>(nullptr, TEXT("/Game/Stadium/T_Mark.T_Mark"), nullptr, LOAD_Quiet | LOAD_NoWarn);
+	if (!MarksTarget || !Stamp) return;
+	UCanvas* Canvas = nullptr;
+	FVector2D Size;
+	FDrawToRenderTargetContext Context;
+	UKismetRenderingLibrary::BeginDrawCanvasToRenderTarget(this, MarksTarget, Canvas, Size, Context);
+	// A stamp Length by Width metres at a point on the pitch (simulation metres), its length turned by Angle degrees.
+	auto Stamp2 = [&](const FVector2D& At, float Length, float Width, float Angle, float Strength)
+	{
+		const FVector2D Px((At.X - CricketGeo::PitchCentre().X) / 23.f + 0.5f, At.Y / 3.2f + 0.5f);
+		const FVector2D Extent(Length / 23.f * Size.X, Width / 3.2f * Size.Y);
+		FCanvasTileItem Item(Px * Size - Extent / 2.f, Stamp->GetResource(), Extent, FLinearColor(1.f, 1.f, 1.f, Strength));
+		Item.BlendMode = SE_BLEND_Translucent;
+		Item.Rotation = FRotator(0.f, Angle, 0.f);
+		Item.PivotPoint = FVector2D(0.5f, 0.5f);
+		Canvas->DrawItem(Item);
+	};
+	if (Mark.bPitched && FMath::Abs(Mark.Pitch.Y) < 1.6f) Stamp2(Mark.Pitch, 0.09f, 0.08f, 0.f, 0.7f);
+	// The bowler's front foot lands just behind the popping crease on the bowling arm's side, then the follow-through
+	// strides away toward the off side of the pitch.
+	FRandomStream Feet(Ctx.Seed);
+	const float Arm = BowlerPlayer().BowlHand == ECricketHand::Right ? 1.f : -1.f;
+	const float FrontX = CricketGeo::PitchLength - CricketGeo::PoppingCrease + 0.15f + Feet.FRandRange(-0.12f, 0.2f);
+	Stamp2(FVector2D(FrontX, Arm * Feet.FRandRange(0.05f, 0.3f)), 0.3f, 0.12f, Feet.FRandRange(-15.f, 15.f), 0.5f);
+	for (int32 Stride = 1; Stride <= 3; ++Stride)
+		Stamp2(FVector2D(FrontX - 1.5f * Stride, Arm * (0.25f + 0.35f * Stride + Feet.FRandRange(-0.15f, 0.15f))), 0.28f, 0.11f,
+			Arm * 25.f + Feet.FRandRange(-10.f, 10.f), 0.35f);
 	UKismetRenderingLibrary::EndDrawCanvasToRenderTarget(this, Context);
 }
 
@@ -830,6 +953,7 @@ void ASuperOverGameMode::PlaceForDelivery()
 	Ctx.bFreeHit = Match.bFreeHit;
 	Ctx.Rules = Match.Rules;
 	Ctx.BouncersBowled = Match.Cur().Bouncers;
+	Ctx.Conditions = Conditions();
 
 	const float Off = OffSideSign(Batter.BatHand);
 	const float Arm = Bwl.BowlHand == ECricketHand::Right ? 1.f : -1.f;
@@ -1310,6 +1434,7 @@ void ASuperOverGameMode::ScoreDelivery(FDeliveryOutcome Outcome)
 	Mark.End = FVector2D(Fld.Boundary > 0 ? Result.BallAt(Result.ContactTime + Fld.BoundaryTime) : Fld.Fielder >= 0 ? Fld.FieldPos : Result.BallAt(Result.DeadTime));
 	Mark.Runs = Outcome.Boundary + Outcome.RunsRun;
 	Mark.bWicket = Outcome.Dismissal != EDismissal::None;
+	DrawPitchMarks(Mark);
 	TArray<ECricketEvent> Events;
 	if (!Match.CompleteDelivery(Outcome, Events))
 	{

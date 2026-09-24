@@ -91,6 +91,15 @@ namespace
 	}
 }
 
+const FVenue& Venue(int32 Index)
+{
+	static const FVenue Venues[NumVenues] = {
+		{ TEXT("HARBOURSIDE OVAL"), EPitchType::Flat, 0.3f, 0.15f, false }, // a true surface on a bright afternoon
+		{ TEXT("GREENHILL PARK"), EPitchType::Green, 0.1f, 0.85f, false },  // grass on the pitch and cloud overhead: it seams and swings
+		{ TEXT("SUNFORT STADIUM"), EPitchType::Dusty, 0.6f, 0.f, true } };  // a dry turner under lights, with the dew coming
+	return Venues[FMath::Clamp(Index, 0, NumVenues - 1)];
+}
+
 FStadium Build(const FStadiumSpec& Spec)
 {
 	using namespace CricketGeo;
@@ -132,7 +141,12 @@ FStadium Build(const FStadiumSpec& Spec)
 	Ring(M, C, BoundaryRadius, 0.12f, BoundaryRadius + 0.12f, 0.f, 240, -1.f, 1.f, [](float) { return FLinearColor(0.7f, 0.7f, 0.72f); });
 
 	// Stands: eight blocks of coloured seats, each tier a flight of steps; a pitch-side wall and a facade.
-	const FLinearColor SeatCols[] = { { 0.03f, 0.06f, 0.22f }, { 0.22f, 0.025f, 0.03f }, { 0.02f, 0.15f, 0.17f }, { 0.1f, 0.1f, 0.11f } };
+	// Each venue's own seats: navy, red, teal and grey; green, cream and slate; orange, charcoal and sand.
+	static const FLinearColor Schemes[NumVenues][4] = {
+		{ { 0.03f, 0.06f, 0.22f }, { 0.22f, 0.025f, 0.03f }, { 0.02f, 0.15f, 0.17f }, { 0.1f, 0.1f, 0.11f } },
+		{ { 0.03f, 0.12f, 0.05f }, { 0.4f, 0.37f, 0.3f }, { 0.07f, 0.08f, 0.1f }, { 0.03f, 0.12f, 0.05f } },
+		{ { 0.35f, 0.1f, 0.02f }, { 0.05f, 0.05f, 0.055f }, { 0.3f, 0.22f, 0.12f }, { 0.05f, 0.05f, 0.055f } } };
+	const FLinearColor* SeatCols = Schemes[FMath::Clamp(Spec.Scheme, 0, NumVenues - 1)];
 	auto SeatCol = [&](float A, int32 Row)
 	{
 		if (FromPitchLine(A) < SightscreenGapDeg) return FLinearColor(0.03f, 0.03f, 0.035f);
@@ -213,9 +227,10 @@ FStadium Build(const FStadiumSpec& Spec)
 		M.AddBox(Base + FVector(0, 0, 50.f) - D * 1.5f, D, FVector(0.8f, 5.f, 3.2f), FLinearColor(0.2f, 0.2f, 0.22f));
 		// A grid of lamps on the bank.
 		const FVector Side = Radial(A + 90.f);
+		S.Floodlights.Add(Base + FVector(0, 0, 50.f) - D * 2.6f);
 		for (int32 I = 0; I < 5; ++I)
 			for (int32 J = 0; J < 4; ++J)
-				M.AddBox(Base + FVector(0, 0, 50.f + (J - 1.5f) * 1.5f) - D * 2.4f + Side * ((I - 2) * 1.9f), D, FVector(0.15f, 0.8f, 0.6f), FLinearColor(1.f, 0.98f, 0.9f), false);
+				S.Lamps.AddBox(Base + FVector(0, 0, 50.f + (J - 1.5f) * 1.5f) - D * 2.4f + Side * ((I - 2) * 1.9f), D, FVector(0.15f, 0.8f, 0.6f), FLinearColor(1.f, 0.98f, 0.9f), false);
 	}
 
 	// Crowd: seated along every row, shirts in the home colour, the away colour or anything else.

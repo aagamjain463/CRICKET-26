@@ -14,7 +14,7 @@ namespace
 		return FMath::Abs(P.Y) < CricketGeo::PitchHalfWidth && P.X > -1.5f && P.X < CricketGeo::PitchLength + 1.5f;
 	}
 
-	void Bounce(FBallState& B, const FSurface& S)
+	void Bounce(FBallState& B, const FSurface& S, float Grip)
 	{
 		const float R = CricketGeo::BallRadius;
 		const float Vn = -B.Vel.Z;
@@ -27,8 +27,9 @@ namespace
 		const FVector Slip = FVector(B.Vel.X, B.Vel.Y, 0.f) + FVector::CrossProduct(B.Spin, Arm);
 		const float MaxImpulse = S.Friction * (1.f + S.Restitution) * Vn;
 		// Solid sphere: slip on an axis stops once the impulse reaches 2/7 of it.
+		// Grip scales the sideways part, the turn: a dusty or worn surface bites harder than a fresh one.
 		const FVector J(-FMath::Sign(Slip.X) * FMath::Min(MaxImpulse, (2.f / 7.f) * FMath::Abs(Slip.X)),
-			-FMath::Sign(Slip.Y) * FMath::Min(MaxImpulse, (2.f / 7.f) * FMath::Abs(Slip.Y)), 0.f); // per unit mass
+			-FMath::Sign(Slip.Y) * FMath::Min(MaxImpulse, (2.f / 7.f) * FMath::Abs(Slip.Y)) * Grip, 0.f); // per unit mass
 		B.Vel += J;
 		B.Spin += FVector::CrossProduct(Arm, J) / (0.4f * R * R);
 		B.Pos.Z = R;
@@ -39,6 +40,37 @@ namespace
 			B.bRolling = true;
 		}
 	}
+}
+
+FPitchConditions CricketBall::Conditions(EPitchType Type, float Wear, float Cloud, bool bDew)
+{
+	FPitchConditions C;
+	switch (Type)
+	{
+	case EPitchType::Green: C.Pitch.Restitution = 0.67f; C.Seam = 1.6f; C.Grip = 0.8f; C.Rough = 0.1f; break; // bounce and seam, little turn
+	case EPitchType::Dusty: C.Pitch.Restitution = 0.59f; C.Seam = 0.7f; C.Grip = 1.3f; C.Rough = 0.6f; break; // low and slow, it turns
+	default: C.Rough = 0.3f; break;
+	}
+	Wear = FMath::Clamp(Wear, 0.f, 1.f);
+	C.Rough = FMath::Min(1.f, C.Rough + 0.4f * Wear);
+	C.Pitch.Restitution -= 0.04f * Wear;
+	C.Grip += 0.3f * Wear;
+	C.Seam *= 1.f - 0.3f * Wear;
+	C.Swing = 1.f + 0.6f * FMath::Clamp(Cloud, 0.f, 1.f);
+	if (bDew)
+	{
+		// A wet ball skids on and slips out of the fingers, and races across the damp outfield.
+		C.Grip *= 0.8f;
+		C.Swing *= 0.85f;
+		C.Outfield.RollingDecel *= 0.85f;
+	}
+	return C;
+}
+
+bool CricketBall::IsInRough(const FVector& P)
+{
+	const float Y = FMath::Abs(P.Y);
+	return P.X > 2.2f && P.X < 5.f && Y > 0.3f && Y < 1.1f;
 }
 
 CricketBall::EStep CricketBall::Step(FBallState& B, const FPitchConditions& C, float Dt)
@@ -75,7 +107,14 @@ CricketBall::EStep CricketBall::Step(FBallState& B, const FPitchConditions& C, f
 	{
 		const bool bPitch = IsOnPitch(B.Pos);
 		if (bPitch && B.Bounces == 0) B.Vel.Y += B.SeamKick;
-		Bounce(B, bPitch ? C.Pitch : C.Outfield);
+		FSurface Surface = bPitch ? C.Pitch : C.Outfield;
+		float Grip = bPitch ? C.Grip : 1.f;
+		if (bPitch && IsInRough(B.Pos))
+		{
+			Surface.Restitution -= 0.06f * C.Rough;
+			Grip *= 1.f + 0.5f * C.Rough;
+		}
+		Bounce(B, Surface, Grip);
 		return EStep::Bounce;
 	}
 	return EStep::None;
@@ -207,6 +246,9 @@ FDeliveryRelease CricketBowling::Execute(const FCricketPlayer& Bowler, ECricketH
 		default: break;
 		}
 	}
+
+	B.SwingAccel *= C.Swing;
+	B.SeamKick *= C.Seam;
 
 	// Solve elevation and azimuth so the ball pitches at the (error-perturbed) target.
 	// Bisection on elevation inside the low-trajectory bracket, where the pitch point moves monotonically

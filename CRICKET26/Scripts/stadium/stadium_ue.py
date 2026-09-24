@@ -79,14 +79,19 @@ return c;
 
 PITCH = NOISE + """
 float ax = abs(q.x), ay = abs(q.y);
+// The venue's pitch (game parameters): Green is the grass left on it, Dust how dry and powdery it has gone, Wear how
+// much has been played on it, RoughSpots how torn the footmarks outside the stumps are.
 float3 c = float3(0.47, 0.37, 0.2);
-// Clay: lighter where rolled, darker where damp, dusty in drifts.
+// Clay: lighter where rolled, darker where damp, dusty in drifts; a dry pitch goes pale and powdery.
 float m = n.F(q * float2(0.9, 2.2));
 c *= 0.84 + 0.32 * m;
-c = lerp(c, float3(0.56, 0.47, 0.3), n.S(0.4, 0.8, n.F(q * 1.7 + 9.1)) * 0.5);
-// Grass tinge: live grass left on the pitch, most of it towards the edges.
-float g = saturate(0.35 + 0.65 * n.S(0.7, 1.45, ay)) * n.S(0.45, 0.75, n.F(q * 5.0 + 3.7));
-c = lerp(c, float3(0.2, 0.25, 0.09), g * 0.55);
+c = lerp(c, float3(0.56, 0.47, 0.3), n.S(0.4, 0.8, n.F(q * 1.7 + 9.1)) * (0.5 + 0.4 * Dust));
+c = lerp(c, float3(0.6, 0.5, 0.34) * (0.9 + 0.2 * n.F(q * 3.1 + 4.4)), 0.35 * Dust);
+// Grass: live grass left on the pitch, most of it towards the edges; a green top is covered all over.
+float gn = n.F(q * 5.0 + 3.7);
+float g = lerp(saturate(0.35 + 0.65 * n.S(0.7, 1.45, ay)) * n.S(0.45, 0.75, gn), 0.75 + 0.25 * gn, Green);
+float blade = 0.8 + 0.4 * n.V(q * float2(60.0, 140.0));
+c = lerp(c, float3(0.2, 0.25, 0.09) * blade, saturate(g * (0.55 + 0.35 * Green) * (1.0 - 0.5 * Dust)));
 // Cracks: the edges of irregular cells, only where the surface has dried out.
 float2 cp = q / 0.32, ci = floor(cp);
 float f1 = 9.0, f2 = 9.0;
@@ -98,7 +103,8 @@ for (int j = -1; j <= 1; j++)
         float dd = dot(r, r);
         if (dd < f1) { f2 = f1; f1 = dd; } else if (dd < f2) f2 = dd;
     }
-float crack = (1.0 - n.S(0.0, 0.06, sqrt(f2) - sqrt(f1))) * n.S(0.5, 0.7, n.F(q * 0.8 + 2.0)) * saturate(1.0 - px * 60.0);
+float dry = saturate(0.7 - 0.6 * Green + 0.5 * Dust);
+float crack = (1.0 - n.S(0.0, 0.06 + 0.03 * Dust, sqrt(f2) - sqrt(f1))) * n.S(0.9 - 0.5 * dry, 1.1 - 0.5 * dry, n.F(q * 0.8 + 2.0)) * saturate(1.0 - px * 60.0);
 c *= 1.0 - 0.55 * crack;
 // Worn ends round each popping crease: the batters' guard and the bowlers' landing, scuffed and footmarked.
 float end = n.S(2.6, 0.4, abs(ax - 8.84));
@@ -108,15 +114,24 @@ float2 ff = frac(fp) - 0.5 - (float2(n.H(fi + 5.1), n.H(fi + 8.7)) - 0.5) * 0.5;
 float fa = n.H(fi + 1.9) * 3.14159, fs = sin(fa), fc = cos(fa);
 float2 fr = float2(ff.x * fc - ff.y * fs, ff.x * fs + ff.y * fc);
 float land = n.S(1.4, 0.2, abs(ax - 8.84)) * n.S(1.1, 0.4, ay);
-float foot = step(n.H(fi + 3.3), 0.3 * land) * n.S(0.3, 0.12, length(fr * float2(1.0, 1.8)));
-c = lerp(c, c * float3(0.8, 0.76, 0.7), end * 0.4);
+float foot = step(n.H(fi + 3.3), (0.15 + 0.3 * Wear) * land) * n.S(0.3, 0.12, length(fr * float2(1.0, 1.8)));
+c = lerp(c, c * float3(0.8, 0.76, 0.7), end * (0.2 + 0.4 * Wear));
 c = lerp(c, float3(0.3, 0.23, 0.13), 0.35 * foot);
+// The rough outside the stumps on a spinner's length at the batter's end (CricketBall::IsInRough): dug-up, dusty
+// patches of scattered footmarks.
+float rough = n.S(0.25, 0.4, ay) * n.S(1.2, 1.0, ay) * n.S(-8.0, -7.7, q.x) * n.S(-4.9, -5.2, q.x) * RoughSpots;
+float scuff = n.S(0.35, 0.65, n.F(q * 7.0 + 12.3));
+c = lerp(c, float3(0.5, 0.4, 0.26) * (0.75 + 0.5 * n.V(q * 40.0)), rough * scuff * 0.8);
 // Ball marks on a good length at the striker's end.
 float2 bp = q / 0.18;
 float bm = step(0.93, n.H(floor(bp) + 41.0)) * n.S(0.3, 0.15, length(frac(bp) - 0.5)) * n.S(8.0, 3.0, abs(q.x + 3.0)) * n.S(0.9, 0.3, ay);
-c *= 1.0 - 0.3 * bm;
+c *= 1.0 - 0.3 * bm * Wear;
+// Marks the game draws where this match's balls pitched and the bowlers' feet landed: a scuffed, darker spot.
+float2 mu = float2(q.x / 23.0 + 0.5, q.y / 3.2 + 0.5);
+float mk = saturate(Texture2DSample(Marks, MarksSampler, mu).r * 1.5) * MarksOn;
+c = lerp(c, c * float3(0.55, 0.5, 0.45), mk);
 c *= 1.0 + (n.V(q * 90.0) - 0.5) * 0.18 * saturate(1.0 - px * 80.0);
-Rough = 0.78 + 0.15 * m;
+Rough = 0.78 + 0.15 * m + 0.1 * Dust - 0.1 * Green;
 return c;
 """
 
@@ -231,12 +246,22 @@ def finish(m):
     unreal.log(f"STADIUM built {m.get_path_name()}")
 
 
-def ground(name, code, logo=None):
+def ground(name, code, logo=None, params=(), marks=None):
     m = new_material(name)
-    c = custom(m, code, ["P", "Cx"] + (["Logo"] if logo else []), ["Rough"])
+    c = custom(m, code, ["P", "Cx"] + (["Logo"] if logo else []) + [k for k, _ in params] + (["Marks", "MarksOn"] if marks else []), ["Rough"])
     world_inputs(m, c)
     if logo:
         texture_input(m, c, "Logo", logo)
+    for i, (k, v) in enumerate(list(params) + ([("MarksOn", 0.0)] if marks else [])):
+        e = mel.create_material_expression(m, unreal.MaterialExpressionScalarParameter, -800, 300 + 60 * i)
+        e.set_editor_property("parameter_name", k)
+        e.set_editor_property("default_value", v)
+        mel.connect_material_expressions(e, "", c, k)
+    if marks:
+        t = mel.create_material_expression(m, unreal.MaterialExpressionTextureObjectParameter, -800, 700)
+        t.set_editor_property("parameter_name", "Marks")
+        t.set_editor_property("texture", marks)
+        mel.connect_material_expressions(t, "", c, "Marks")
     mel.connect_material_property(c, "", unreal.MaterialProperty.MP_BASE_COLOR)
     mel.connect_material_property(c, "Rough", unreal.MaterialProperty.MP_ROUGHNESS)
     constant(m, 0.3, unreal.MaterialProperty.MP_SPECULAR, 300)
@@ -380,7 +405,8 @@ def crowd():
 logo = import_texture("T_GrassLogo")
 ads = import_texture("T_Ads")
 ground("M_Grass", GRASS, logo)
-ground("M_Pitch", PITCH)
+mark = import_texture("T_Mark")
+ground("M_Pitch", PITCH, params=[("Green", 0.0), ("Dust", 0.0), ("Wear", 0.3), ("RoughSpots", 0.3)], marks=mark)
 led(ads)
 screen(ads)
 import_fan()

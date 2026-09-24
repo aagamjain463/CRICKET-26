@@ -16,7 +16,7 @@ bool FEnvStadium::RunTest(const FString&)
 	const FVector C = CricketGeo::PitchCentre();
 
 	TestTrue(*FString::Printf(TEXT("a full house (%d)"), S.Spectators), S.Spectators > 15000);
-	int32 Tris = S.Structure.NumTriangles() + S.Boards.NumTriangles();
+	int32 Tris = S.Structure.NumTriangles() + S.Boards.NumTriangles() + S.Lamps.NumTriangles();
 	for (const FColouredMesh& M : S.Crowd) Tris += M.NumTriangles();
 	TestTrue(*FString::Printf(TEXT("within the mobile triangle budget (%d)"), Tris), Tris < 300000);
 	TestEqual(TEXT("one crowd mesh per section and group"), S.Crowd.Num(), NumSections * NumGroups);
@@ -55,6 +55,7 @@ bool FEnvStadium::RunTest(const FString&)
 	Check(S.Structure);
 	Check(S.Outfield[0]);
 	Check(S.Boards);
+	Check(S.Lamps);
 	for (const FColouredMesh& M : S.Crowd) Check(M);
 	TestEqual(TEXT("windings agree with normals"), Bad, 0);
 
@@ -94,6 +95,19 @@ bool FEnvStadium::RunTest(const FString&)
 		TestTrue(TEXT("screen faces the middle"), FVector::DotProduct(Sc.Facing, FVector(C - Sc.Centre).GetSafeNormal2D()) > 0.99f);
 		TestTrue(TEXT("screen high above the stands"), Sc.Centre.Z - Sc.Height / 2.f > 25.f);
 	}
+
+	// Four floodlight towers, their lamps high above the roof.
+	TestEqual(TEXT("four floodlights"), S.Floodlights.Num(), 4);
+	for (const FVector& Lamp : S.Floodlights) TestTrue(TEXT("floodlight high above the stands"), Lamp.Z > 40.f);
+	TestTrue(TEXT("lamps built"), S.Lamps.NumTriangles() > 0);
+
+	// Every venue plays differently: its own pitch, and its own seats.
+	TSet<EPitchType> Pitches;
+	for (int32 V = 0; V < NumVenues; ++V) Pitches.Add(Venue(V).Pitch);
+	TestEqual(TEXT("each venue prepares its own kind of pitch"), Pitches.Num(), NumVenues);
+	FStadiumSpec Other = Spec;
+	Other.Scheme = 1;
+	TestTrue(TEXT("each venue has its own seats"), Build(Other).Structure.Colour != S.Structure.Colour);
 
 	// The crowd sits still until the ground erupts, then jumps, and neighbours are out of step.
 	TestEqual(TEXT("seated when quiet"), JumpHeight(3.f, 0.f, 4, 1), 0.f);
