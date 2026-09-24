@@ -65,7 +65,13 @@ This note lets a new agent pick up the "make it like Cricket 26" work where it s
 - Perf, Medium, 12 deliveries: MetaHumans 14.5 ms frame and 9.9 ms GPU; mannequin 11.2 ms and 7.8 ms.
 - The players are cooked through `DirectoriesToAlwaysCook` in `Config/DefaultGame.ini`. No packaged build has
   tested this yet.
-- Kit is still the preset T-shirt and shorts, barefoot: master plan M5.
+- Kit: `Scripts/metahuman/make_kit.sh` (run after `make_players.sh`) gives each player a cricket kit: a collared shirt,
+  trousers and shoes. Unreal builds each body once more without the preset garment into `/Game/MetaHumans/Bare`,
+  because the garment's hidden-face map cuts the skin under it out of the real build. That full body goes to Blender
+  (`make_kit.py`), which cuts, smooths and pushes the pieces out from the skin, keeping the body's skin weights. The
+  kit comes back as `/Game/MetaHumans/<Name>/Kit/SKM_<Name>_Kit`. `AddBody` hides the preset garment and gives
+  the kit the body's pose. `Paint` colours the shirt in the team colour, the trousers in a darker shade and the
+  shoes white. Needs Blender at `/Applications/Blender.app`.
 
 MetaHuman scripting notes (UE 5.8 Python):
 - It runs as a commandlet:

@@ -190,16 +190,24 @@ void ASuperOverGameMode::Paint(AStaticMeshActor* A, const FLinearColor& Colour)
 	M->SetVectorParameterValue(TEXT("Color"), Colour);
 	A->GetStaticMeshComponent()->SetMaterial(0, M);
 	// A player's kit is painted in the team colour: the mannequin's own tint, or a MetaHuman's garment (every
-	// mesh but the skin: its shirt and shorts colours).
+	// mesh but the skin: its shirt and shorts colours). The cricket kit has a shirt in the team colour, trousers in
+	// a darker shade of it, and white shoes.
 	TArray<USkeletalMeshComponent*> Kit;
 	if (USkeletalMeshComponent* Body = BodyOf(A)) Body->GetOwner()->GetComponents(Kit);
 	for (USkeletalMeshComponent* Part : Kit)
 	{
 		if (Part->GetOwner() != A && (Part->GetFName() == TEXT("Body") || Part->GetFName() == TEXT("Face"))) continue;
+		const TArray<FName> Slots = Part->GetMaterialSlotNames();
 		for (int32 I = 0; I < Part->GetNumMaterials(); ++I)
 		{
 			if (UMaterialInstanceDynamic* Cloth = Part->CreateDynamicMaterialInstance(I))
 			{
+				if (Part->GetFName() == TEXT("Kit") && Slots.IsValidIndex(I))
+				{
+					Cloth->SetVectorParameterValue(TEXT("Color"), Slots[I] == TEXT("Kit_Shoes") ? FLinearColor(0.75f, 0.75f, 0.75f)
+						: Slots[I] == TEXT("Kit_Trousers") ? Colour * 0.45f : Colour);
+					continue;
+				}
 				for (const TCHAR* Name : { TEXT("Paint Tint"), TEXT("LogoTint"), TEXT("diffuse_color_1"), TEXT("diffuse_color_2"), TEXT("B_diffuse_color_1") })
 					Cloth->SetVectorParameterValue(Name, Colour);
 			}
@@ -230,6 +238,24 @@ void ASuperOverGameMode::AddBody(AStaticMeshActor* Marker, const TCHAR* MetaHuma
 		TArray<USkeletalMeshComponent*> Parts;
 		Player->GetComponents(Parts);
 		for (USkeletalMeshComponent* Part : Parts) if (Part->GetFName() == TEXT("Body")) Body = Part;
+		// The cricket kit made by Scripts/metahuman/make_kit.sh, when there is one, in place of the preset T-shirt and
+		// shorts. It is skinned to this body's skeleton and takes its pose.
+		const FString KitPath = FString::Printf(TEXT("/Game/MetaHumans/%s/Kit/SKM_%s_Kit.SKM_%s_Kit"), MetaHuman, MetaHuman, MetaHuman);
+		if (USkeletalMesh* KitMesh = Body ? LoadObject<USkeletalMesh>(nullptr, *KitPath, nullptr, LOAD_Quiet | LOAD_NoWarn) : nullptr)
+		{
+			TArray<USkinnedMeshComponent*> Garment;
+			Player->GetComponents(Garment);
+			for (USkinnedMeshComponent* Part : Garment) if (Part != Body && Part->GetFName() != TEXT("Face")) Part->SetVisibility(false);
+			UMaterialInterface* Fabric = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/MetaHumans/Kit/M_Kit.M_Kit"), nullptr, LOAD_Quiet | LOAD_NoWarn);
+			USkeletalMeshComponent* Kit = NewObject<USkeletalMeshComponent>(Player, TEXT("Kit"));
+			Kit->SetSkeletalMesh(KitMesh);
+			for (int32 I = 0; Fabric && I < Kit->GetNumMaterials(); ++I) Kit->SetMaterial(I, Fabric);
+			Kit->SetupAttachment(Body);
+			Kit->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			Kit->SetLeaderPoseComponent(Body);
+			Kit->RegisterComponent();
+			Player->AddInstanceComponent(Kit);
+		}
 	}
 	else if (BodyMesh)
 	{
