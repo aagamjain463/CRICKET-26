@@ -9,6 +9,7 @@ void FSuperOverMatch::Start(int32 FirstBattingTeam)
 	Winner = -1;
 	bTied = false;
 	bFreeHit = false;
+	ReviewsLeft[0] = ReviewsLeft[1] = Rules.ReviewsPerTeam;
 	BeginInnings(FirstBattingTeam);
 }
 

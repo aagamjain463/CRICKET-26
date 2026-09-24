@@ -123,6 +123,17 @@ public:
 	 * the HUD calls pitching, impact and wickets in turn.
 	 */
 	static constexpr float ReviewTime = 5.f;
+	/**
+	 * Player reviews. An LBW appeal gets the on-field umpire's decision (CricketUmpire::GivesLBW); the side it goes
+	 * against may review it while it has reviews left: a human with V (or Enter to accept) within ReviewWindow, the
+	 * AI after a moment's thought. The delivery is scored once that is settled.
+	 */
+	static constexpr float ReviewWindow = 5.f;
+	bool bAwaitingReview = false, bOnFieldOut = false, bReviewTaken = false;
+	int32 ReviewingTeam = -1;
+	CricketUmpire::EReview ReviewResult = CricketUmpire::EReview::Upheld;
+	FDeliveryOutcome PendingOutcome;
+	bool HumanReviews() const { return bAwaitingReview && !bAutoPlay && ReviewingTeam == HumanTeam; }
 	bool bReviewThis = false;
 	float ReviewFrom() const { return ReplayDelay + (bReplayThis ? ReplayTime : 0.f); }
 	bool IsReviewing() const { return bReviewThis && DPhase == EDeliveryPhase::DeadBall && PhaseTime >= ReviewFrom() && PhaseTime < ReviewFrom() + ReviewTime; }
@@ -216,6 +227,9 @@ private:
 	void BeginRunUp();
 	void DoRelease(float Timing);
 	void FinishDelivery();
+	void ScoreDelivery(FDeliveryOutcome Outcome);
+	void SettleReview(bool bReview);
+	bool AiReviews() const;
 	void Emit(const TArray<ECricketEvent>& Events);
 	void PlaceForDelivery();
 	void UpdatePresentation(float Dt);

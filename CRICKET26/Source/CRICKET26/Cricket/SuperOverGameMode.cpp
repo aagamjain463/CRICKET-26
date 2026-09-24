@@ -777,7 +777,7 @@ void ASuperOverGameMode::Tick(float Dt)
 			float(FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles())) });
 	if (!bFiguresChecked && GetWorld()->GetTimeSeconds() > 2.f) CheckFigures();
 	// Dev capture of the game view alone, 5 times a second (the desktop is never recorded).
-	const int32 LiveBall = DPhase == EDeliveryPhase::DeadBall ? BallsPlayed : BallsPlayed + 1; // dead ball: the one just finished
+	const int32 LiveBall = DPhase == EDeliveryPhase::DeadBall && !bAwaitingReview ? BallsPlayed : BallsPlayed + 1; // dead ball: the one just finished
 	if (ShotBall == LiveBall && (ShotClock += Dt) >= ShotEvery) // from the wait before the ball, which shows the player cards
 	{
 		ShotClock = 0.f;
@@ -813,6 +813,12 @@ void ASuperOverGameMode::Tick(float Dt)
 		if (PhaseTime >= Result.DeadTime) FinishDelivery();
 		break;
 	case EDeliveryPhase::DeadBall:
+		if (bAwaitingReview)
+		{
+			if (!HumanReviews() && PhaseTime > 1.5f) SettleReview(AiReviews());
+			else if (PhaseTime > ReviewWindow) SettleReview(false);
+			break;
+		}
 		if (PhaseTime > (bReviewThis ? ReviewFrom() + ReviewTime + 0.5f : 1.8f + (bReplayThis ? ReplayTime : 0.f)))
 		{
 			DPhase = EDeliveryPhase::Waiting;
@@ -875,7 +881,8 @@ void ASuperOverGameMode::HandleInput(APlayerController* PC, float Dt)
 	const FCricketControls Touch = ReadTouch(PC);
 	C.Merge(Touch);
 
-	if (C.bProgress && IsReplaying()) PhaseTime = ReplayDelay + ReplayTime; // skip the replay
+	if (HumanReviews() && (Pressed(EKeys::V) || C.bProgress)) SettleReview(Pressed(EKeys::V));
+	else if (C.bProgress && IsReplaying()) PhaseTime = ReplayDelay + ReplayTime; // skip the replay
 	if (C.bProgress && DPhase == EDeliveryPhase::Waiting)
 	{
 		if (Match.Phase == EMatchPhase::InningsBreak) Match.StartSecondInnings();
@@ -932,7 +939,8 @@ CricketTouch::EMode ASuperOverGameMode::TouchMode() const
 {
 	using CricketTouch::EMode;
 	if (!bTouchUI) return EMode::None;
-	if (IsReplaying() || (DPhase == EDeliveryPhase::Waiting && Match.Phase != EMatchPhase::ReadyForDelivery)) return EMode::Progress;
+	// ponytail: a touch player can only accept an umpire's decision; a review button needs its own touch mode.
+	if (HumanReviews() || IsReplaying() || (DPhase == EDeliveryPhase::Waiting && Match.Phase != EMatchPhase::ReadyForDelivery)) return EMode::Progress;
 	if (HumanBats()) return EMode::Batting;
 	if (HumanBowls() && (DPhase == EDeliveryPhase::Waiting || DPhase == EDeliveryPhase::RunUp)) return EMode::Bowling;
 	return EMode::None;
@@ -1090,6 +1098,62 @@ void ASuperOverGameMode::FinishDelivery()
 		Result.Summary = TEXT("[DEBUG] Forced wicket  >  BOWLED!");
 		bForceWicket = false;
 	}
+	// An LBW appeal: the umpire decides, and the ball is dead once given out, so no leg byes either way.
+	bAwaitingReview = bReviewTaken = false;
+	const FBallTracking& Tr = Result.Tracking;
+	if (Result.bPadImpact && Tr.Projected.Num() > 1 && !Outcome.bNoBall && !Outcome.bWide && !Match.bFreeHit
+		&& (Outcome.Dismissal == EDismissal::None || Outcome.Dismissal == EDismissal::LBW))
+	{
+		bOnFieldOut = CricketUmpire::GivesLBW(Tr, Result.PitchTime >= 0.f, Ctx.Seed);
+		if (bOnFieldOut || Outcome.Dismissal == EDismissal::LBW)
+		{
+			Outcome.RunsRun = Outcome.Boundary = 0;
+			Outcome.bLegBye = Outcome.bOverthrow = false;
+		}
+		Outcome.Dismissal = bOnFieldOut ? EDismissal::LBW : EDismissal::None;
+		ReviewingTeam = bOnFieldOut ? Match.BattingTeam() : Match.BowlingTeam();
+		UE_LOG(LogCRICKET26, Display, TEXT("LBW appeal: umpire says %s, tracking %s; %s have %d reviews"), bOnFieldOut ? TEXT("out") : TEXT("not out"),
+			Result.Dismissal == EDismissal::LBW ? TEXT("out") : TEXT("not out"), *Teams[ReviewingTeam].Short, Match.ReviewsLeft[ReviewingTeam]);
+		if (Match.ReviewsLeft[ReviewingTeam] > 0)
+		{
+			PendingOutcome = Outcome;
+			bAwaitingReview = true;
+			DPhase = EDeliveryPhase::DeadBall;
+			PhaseTime = 0.f;
+			return;
+		}
+	}
+	ScoreDelivery(Outcome);
+}
+
+bool ASuperOverGameMode::AiReviews() const
+{
+	// The side feels how the ball struck: it reviews most decisions ball tracking will overturn (more often the
+	// better it is), and a fair one now and then.
+	FRandomStream Hunch(Ctx.Seed * 31 + 5);
+	const bool bWrong = (Result.Dismissal == EDismissal::LBW) != bOnFieldOut;
+	return Hunch.FRand() < (bWrong ? 0.3f + 0.6f * AiSkill() : 0.1f);
+}
+
+void ASuperOverGameMode::SettleReview(bool bReview)
+{
+	bAwaitingReview = false;
+	bReviewTaken = bReview;
+	FDeliveryOutcome Outcome = PendingOutcome;
+	if (bReview)
+	{
+		ReviewResult = CricketUmpire::Review(bOnFieldOut, Result.Tracking);
+		if (ReviewResult == CricketUmpire::EReview::Overturned) Outcome.Dismissal = bOnFieldOut ? EDismissal::None : EDismissal::LBW;
+		if (ReviewResult == CricketUmpire::EReview::Upheld) --Match.ReviewsLeft[ReviewingTeam];
+		UE_LOG(LogCRICKET26, Display, TEXT("Review by %s: on-field %s, %s"), *Teams[ReviewingTeam].Short, bOnFieldOut ? TEXT("out") : TEXT("not out"),
+			ReviewResult == CricketUmpire::EReview::Overturned ? TEXT("overturned") : ReviewResult == CricketUmpire::EReview::UmpiresCall ? TEXT("umpire's call") : TEXT("upheld"));
+	}
+	ScoreDelivery(Outcome);
+}
+
+void ASuperOverGameMode::ScoreDelivery(FDeliveryOutcome Outcome)
+{
+	Result.Dismissal = Outcome.Dismissal; // the decision that stood, for the HUD and replays
 	const CricketCommentary::FNames Names{ StrikerPlayer().Name, Teams[Match.BattingTeam()].Batters[Match.Cur().NonStriker].Name, Teams[Match.BattingTeam()].Name };
 	const float OffSign = OffSideSign(StrikerPlayer().BatHand);
 	FBallMark& Mark = Marks.AddDefaulted_GetRef();
@@ -1113,6 +1177,7 @@ void ASuperOverGameMode::FinishDelivery()
 	if (!Match.CheckInvariants(Err)) UE_LOG(LogCRICKET26, Error, TEXT("Match invariant broken: %s"), *Err);
 	LastSummary = Result.Summary;
 	Commentary = CricketCommentary::Describe(Result, Outcome, Match, Names, OffSign, BallsPlayed);
+	if (bReviewTaken && ReviewResult == CricketUmpire::EReview::Overturned) Commentary = TEXT("Overturned on review! ") + Commentary;
 	UE_LOG(LogCRICKET26, Display, TEXT("Commentary: %s"), *Commentary);
 	++BallsPlayed;
 	UE_LOG(LogCRICKET26, Display, TEXT("%s %d/%d (%d.%d): %s"), *Teams[Match.BattingTeam()].Short, Match.Cur().Runs,

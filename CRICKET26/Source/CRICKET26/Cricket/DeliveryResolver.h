@@ -100,3 +100,15 @@ namespace CricketDelivery
 	 */
 	float EdgeSignal(const FDeliveryResult& R, float Time);
 }
+
+namespace CricketUmpire
+{
+	/**
+	 * The on-field umpire's LBW decision: ball tracking's three calls as a human eye sees them, a few centimetres
+	 * out, so clear calls are right and close ones can go either way. Deterministic for a seed.
+	 */
+	bool GivesLBW(const FBallTracking& T, bool bPitched, int32 Seed);
+	enum class EReview : uint8 { Upheld, Overturned, UmpiresCall };
+	/** A player review of an LBW decision against ball tracking. Umpire's call on the wickets leaves it standing. */
+	EReview Review(bool bOnFieldOut, const FBallTracking& T);
+}

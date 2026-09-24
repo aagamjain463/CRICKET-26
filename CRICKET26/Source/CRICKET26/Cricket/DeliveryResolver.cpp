@@ -511,3 +511,26 @@ float CricketDelivery::EdgeSignal(const FDeliveryResult& R, float Time)
 	if (R.bPadImpact) Signal = FMath::Max(Signal, 0.3f * FMath::Exp(-FMath::Abs(Time - R.Tracking.ImpactTime) / 0.03f));
 	return Signal;
 }
+
+bool CricketUmpire::GivesLBW(const FBallTracking& T, bool bPitched, int32 Seed)
+{
+	// Each call as a margin in metres (positive: the out side of the line), seen with an error of up to Sigma.
+	FRandomStream Rng(Seed * 7919 + 17);
+	auto Seen = [&Rng](float Margin, float Sigma) { return Margin + Sigma * (Rng.FRand() + Rng.FRand() - 1.f) >= 0.f; };
+	const float InLine = FBallTracking::InLine;
+	const bool bPitchOk = !bPitched || Seen(T.PitchLine + InLine, 0.04f);
+	// Outside off with no stroke offered still counts as in line: the umpire judges the leave, not the line.
+	const bool bNoStroke = T.bImpactInLine && FMath::Abs(T.ImpactLine) > InLine;
+	const bool bImpactOk = bNoStroke || Seen(InLine - FMath::Abs(T.ImpactLine), 0.03f);
+	const FVector End = T.Projected.Num() > 0 ? T.Projected.Last() : T.Impact;
+	const float Hitting = End.X > 0.01f ? -1.f // stopped short of the stumps
+		: FMath::Min(InLine - FMath::Abs(End.Y), CricketGeo::StumpHeight + CricketGeo::BallRadius - End.Z);
+	return bPitchOk && bImpactOk && Seen(Hitting, 0.06f);
+}
+
+CricketUmpire::EReview CricketUmpire::Review(bool bOnFieldOut, const FBallTracking& T)
+{
+	if (T.bPitchedOutsideLeg || !T.bImpactInLine || !T.bWouldHit) return bOnFieldOut ? EReview::Overturned : EReview::Upheld;
+	if (T.bUmpiresCall) return EReview::UmpiresCall;
+	return bOnFieldOut ? EReview::Upheld : EReview::Overturned;
+}

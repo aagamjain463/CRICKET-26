@@ -31,6 +31,8 @@ struct FSuperOverRules
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) int32 MaxBouncersPerOver = 1;
 	/** A short ball passing above head height: wide (true) or no-ball (false), depending on the playing conditions. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bOverHeadIsWide = true;
+	/** Unsuccessful player reviews each side may make in a Super Over (ICC playing conditions: one). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) int32 ReviewsPerTeam = 1;
 };
 
 /** Result of one delivery as decided by the simulation (umpire's view). */
@@ -110,6 +112,7 @@ struct FSuperOverMatch
 	UPROPERTY(BlueprintReadOnly) int32 Winner = -1;  // team index, -1 while undecided or tied
 	UPROPERTY(BlueprintReadOnly) bool bTied = false;
 	UPROPERTY(BlueprintReadOnly) bool bFreeHit = false;
+	int32 ReviewsLeft[2] = { 0, 0 }; // by team: a review that fails is lost, a successful one or umpire's call kept
 
 	void Start(int32 FirstBattingTeam);
 	bool BeginDelivery();

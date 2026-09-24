@@ -982,6 +982,41 @@ bool FSOEdgeDetector::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOReviews, "CRICKET26.Umpire.OnFieldCallsAndReviews", CricketTestFlags)
+bool FSOReviews::RunTest(const FString&)
+{
+	using CricketUmpire::EReview;
+	// Every pad hit across lengths and lines: the umpire gets the clear ones right, a review always ends at ball
+	// tracking's call unless it is umpire's call, and the umpire is not always right.
+	int32 Appeals = 0, Wrong = 0;
+	for (float Length = 2.f; Length <= 8.f; Length += 1.f)
+	{
+		for (float Line = -0.4f; Line <= 0.4f; Line += 0.05f)
+		{
+			const FDeliveryResult R = CricketDelivery::Resolve(Release(EDeliveryType::Stock, Length, Line), FBatInput(), Ctx());
+			if (!R.bPadImpact) continue;
+			const FBallTracking& T = R.Tracking;
+			const bool bTrackOut = R.Dismissal == EDismissal::LBW;
+			for (int32 Seed = 0; Seed < 8; ++Seed)
+			{
+				const bool bOut = CricketUmpire::GivesLBW(T, R.PitchTime >= 0.f, Seed);
+				++Appeals;
+				Wrong += bOut != bTrackOut;
+				const FVector End = T.Projected.Last();
+				const bool bClearMiss = !T.bWouldHit && (End.X > 0.01f || FMath::Abs(End.Y) > FBallTracking::InLine + 0.1f || End.Z > CricketGeo::StumpHeight + 0.15f);
+				if (bClearMiss && !T.bPitchedOutsideLeg) TestFalse(*FString::Printf(TEXT("a clear miss is not out (%s)"), *R.Summary), bOut);
+				const EReview Rv = CricketUmpire::Review(bOut, T);
+				const bool bFinal = Rv == EReview::Overturned ? !bOut : bOut;
+				if (Rv == EReview::UmpiresCall) TestTrue(TEXT("umpire's call only when the ball clips the stumps"), T.bUmpiresCall);
+				else TestEqual(*FString::Printf(TEXT("a review ends at the tracking (%s)"), *R.Summary), bFinal, bTrackOut);
+			}
+		}
+	}
+	TestTrue(*FString::Printf(TEXT("appeals (%d)"), Appeals), Appeals > 50);
+	TestTrue(*FString::Printf(TEXT("the umpire errs sometimes, not often (%d of %d)"), Wrong, Appeals), Wrong > 0 && Wrong < Appeals / 4);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOStumping, "CRICKET26.Umpire.StumpedDownTheTrack", CricketTestFlags)
 bool FSOStumping::RunTest(const FString&)
 {

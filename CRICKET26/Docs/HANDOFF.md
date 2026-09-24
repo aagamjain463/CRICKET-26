@@ -13,7 +13,7 @@ This note lets a new agent pick up the "make it like Cricket 26" work where it s
 - Scripts:
   - `Scripts/build.sh`: builds the game (compiled with `-Werror -Wshadow`, so shadowed locals fail the build).
   - `Scripts/run_tests.sh [Filter]`: runs the automation tests and writes `Saved/TestRun.log`. The full suite is
-    52 tests and takes about 80 s. Count passes with `grep -c "Result={Success}" Saved/TestRun.log`.
+    56 tests and takes about 80 s. Count passes with `grep -c "Result={Success}" Saved/TestRun.log`.
   - `Scripts/capture.sh N [args]`: plays AI vs AI and saves game-view frames of delivery N (including the wait
     before it) to `Saved/Screenshots/MacEditor/BallN_*.png`, with a log in `Saved/Capture.log`. Never use the
     desktop `screencapture`.
@@ -102,7 +102,12 @@ MetaHuman scripting notes (UE 5.8 Python):
   To see them: `Scripts/capture.sh 7 -CricketQuitAfter=7` (the innings break before ball 7).
 - The edge detector (`CricketDelivery::EdgeSignal`, `FBallTracking::ImpactTime`) draws over the super slow-motion
   replay: `Scripts/capture.sh 4 -CricketQuitAfter=4` shows it on an edged catch.
-- Not started: player reviews.
+- Player reviews: every pad impact goes to an appeal. `CricketUmpire::GivesLBW` gives the on-field call, and while
+  `bAwaitingReview` holds the ball the HUD shows the "LBW APPEAL" panel. The human presses V to review or Enter to
+  accept (touch players can only accept); the AI decides after 1.5 s (`AiReviews`). `SettleReview` applies
+  `CricketUmpire::Review` and `ScoreDelivery` scores the ball. The ball-tracking panel ends with the verdict. Each
+  team has `Rules.ReviewsPerTeam` (1) reviews, lost when the decision stands. To see one:
+  `Scripts/capture.sh 3 -CricketAiLeaves`.
 
 ## Item 4: camera director
 

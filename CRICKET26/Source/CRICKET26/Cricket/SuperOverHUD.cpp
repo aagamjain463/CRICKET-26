@@ -292,7 +292,7 @@ void ASuperOverHUD::DrawHUD()
 	}
 
 	// Last ball (raised clear of the touch buttons when they are shown).
-	if (!GM->Commentary.IsEmpty()) Text(GM->Commentary, W * 0.5f, bTouch ? H * 0.64f : BarY - 160 * S, FLinearColor(1, 0.9f, 0.5f), 1.f * S, true);
+	if (!GM->Commentary.IsEmpty() && !GM->bAwaitingReview) Text(GM->Commentary, W * 0.5f, bTouch ? H * 0.64f : BarY - 160 * S, FLinearColor(1, 0.9f, 0.5f), 1.f * S, true);
 	if (GM->bDebug && !GM->LastSummary.IsEmpty()) Text(GM->LastSummary, W * 0.5f, bTouch ? H - 80 * S : BarY - 182 * S, FLinearColor(0.7f, 0.7f, 0.7f), 0.8f * S, true);
 
 	if (GM->IsReplaying())
@@ -301,6 +301,23 @@ void ASuperOverHUD::DrawHUD()
 		const float TW = (bSlow ? 200 : 130) * S;
 		DrawRect(FLinearColor(0.7f, 0.05f, 0.05f, 0.85f), W - 20 * S - TW, 20 * S, TW, 30 * S);
 		Text(bSlow ? TEXT("SUPER SLOW-MO") : TEXT("REPLAY"), W - 20 * S - TW * 0.5f, 24 * S, FLinearColor::White, 1.1f * S, true);
+	}
+
+	// An LBW appeal waiting on a review: the umpire's call, and who may challenge it.
+	if (GM->bAwaitingReview)
+	{
+		const float PW = 420 * S, PX = W * 0.5f - PW * 0.5f, PY = H * 0.14f;
+		DrawRect(FLinearColor(0.1f, 0.4f, 0.95f, 0.9f), PX, PY, PW, 28 * S);
+		Text(TEXT("LBW APPEAL"), PX + PW * 0.5f, PY + 4 * S, FLinearColor::White, 1.f * S, true);
+		DrawRect(GM->bOnFieldOut ? FLinearColor(0.75f, 0.08f, 0.08f, 0.9f) : FLinearColor(0.1f, 0.6f, 0.2f, 0.9f), PX, PY + 28 * S, PW, 44 * S);
+		Text(GM->bOnFieldOut ? TEXT("UMPIRE: OUT") : TEXT("UMPIRE: NOT OUT"), PX + PW * 0.5f, PY + 33 * S, FLinearColor::White, 1.5f * S, true);
+		const FString Ask = GM->HumanReviews()
+			? FString::Printf(TEXT("V  REVIEW (%d LEFT)      ENTER  ACCEPT"), GM->Match.ReviewsLeft[GM->ReviewingTeam])
+			: FString::Printf(TEXT("%s CONSIDERING A REVIEW..."), *GM->Teams[GM->ReviewingTeam].Name.ToUpper());
+		DrawRect(FLinearColor(0.02f, 0.03f, 0.07f, 0.88f), PX, PY + 72 * S, PW, 30 * S);
+		Text(Ask, PX + PW * 0.5f, PY + 78 * S, FLinearColor(1, 0.85f, 0.3f), 0.85f * S, true);
+		if (GM->HumanReviews())
+			DrawRect(FLinearColor(1, 0.85f, 0.3f, 0.9f), PX, PY + 100 * S, PW * FMath::Max(0.f, 1.f - GM->PhaseTime / ASuperOverGameMode::ReviewWindow), 2 * S);
 	}
 
 	// Edge detector under the super slow-motion replay of a ball that passed the bat: the sound trace drawn as the
@@ -361,6 +378,13 @@ void ASuperOverHUD::DrawHUD()
 			const bool bOut = Last.Dismissal == EDismissal::LBW;
 			DrawRect(bOut ? Bad : Good, PX, Y + 6 * S, PW, 44 * S);
 			Text(bOut ? TEXT("OUT") : TEXT("NOT OUT"), PX + PW * 0.5f, Y + 11 * S, FLinearColor::White, 1.6f * S, true);
+			// How it stood: the on-field call, and what the review made of it.
+			using CricketUmpire::EReview;
+			const FString How = !GM->bReviewTaken ? FString(TEXT("UMPIRE'S DECISION - NOT REVIEWED"))
+				: FString::Printf(TEXT("%s REVIEW: %s"), *GM->Teams[GM->ReviewingTeam].Short,
+					GM->ReviewResult == EReview::Overturned ? TEXT("OVERTURNED") : GM->ReviewResult == EReview::UmpiresCall ? TEXT("UMPIRE'S CALL, RETAINED") : TEXT("STANDS, REVIEW LOST"));
+			DrawRect(FLinearColor(0.02f, 0.03f, 0.07f, 0.88f), PX, Y + 54 * S, PW, 26 * S);
+			Text(How, PX + PW * 0.5f, Y + 58 * S, Dim, 0.75f * S, true);
 		}
 	}
 
@@ -424,11 +448,11 @@ void ASuperOverHUD::DrawHUD()
 		{
 			const float K = (PS * 0.5f - 12 * S) / CricketGeo::BoundaryRadius, CX = WX + PS * 0.5f, CY = PY + 34 * S + PS * 0.5f;
 			auto ToScreen = [&](FVector2D P) { return FVector2D(CX + P.Y * K, CY - (P.X - CricketGeo::PitchLength * 0.5f) * K); };
-			const FLinearColor Grass(0.15f, 0.45f, 0.18f);
+			const FLinearColor Outfield(0.15f, 0.45f, 0.18f);
 			for (int32 I = 0; I < 48; ++I)
 			{
 				const float A0 = 2.f * PI * I / 48.f, A1 = 2.f * PI * (I + 1) / 48.f, R = CricketGeo::BoundaryRadius * K;
-				DrawLine(CX + R * FMath::Cos(A0), CY + R * FMath::Sin(A0), CX + R * FMath::Cos(A1), CY + R * FMath::Sin(A1), Grass, 2.f * S);
+				DrawLine(CX + R * FMath::Cos(A0), CY + R * FMath::Sin(A0), CX + R * FMath::Cos(A1), CY + R * FMath::Sin(A1), Outfield, 2.f * S);
 			}
 			const FVector2D Striker = ToScreen(FVector2D::ZeroVector), Bowler = ToScreen(FVector2D(CricketGeo::PitchLength, 0.f));
 			DrawRect(FLinearColor(0.75f, 0.65f, 0.45f), Striker.X - 2 * S, Bowler.Y, 4 * S, Striker.Y - Bowler.Y);
