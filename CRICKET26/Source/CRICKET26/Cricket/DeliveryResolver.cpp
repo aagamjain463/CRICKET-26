@@ -44,6 +44,11 @@ FString CricketDelivery::ZoneName(EContactZone Z)
 	}
 }
 
+FString CricketDelivery::TimingName(float T)
+{
+	return FMath::Abs(T) <= PerfectTiming ? TEXT("PERFECT") : FMath::Abs(T) <= GoodTiming ? TEXT("GOOD") : T < 0.f ? TEXT("EARLY") : TEXT("LATE");
+}
+
 FString CricketDelivery::ShotName(EShotType S)
 {
 	switch (S)
@@ -443,7 +448,7 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 	// Commentary-style summary for the HUD.
 	// Timing readout so the player can learn the window: perfect / good, else early or late by how much.
 	const int32 Ms = FMath::RoundToInt(Timing * 1000.f);
-	const FString TimingText = FMath::Abs(Ms) <= 15 ? FString(TEXT("perfect timing")) : FMath::Abs(Ms) <= 40 ? FString(TEXT("good timing"))
+	const FString TimingText = FMath::Abs(Timing) <= GoodTiming ? TimingName(Timing).ToLower() + TEXT(" timing")
 		: FString::Printf(TEXT("%d ms %s"), FMath::Abs(Ms), Ms < 0 ? TEXT("early") : TEXT("late"));
 	FString What = bShot ? FString::Printf(TEXT("%s%s - %s, %s"), Foot == EFootwork::Advance ? TEXT("Down the track, ") : TEXT(""),
 			*ShotName(R.Shot.Shot), *ZoneName(R.Contact.Zone), *TimingText)

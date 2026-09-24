@@ -13,7 +13,7 @@ This note lets a new agent pick up the "make it like Cricket 26" work where it s
 - Scripts:
   - `Scripts/build.sh`: builds the game (compiled with `-Werror -Wshadow`, so shadowed locals fail the build).
   - `Scripts/run_tests.sh [Filter]`: runs the automation tests and writes `Saved/TestRun.log`. The full suite is
-    51 tests and takes about 80 s. Count passes with `grep -c "Result={Success}" Saved/TestRun.log`.
+    52 tests and takes about 80 s. Count passes with `grep -c "Result={Success}" Saved/TestRun.log`.
   - `Scripts/capture.sh N [args]`: plays AI vs AI and saves game-view frames of delivery N (including the wait
     before it) to `Saved/Screenshots/MacEditor/BallN_*.png`, with a log in `Saved/Capture.log`. Never use the
     desktop `screencapture`.

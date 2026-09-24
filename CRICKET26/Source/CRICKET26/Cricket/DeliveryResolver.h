@@ -75,4 +75,7 @@ namespace CricketDelivery
 	FDeliveryResult Resolve(const FDeliveryRelease& Release, const FBatInput& Input, const FResolveContext& Context);
 	FString ZoneName(EContactZone Zone);
 	FString ShotName(EShotType Shot);
+	/** The player's timing grade for a swing: within PerfectTiming of ideal, within GoodTiming, else early or late. */
+	constexpr float PerfectTiming = 0.015f, GoodTiming = 0.04f;
+	FString TimingName(float TimingError);
 }

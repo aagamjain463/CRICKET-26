@@ -71,6 +71,7 @@ public:
 	float HumanRunMargin = 0.35f;
 	float ShotDirection = 0.f;
 	bool bDebug = false, bTrajectory = false, bAutoPlay = false, bForceWicket = false;
+	bool bTimingFeedback = true;   // F9: the timing bar after each stroke (off for players who want to judge it themselves)
 	CricketAI::EDifficulty Difficulty = CricketAI::EDifficulty::Hard; // F6 or -CricketDifficulty=0..3
 	float AiSkill() const { return CricketAI::SkillOf(Difficulty); }
 	/**

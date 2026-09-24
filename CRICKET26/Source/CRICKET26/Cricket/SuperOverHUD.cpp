@@ -259,6 +259,28 @@ void ASuperOverHUD::DrawHUD()
 		Text(TEXT(">"), C.X + R - 10 * S, C.Y - 9 * S, FLinearColor::White, 1.f * S, true);
 	}
 
+	// Timing bar after a stroke, as long as the result is on screen: where the swing fell between early and late,
+	// with the grade, the shot and where it came off the bat, so the window can be learnt.
+	const FDeliveryResult& Last = GM->Result;
+	if (GM->bTimingFeedback && Last.Contact.Shot != EShotType::Leave && GM->DPhase == EDeliveryPhase::DeadBall && GM->PhaseTime < 3.f
+		&& !GM->IsReplaying() && !GM->ShowingScorecard())
+	{
+		using namespace CricketDelivery;
+		constexpr float Span = 0.12f; // s either side of ideal: the swing misses beyond it
+		const float T = Last.Contact.TimingError, TW = 360 * S, TX = W * 0.5f - TW * 0.5f, TY = bTouch ? H * 0.58f : BarY - 200 * S;
+		auto At = [&](float Sec) { return TX + TW * 0.5f * (1.f + FMath::Clamp(Sec / Span, -1.f, 1.f)); };
+		const FLinearColor Grade = FMath::Abs(T) <= PerfectTiming ? FLinearColor(0.2f, 0.95f, 0.3f)
+			: FMath::Abs(T) <= GoodTiming ? FLinearColor(0.75f, 0.95f, 0.25f) : FLinearColor(1.f, 0.55f, 0.15f);
+		Text(FString::Printf(TEXT("%s   %s, %s"), *TimingName(T), *ShotName(Last.Shot.Shot), *ZoneName(Last.Contact.Zone).ToLower()),
+			W * 0.5f, TY - 26 * S, Grade, 1.f * S, true);
+		DrawRect(FLinearColor(0.02f, 0.03f, 0.07f, 0.85f), TX, TY, TW, 12 * S);
+		DrawRect(FLinearColor(0.4f, 0.75f, 0.2f, 0.6f), At(-GoodTiming), TY, At(GoodTiming) - At(-GoodTiming), 12 * S);
+		DrawRect(FLinearColor(0.2f, 0.95f, 0.3f, 0.9f), At(-PerfectTiming), TY, At(PerfectTiming) - At(-PerfectTiming), 12 * S);
+		DrawRect(FLinearColor::White, At(T) - 2 * S, TY - 5 * S, 4 * S, 22 * S);
+		Text(TEXT("EARLY"), TX - 36 * S, TY - 3 * S, Dim, 0.65f * S, true);
+		Text(TEXT("LATE"), TX + TW + 32 * S, TY - 3 * S, Dim, 0.65f * S, true);
+	}
+
 	// Last ball (raised clear of the touch buttons when they are shown).
 	if (!GM->Commentary.IsEmpty()) Text(GM->Commentary, W * 0.5f, bTouch ? H * 0.64f : BarY - 160 * S, FLinearColor(1, 0.9f, 0.5f), 1.f * S, true);
 	if (GM->bDebug && !GM->LastSummary.IsEmpty()) Text(GM->LastSummary, W * 0.5f, bTouch ? H - 80 * S : BarY - 182 * S, FLinearColor(0.7f, 0.7f, 0.7f), 0.8f * S, true);
@@ -320,7 +342,7 @@ void ASuperOverHUD::DrawHUD()
 	{
 		const FDeliveryResult& R = GM->Result;
 		const FString D = FString::Printf(
-			TEXT("DEBUG (F1)  F2 flip striker hand  F3 cycle bowler type  F4 trajectory  F5 force wicket%s  F6 AI %s  F7 quality %d  F8 AI vs AI\n")
+			TEXT("DEBUG (F1)  F2 flip striker hand  F3 cycle bowler type  F4 trajectory  F5 force wicket%s  F6 AI %s  F7 quality %d  F8 AI vs AI  F9 timing bar\n")
 			TEXT("Bowler: %s %s   plan: %s len %.1f line %+.2f   AI intent: %s\n")
 			TEXT("Release %.0f kph%s   pitched x=%.2f y=%+.2f   wide=%d\n")
 			TEXT("Input: intent %d dir %.0f press %.3f s   shot %s   zone %s   timing %+.3f s%s\n")

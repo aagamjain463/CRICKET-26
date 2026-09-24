@@ -703,6 +703,7 @@ void ASuperOverGameMode::HandleInput(APlayerController* PC, float Dt)
 		ApplyQuality();
 	}
 	if (Pressed(EKeys::F8)) bAutoPlay = !bAutoPlay;
+	if (Pressed(EKeys::F9)) bTimingFeedback = !bTimingFeedback;
 	if (DPhase == EDeliveryPhase::Waiting && Match.Phase == EMatchPhase::ReadyForDelivery)
 	{
 		if (Pressed(EKeys::F2))

@@ -186,4 +186,16 @@ bool FSunLightsFaces::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTimingGrades, "CRICKET26.Presentation.TimingGrades", CricketPresentationTests::Flags)
+bool FTimingGrades::RunTest(const FString&)
+{
+	using CricketDelivery::TimingName;
+	TestEqual(TEXT("on time"), TimingName(0.f), FString(TEXT("PERFECT")));
+	TestEqual(TEXT("15 ms late is still perfect"), TimingName(0.015f), FString(TEXT("PERFECT")));
+	TestEqual(TEXT("30 ms early is good"), TimingName(-0.03f), FString(TEXT("GOOD")));
+	TestEqual(TEXT("50 ms early"), TimingName(-0.05f), FString(TEXT("EARLY")));
+	TestEqual(TEXT("50 ms late"), TimingName(0.05f), FString(TEXT("LATE")));
+	return true;
+}
+
 #endif
