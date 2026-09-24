@@ -13,7 +13,7 @@ This note lets a new agent pick up the "make it like Cricket 26" work where it s
 - Scripts:
   - `Scripts/build.sh`: builds the game (compiled with `-Werror -Wshadow`, so shadowed locals fail the build).
   - `Scripts/run_tests.sh [Filter]`: runs the automation tests and writes `Saved/TestRun.log`. The full suite is
-    56 tests and takes about 80 s. Count passes with `grep -c "Result={Success}" Saved/TestRun.log`.
+    57 tests and takes about 80 s. Count passes with `grep -c "Result={Success}" Saved/TestRun.log`.
   - `Scripts/capture.sh N [args]`: plays AI vs AI and saves game-view frames of delivery N (including the wait
     before it) to `Saved/Screenshots/MacEditor/BallN_*.png`, with a log in `Saved/Capture.log`. Never use the
     desktop `screencapture`.
@@ -127,6 +127,10 @@ MetaHuman scripting notes (UE 5.8 Python):
   motion around the contact. The HUD tags the second "SUPER SLOW-MO".
 - To see them: `Scripts/capture.sh 1` (a four) and `Scripts/capture.sh 4` (a diving catch, then a wicket
   close-up).
+- Highlight reel: every ball that earned a replay (`bReplayThis`) is kept in `Highlights`. When an innings or the
+  match ends, the dead ball flows into the reel. `PlayClip` restores each clip's delivery and replays it on both
+  angles, tagged "HIGHLIGHTS n/m", then puts the live ball back (`LiveClip`) and shows the scorecard. Enter skips
+  the whole reel. To see it: `Scripts/capture.sh 6 -CricketQuitAfter=6`.
 
 ## Blocked on the owner
 
