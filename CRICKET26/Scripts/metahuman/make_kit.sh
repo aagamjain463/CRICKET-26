@@ -1,7 +1,8 @@
 #!/bin/zsh
-# Makes every player's cricket kit and batting gear: Unreal exports each full body (kit_ue.py), Blender cuts the kit from it
-# (make_kit.py), and Unreal imports the kit onto the player's skeleton. Run after make_players.sh. Takes about
-# a minute a player the first time (the bodies are built once more without their garment), seconds after.
+# Makes every player's cricket kit and batting gear, and the bat: Unreal exports each full body (kit_ue.py), Blender
+# cuts the kit from it (make_kit.py) and models the bat (make_bat.py), and Unreal imports them onto the player's
+# skeleton. Run after make_players.sh. Takes about a minute a player the first time (the bodies are built once more
+# without their garment), seconds after.
 # Usage: Scripts/metahuman/make_kit.sh [Name,Name...]   (default: all ten)
 set -e
 ROOT="${0:A:h:h:h}"
@@ -19,4 +20,5 @@ unreal export
 for NAME in ${(s:,:)KIT_NAMES}; do
   "$BLENDER" -b --python "$ROOT/Scripts/metahuman/make_kit.py" -- "$KIT_DIR/${NAME}_Body.fbx" "$KIT_DIR/${NAME}_Kit.fbx" "$KIT_DIR/${NAME}_Gear.fbx" 2>&1 | grep -E "^KIT written|Error" || true
 done
+"$BLENDER" -b --python "$ROOT/Scripts/metahuman/make_bat.py" -- "$KIT_DIR/Bat.fbx" 2>&1 | grep -E "^KIT written|Error" || true
 unreal import

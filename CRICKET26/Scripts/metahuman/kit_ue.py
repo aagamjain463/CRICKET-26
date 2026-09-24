@@ -5,7 +5,8 @@
 #   and exports that body to $KIT_DIR/<Name>_Body.fbx. The source character is not saved, so it keeps its garment.
 # KIT_STEP=import: imports $KIT_DIR/<Name>_Kit.fbx and <Name>_Gear.fbx onto the player's own skeleton as
 #   /Game/MetaHumans/<Name>/Kit/SKM_<Name>_Kit and SKM_<Name>_Gear, and makes the fabric material
-#   /Game/MetaHumans/Kit/M_Kit.
+#   /Game/MetaHumans/Kit/M_Kit. It also imports the bat, $KIT_DIR/Bat.fbx, as /Game/MetaHumans/Kit/SM_Bat with its
+#   willow material M_Bat.
 import os
 import unreal
 
@@ -69,6 +70,51 @@ def kit_material():
     lib.save_loaded_asset(m)
 
 
+def bat_material():
+    if lib.does_asset_exist("/Game/MetaHumans/Kit/M_Bat"):
+        return
+    mel = unreal.MaterialEditingLibrary
+    m = unreal.AssetToolsHelpers.get_asset_tools().create_asset("M_Bat", "/Game/MetaHumans/Kit", unreal.Material,
+                                                                  unreal.MaterialFactoryNew())
+    # Pale willow with darker grain lines running down the blade, a few wavering, from the mesh's own position
+    # (cm, X across the blade, Z along it), so the bat needs no texture.
+    grain = mel.create_material_expression(m, unreal.MaterialExpressionCustom, -400, 0)
+    grain.set_editor_property("code", "float g = sin(P.x * 5.3 + sin(P.z * 0.09) * 1.4 + sin(P.x * 1.7) * 2.0);\n"
+                                      "g = pow(saturate(0.5 + 0.5 * g), 6) + 0.35 * pow(saturate(0.5 + 0.5 * sin(P.x * 13.1 + P.z * 0.02)), 8);\n"
+                                      "return lerp(float3(0.80, 0.63, 0.40), float3(0.58, 0.40, 0.21), saturate(g));")
+    grain.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT3)
+    p = unreal.CustomInput()
+    p.set_editor_property("input_name", "P")
+    grain.set_editor_property("inputs", [p])
+    pos = mel.create_material_expression(m, unreal.MaterialExpressionLocalPosition, -700, 0)
+    mel.connect_material_expressions(pos, "", grain, "P")
+    mel.connect_material_property(grain, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    rough = mel.create_material_expression(m, unreal.MaterialExpressionConstant, -400, 200)
+    rough.set_editor_property("r", 0.45)  # oiled and polished
+    mel.connect_material_property(rough, "", unreal.MaterialProperty.MP_ROUGHNESS)
+    mel.recompile_material(m)
+    lib.save_loaded_asset(m)
+
+
+def import_bat():
+    ui = unreal.FbxImportUI()
+    ui.import_mesh = True
+    ui.import_as_skeletal = False
+    ui.mesh_type_to_import = unreal.FBXImportType.FBXIT_STATIC_MESH
+    ui.import_materials = ui.import_textures = ui.import_animations = False
+    ui.static_mesh_import_data.set_editor_property("combine_meshes", True)
+    ui.static_mesh_import_data.set_editor_property("auto_generate_collision", False)
+    t = unreal.AssetImportTask()
+    t.filename = f"{DIR}/Bat.fbx"
+    t.destination_path = "/Game/MetaHumans/Kit"
+    t.destination_name = "SM_Bat"
+    t.automated = t.replace_existing = t.save = True
+    t.options = ui
+    unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([t])
+    b = unreal.load_asset("/Game/MetaHumans/Kit/SM_Bat").get_bounding_box()
+    unreal.log(f"KIT bat imported, bounds {b.min} to {b.max}")
+
+
 def import_kit(name, part):
     ui = unreal.FbxImportUI()
     ui.import_mesh = True
@@ -90,6 +136,8 @@ def import_kit(name, part):
 
 if STEP == "import":
     kit_material()
+    bat_material()
+    import_bat()
 for n in NAMES:
     if STEP == "export":
         export(n)

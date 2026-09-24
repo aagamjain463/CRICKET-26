@@ -519,11 +519,29 @@ void ASuperOverGameMode::BuildScene()
 	}
 
 	Ball = Spawn(SphereMesh, FVector(0.f, 0.f, -5.f), FVector(2.f * BallRadius), FLinearColor(0.85f, 0.85f, 0.8f));
-	// Bats: a blade and a taped handle, the two parts placed together each frame.
+	// Bats: a blade and a taped handle, the two parts placed together each frame. The willow bat made by
+	// Scripts/metahuman/make_kit.sh, when there is one, is the whole bat in one mesh (grain, grip and stickers),
+	// with its origin at the middle of the blade like the box's, and the handle part is hidden.
+	UStaticMesh* BatMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/MetaHumans/Kit/SM_Bat.SM_Bat"), nullptr, LOAD_Quiet | LOAD_NoWarn);
+	UMaterialInterface* Willow = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/MetaHumans/Kit/M_Bat.M_Bat"), nullptr, LOAD_Quiet | LOAD_NoWarn);
 	for (TObjectPtr<AStaticMeshActor>* B : { &Bat, &NonStrikerBat })
 	{
 		*B = Spawn(CubeMesh, FVector::ZeroVector, FVector(0.108f, 0.045f, CricketPose::BatLength - CricketPose::HandleLength), Wood);
 		BatHandles.Add(Spawn(CylinderMesh, FVector::ZeroVector, FVector(0.034f, 0.034f, CricketPose::HandleLength), FLinearColor(0.08f, 0.08f, 0.1f)));
+		if (!BatMesh || !Willow) continue;
+		UStaticMeshComponent* Blade = (*B)->GetStaticMeshComponent();
+		Blade->SetStaticMesh(BatMesh);
+		(*B)->SetActorScale3D(FVector::OneVector);
+		const TArray<FName> Slots = Blade->GetMaterialSlotNames();
+		for (int32 I = 0; I < Slots.Num(); ++I)
+		{
+			if (Slots[I] == TEXT("Bat_Willow")) { Blade->SetMaterial(I, Willow); continue; }
+			UMaterialInstanceDynamic* M = UMaterialInstanceDynamic::Create(ShapeMaterial, *B);
+			M->SetVectorParameterValue(TEXT("Color"), Slots[I] == TEXT("Bat_Grip") ? FLinearColor(0.03f, 0.03f, 0.035f)
+				: Slots[I] == TEXT("Bat_Letters") ? FLinearColor(0.45f, 0.02f, 0.03f) : FLinearColor(0.8f, 0.8f, 0.78f));
+			Blade->SetMaterial(I, M);
+		}
+		BatHandles.Last()->SetActorHiddenInGame(true);
 	}
 	// Epic's template mannequin (UE EULA, ships with the project template) when present; plain markers otherwise.
 	BodyMesh = LoadObject<USkeletalMesh>(nullptr, TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple"));
