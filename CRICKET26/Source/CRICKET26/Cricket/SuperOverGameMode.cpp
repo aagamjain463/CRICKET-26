@@ -813,7 +813,7 @@ void ASuperOverGameMode::Tick(float Dt)
 		if (PhaseTime >= Result.DeadTime) FinishDelivery();
 		break;
 	case EDeliveryPhase::DeadBall:
-		if (PhaseTime > (bReviewThis ? ReviewFrom() + ReviewTime + 0.5f : 1.8f + (bReplayThis ? ReplayAction / ReplaySpeed : 0.f)))
+		if (PhaseTime > (bReviewThis ? ReviewFrom() + ReviewTime + 0.5f : 1.8f + (bReplayThis ? ReplayTime : 0.f)))
 		{
 			DPhase = EDeliveryPhase::Waiting;
 			PhaseTime = 0.f;
@@ -875,7 +875,7 @@ void ASuperOverGameMode::HandleInput(APlayerController* PC, float Dt)
 	const FCricketControls Touch = ReadTouch(PC);
 	C.Merge(Touch);
 
-	if (C.bProgress && IsReplaying()) PhaseTime = ReplayDelay + ReplayAction / ReplaySpeed; // skip the replay
+	if (C.bProgress && IsReplaying()) PhaseTime = ReplayDelay + ReplayTime; // skip the replay
 	if (C.bProgress && DPhase == EDeliveryPhase::Waiting)
 	{
 		if (Match.Phase == EMatchPhase::InningsBreak) Match.StartSecondInnings();
@@ -1334,8 +1334,7 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	const bool bReplay = IsReplaying();
 	const bool bReview = IsReviewing();
 	const bool bScorecard = ShowingScorecard();
-	const float ReplayFrom = FMath::Max(0.f, Result.ContactTime - ReplayLead);
-	const float T = bReplay ? ReplayFrom + (PhaseTime - ReplayDelay) * ReplaySpeed : DPhase == EDeliveryPhase::DeadBall ? Result.DeadTime : PhaseTime;
+	const float T = bReplay ? ReplayBallTime() : DPhase == EDeliveryPhase::DeadBall ? Result.DeadTime : PhaseTime;
 
 	// Ball sounds when the presented ball passes each moment, so a replay plays them again.
 	if (T < PrevCueT) PrevCueT = T; // a new ball or a replay rewinds the clock
@@ -1469,7 +1468,7 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	// fielder's pickup or catch is seen from in front of them; once the ball is dead, a close-up of the bowler
 	// after a wicket, or of the striker otherwise, until the replay or the next ball. Any change of shot is a
 	// cut, except the delivery shot pulling out to follow the ball.
-	enum EShot { Delivery, Follow, Boundary, Fielding, CloseUp, Replay, Review, Scorecard };
+	enum EShot { Delivery, Follow, Boundary, Fielding, CloseUp, Replay, SuperSlow, Review, Scorecard };
 	EShot Shot = bFollow ? Follow : Delivery;
 	const FFieldingOutcome& Fld = Result.Fielding;
 	const float After = T - Result.ContactTime;
@@ -1514,6 +1513,14 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 		WantLoc = ToWorld(FVector(Result.Shot.ContactX() + 2.f, 38.f * Off, 2.2f));
 		LookAt = T < Result.ContactTime + 0.3f ? ToWorld(FVector(Result.Shot.ContactX(), 0.f, 1.f)) : BallPos;
 		WantFov = T < Result.ContactTime + 0.3f ? 12.f : 35.f;
+		if (ReplayAngle() == 1)
+		{
+			// From the main camera's place high behind the bowler (above the bowler and umpire), in close.
+			Shot = SuperSlow;
+			WantLoc = ToWorld(FVector(PitchLength + 62.f, 0.f, 12.f));
+			LookAt = ToWorld(FVector(Result.Shot.ContactX(), 0.f, 1.f));
+			WantFov = 3.f;
+		}
 	}
 	if (bReview)
 	{

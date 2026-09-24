@@ -110,6 +110,8 @@ MetaHuman scripting notes (UE 5.8 Python):
   and scorecard shots come after these.
 - A change of shot is a cut (`LastShot`, `bCutCamera`), except delivery to follow, which stays a smooth move.
 - `ReplayDelay` is 2 seconds, so the close-up plays before the replay.
+- A replay has two angles (`ReplayAngle()`, `ReplayBallTime()`): side-on at half speed, then end-on in super slow
+  motion around the contact. The HUD tags the second "SUPER SLOW-MO".
 - To see them: `Scripts/capture.sh 1` (a four) and `Scripts/capture.sh 4` (a diving catch, then a wicket
   close-up).
 

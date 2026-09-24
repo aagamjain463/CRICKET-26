@@ -99,10 +99,24 @@ public:
 	TArray<float> DevCam;    // -CricketDevCam
 	bool bDevCamFielder = false;                 // -CricketQuitAfter=N: quit after N deliveries (default: after the shot ball)
 	float ShotClock = 0.f;
-	/** Action replay of the key moment after a wicket or boundary, from side-on at half speed. */
+	/**
+	 * Action replay of the key moment after a wicket or boundary, in two angles of ReplayAngleTime each: side-on at
+	 * half speed from ReplayLead before the contact, then down the pitch from the main camera, tight on the striker,
+	 * in super slow motion from SuperSlowLead before it.
+	 */
 	static constexpr float ReplayDelay = 2.f, ReplaySpeed = 0.5f, ReplayLead = 0.8f, ReplayAction = 1.6f;
+	static constexpr float SuperSlowSpeed = 0.2f, SuperSlowLead = 0.3f;
+	static constexpr float ReplayAngleTime = ReplayAction / ReplaySpeed, ReplayTime = 2.f * ReplayAngleTime;
 	bool bReplayThis = false, bWicketThis = false;
-	bool IsReplaying() const { return bReplayThis && DPhase == EDeliveryPhase::DeadBall && PhaseTime >= ReplayDelay && PhaseTime < ReplayDelay + ReplayAction / ReplaySpeed; }
+	bool IsReplaying() const { return bReplayThis && DPhase == EDeliveryPhase::DeadBall && PhaseTime >= ReplayDelay && PhaseTime < ReplayDelay + ReplayTime; }
+	int32 ReplayAngle() const { return PhaseTime - ReplayDelay < ReplayAngleTime ? 0 : 1; }
+	/** The ball time the replay is showing. */
+	float ReplayBallTime() const
+	{
+		const float Into = PhaseTime - ReplayDelay;
+		return ReplayAngle() == 0 ? FMath::Max(0.f, Result.ContactTime - ReplayLead) + Into * ReplaySpeed
+			: FMath::Max(0.f, Result.ContactTime - SuperSlowLead) + (Into - ReplayAngleTime) * SuperSlowSpeed;
+	}
 	/**
 	 * Ball tracking after every ball that hits the pad, once any replay is over: a view from behind the bowler's
 	 * stumps with the players hidden, drawing the delivery up to the pad and then where it would have gone, while
@@ -110,7 +124,7 @@ public:
 	 */
 	static constexpr float ReviewTime = 5.f;
 	bool bReviewThis = false;
-	float ReviewFrom() const { return ReplayDelay + (bReplayThis ? ReplayAction / ReplaySpeed : 0.f); }
+	float ReviewFrom() const { return ReplayDelay + (bReplayThis ? ReplayTime : 0.f); }
 	bool IsReviewing() const { return bReviewThis && DPhase == EDeliveryPhase::DeadBall && PhaseTime >= ReviewFrom() && PhaseTime < ReviewFrom() + ReviewTime; }
 	/** How far the review has got, 0 to 1: the path reaches the pad at 0.4 and the stumps at 0.7. */
 	float ReviewProgress() const { return FMath::Clamp((PhaseTime - ReviewFrom()) / ReviewTime, 0.f, 1.f); }
