@@ -233,6 +233,47 @@ FStadium Build(const FStadiumSpec& Spec)
 				S.Lamps.AddBox(Base + FVector(0, 0, 50.f + (J - 1.5f) * 1.5f) - D * 2.4f + Side * ((I - 2) * 1.9f), D, FVector(0.15f, 0.8f, 0.6f), FLinearColor(1.f, 0.98f, 0.9f), false);
 	}
 
+	// The media box, glass-fronted, on the upper tier behind the striker's sightscreen, where the broadcast looks.
+	{
+		const FVector D = Radial(180.f), Side = Radial(270.f);
+		const float Front = Up.R0 + 6.5f, Z0 = Up.Z0 + 4.f, Z1 = Top + 2.f, Half = 12.f;
+		const FVector Mid = C + D * ((Front + Back) / 2.f);
+		M.AddBox(Mid + FVector(0, 0, (Z0 + Z1) / 2.f), D, FVector((Back - Front) / 2.f, Half, (Z1 - Z0) / 2.f), Facade * 1.3f);
+		// Floor slab and fascia in concrete, and the glass between them split by mullions.
+		auto Face = [&](float Za, float Zb, const FLinearColor& Col, float Proud)
+		{
+			const FVector F = C + D * (Front - Proud);
+			M.AddQuad(F - Side * Half + FVector(0, 0, Za), F - Side * Half + FVector(0, 0, Zb), F + Side * Half + FVector(0, 0, Zb), F + Side * Half + FVector(0, 0, Za), Col, -D);
+		};
+		Face(Z0, Z0 + 0.9f, Concrete * 1.4f, 0.02f);
+		Face(Z1 - 1.2f, Z1, FLinearColor(0.55f, 0.56f, 0.6f), 0.02f);
+		Face(Z0 + 0.9f, Z1 - 1.2f, FLinearColor(0.03f, 0.06f, 0.09f), 0.01f);
+		for (float Along = -Half; Along <= Half + 0.01f; Along += 2.f)
+			M.AddBox(C + D * (Front - 0.06f) + Side * Along + FVector(0, 0, (Z0 + Z1) / 2.f), D, FVector(0.05f, 0.06f, (Z1 - Z0) / 2.f - 0.9f), FLinearColor(0.35f, 0.36f, 0.38f), false);
+	}
+	// Two dugouts square of the wicket, between the boards and the lower tier: a dark shelter under a clear canopy,
+	// a row of seats in each team's colour.
+	for (int32 Team = 0; Team < 2; ++Team)
+	{
+		const float A = Team ? 102.f : 78.f, R0 = BoundaryRadius + BoardRadiusOffset + 1.2f, R1 = BoundaryRadius + StandRadiusOffset - 0.3f;
+		const FVector D = Radial(A), Side = Radial(A + 90.f), Mid = C + D * ((R0 + R1) / 2.f);
+		const float Depth = (R1 - R0) / 2.f, Half = 4.5f, H = 2.3f;
+		const FLinearColor Shell(0.12f, 0.12f, 0.13f), Seat = (Team ? Spec.Away : Spec.Home) * 0.8f;
+		const FVector Floor = Mid + FVector(0, 0, 0.03f);
+		M.AddQuad(Floor - D * Depth - Side * Half, Floor + D * Depth - Side * Half, Floor + D * Depth + Side * Half, Floor - D * Depth + Side * Half, FLinearColor(0.05f, 0.05f, 0.05f), FVector::UpVector);
+		M.AddBox(C + D * (R1 - 0.1f) + FVector(0, 0, H / 2.f), D, FVector(0.1f, Half, H / 2.f), Shell * 0.3f); // in the shade
+		for (const float End : { -Half, Half })
+			M.AddBox(Mid + Side * End + FVector(0, 0, H / 2.f), D, FVector(Depth, 0.08f, H / 2.f), Shell * 1.3f);
+		M.AddBox(Mid + FVector(0, 0, H + 0.04f), D, FVector(Depth + 0.3f, Half + 0.1f, 0.04f), FLinearColor(0.5f, 0.55f, 0.58f));
+		M.AddBox(Mid - D * (Depth + 0.33f) + FVector(0, 0, H - 0.1f), D, FVector(0.03f, Half + 0.1f, 0.18f), Seat); // the team's fascia
+		for (int32 I = 0; I < 12; ++I)
+		{
+			const FVector At = C + D * (R1 - 0.6f) + Side * (-Half + 0.5f + I * (2.f * Half - 1.f) / 11.f);
+			M.AddBox(At + FVector(0, 0, 0.45f), D, FVector(0.22f, 0.2f, 0.04f), Seat);
+			M.AddBox(At + D * 0.22f + FVector(0, 0, 0.75f), D, FVector(0.03f, 0.2f, 0.3f), Seat);
+		}
+	}
+
 	// Crowd: seated along every row, shirts in the home colour, the away colour or anything else.
 	const FLinearColor Neutral[] = { { 0.8f, 0.8f, 0.78f }, { 0.05f, 0.05f, 0.06f }, { 0.4f, 0.4f, 0.42f }, { 0.75f, 0.6f, 0.08f },
 		{ 0.5f, 0.12f, 0.1f }, { 0.25f, 0.45f, 0.7f }, { 0.12f, 0.35f, 0.15f } };
@@ -260,6 +301,13 @@ FStadium Build(const FStadiumSpec& Spec)
 				{
 					// Sat towards the back of the row, feet forward on the step.
 					S.Fans.Add({ C + D * (R + 0.1f) + FVector(0, 0, Z), A + 180.f, Shirt, SkinTone, Phase, Size });
+					// Some of the fans in team colours, who stay seated when the ground erupts (the crowd material's choice,
+					// from the same Phase), hold up a flag at their right hand.
+					if (Pick < Spec.HomeShare + Spec.AwayShare && FMath::Frac(Phase * 7.31f) > 0.5f && FMath::Frac(Phase * 91.3f) < 0.12f)
+					{
+						const FVector Hand = FRotator(0.f, A + 180.f, 0.f).RotateVector(FVector(0.2f, 0.3f, 0.85f)) * Size;
+						S.Flags.Add({ C + D * (R + 0.1f) + FVector(0, 0, Z) + Hand, A + 180.f, Pick < Spec.HomeShare ? Spec.Home : Spec.Away, SkinTone, Phase, Size });
+					}
 					continue;
 				}
 				const int32 Section = FMath::Min(int32(A / 360.f * NumSections), NumSections - 1);
@@ -271,6 +319,25 @@ FStadium Build(const FStadiumSpec& Spec)
 		}
 	}
 	return S;
+}
+
+FColouredMesh Flag()
+{
+	FColouredMesh F;
+	const float PoleTop = 1.3f, Fly = 0.9f, Drop = 0.6f;
+	F.AddBox(FVector(0, 0, PoleTop / 2.f), -FVector::ForwardVector, FVector(0.015f, 0.015f, PoleTop / 2.f), FLinearColor::Black);
+	const int32 Across = 8, Down = 3;
+	for (int32 I = 0; I < Across; ++I)
+		for (int32 J = 0; J < Down; ++J)
+		{
+			const float Y0 = Fly * I / Across, Y1 = Fly * (I + 1) / Across, Z0 = PoleTop - Drop * J / Down, Z1 = PoleTop - Drop * (J + 1) / Down;
+			// Each corner's own place on the cloth, so the colour and the flutter vary smoothly across it.
+			const int32 First = F.Pos.Num();
+			F.AddQuad(FVector(0, Y0, Z0), FVector(0, Y1, Z0), FVector(0, Y1, Z1), FVector(0, Y0, Z1), FLinearColor::Black, FVector::ForwardVector);
+			const float Ys[] = { Y0, Y1, Y1, Y0 }, Zs[] = { Z0, Z0, Z1, Z1 };
+			for (int32 K = 0; K < 4; ++K) F.Colour[First + K] = FLinearColor(Ys[K] / Fly, 1.f, (PoleTop - Zs[K]) / Drop);
+		}
+	return F;
 }
 
 float JumpHeight(float T, float Excitement, int32 Section, int32 Group)

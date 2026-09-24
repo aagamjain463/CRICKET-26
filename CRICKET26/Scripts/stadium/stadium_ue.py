@@ -168,6 +168,22 @@ float idle = step(0.96, frac(Ph * 31.7)) * beat * 0.5;
 return lerp(b * max(E * beat, idle), a * up + b * idle * (1.0 - up), standing);
 """
 
+# A flag held up by a seated fan (CricketStadium::Flag): the whole flag swings from the hand, side to side, and the
+# cloth ripples toward its fly end; both grow with the crowd's excitement. LP is the vertex's local position (cm).
+FLAG_MOVE = """
+float rate = 0.7 + frac(Ph * 13.7) * 0.6 + 0.8 * E;
+float a = (0.25 + 0.45 * E) * sin(6.28318 * (rate * T + Ph));
+float2 d = LP.yz, r = float2(d.x * cos(a) - d.y * sin(a), d.x * sin(a) + d.y * cos(a));
+float ripple = VC.r * (5.0 + 6.0 * E) * sin(LP.y * 0.09 - T * (6.0 + 5.0 * E) + Ph * 40.0);
+return float3(ripple, r - d);
+"""
+
+# The cloth in the team colour with a white band across the middle; the pole grey.
+FLAG_LOOK = """
+float3 c = lerp(Col, float3(0.8, 0.8, 0.78), step(abs(VC.b - 0.5), 0.14));
+return lerp(float3(0.35, 0.35, 0.37), c, VC.g);
+"""
+
 CROWD_LOOK = """
 float3 skin = lerp(float3(0.16, 0.09, 0.055), float3(0.66, 0.46, 0.34), sqrt(Skin));
 float h = frac(Ph * 5.3), t = frac(Ph * 3.7);
@@ -361,6 +377,17 @@ def import_fan():
     unreal.log(f"STADIUM built {mesh.get_path_name()} with {sub.get_lod_count(mesh)} LODs")
 
 
+def fill(m, look):
+    # Emissive fill, Fill times the base colour: the light that reaches a packed stand under its roof from the field and
+    # the sky, which the renderer's own bounce loses among thousands of spectators shading each other.
+    k = mel.create_material_expression(m, unreal.MaterialExpressionScalarParameter, -400, 200)
+    k.set_editor_property("parameter_name", "Fill")
+    x = mel.create_material_expression(m, unreal.MaterialExpressionMultiply, -200, 200)
+    mel.connect_material_expressions(look, "", x, "A")
+    mel.connect_material_expressions(k, "", x, "B")
+    mel.connect_material_property(x, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+
+
 def per_instance(m, index, y, vector=False):
     e = mel.create_material_expression(m, unreal.MaterialExpressionPerInstanceCustomData3Vector if vector else unreal.MaterialExpressionPerInstanceCustomData, -800, y)
     e.set_editor_property("data_index", index)
@@ -379,6 +406,7 @@ def crowd():
     mel.connect_material_expressions(skin, "", look, "Skin")
     mel.connect_material_expressions(phase, "", look, "Ph")
     mel.connect_material_property(look, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    fill(m, look)
     constant(m, 0.8, unreal.MaterialProperty.MP_ROUGHNESS, 300)
 
     move = custom(m, CROWD_MOVE, ["U0", "U1", "U2", "Ph", "E", "T"])
@@ -402,6 +430,38 @@ def crowd():
     finish(m)
 
 
+def flag():
+    m = new_material("M_Flag")
+    m.set_editor_property("used_with_instanced_static_meshes", True)
+    m.set_editor_property("two_sided", True)
+    vc = mel.create_material_expression(m, unreal.MaterialExpressionVertexColor, -800, -200)
+    phase = per_instance(m, 3, 100)
+    look = custom(m, FLAG_LOOK, ["VC", "Col"])
+    mel.connect_material_expressions(vc, "", look, "VC")
+    mel.connect_material_expressions(per_instance(m, 0, -100, True), "", look, "Col")
+    mel.connect_material_property(look, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    fill(m, look)
+    constant(m, 0.7, unreal.MaterialProperty.MP_ROUGHNESS, 300)
+
+    move = custom(m, FLAG_MOVE, ["LP", "VC", "Ph", "E", "T"])
+    move.set_editor_property("material_expression_editor_y", 500)
+    lp = mel.create_material_expression(m, unreal.MaterialExpressionLocalPosition, -800, 400)
+    mel.connect_material_expressions(lp, "", move, "LP")
+    mel.connect_material_expressions(vc, "", move, "VC")
+    mel.connect_material_expressions(phase, "", move, "Ph")
+    excite = mel.create_material_expression(m, unreal.MaterialExpressionScalarParameter, -800, 600)
+    excite.set_editor_property("parameter_name", "Excite")
+    mel.connect_material_expressions(excite, "", move, "E")
+    time = mel.create_material_expression(m, unreal.MaterialExpressionTime, -800, 660)
+    mel.connect_material_expressions(time, "", move, "T")
+    world = mel.create_material_expression(m, unreal.MaterialExpressionTransform, -200, 500)
+    world.set_editor_property("transform_source_type", unreal.MaterialVectorCoordTransformSource.TRANSFORMSOURCE_LOCAL)
+    world.set_editor_property("transform_type", unreal.MaterialVectorCoordTransform.TRANSFORM_WORLD)
+    mel.connect_material_expressions(move, "", world, "")
+    mel.connect_material_property(world, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
+    finish(m)
+
+
 logo = import_texture("T_GrassLogo")
 ads = import_texture("T_Ads")
 ground("M_Grass", GRASS, logo)
@@ -411,3 +471,4 @@ led(ads)
 screen(ads)
 import_fan()
 crowd()
+flag()

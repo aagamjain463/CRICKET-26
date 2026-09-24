@@ -210,6 +210,7 @@ private:
 	static UMaterialInterface* LoadStadiumMaterial(const TCHAR* Name);
 	UPROPERTY() TArray<TObjectPtr<AStaticMeshActor>> CrowdSections; // CricketStadium::Build's crowd meshes, in order
 	UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> CrowdMaterial; // the 3D crowd's, when it is built
+	UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> FlagMaterial;  // the crowd's flags', which wave harder with it
 	UPROPERTY() TObjectPtr<class UTextureRenderTarget2D> ScreenTarget; // what every big screen shows
 	FString ScreenShown;
 	void UpdateBigScreens();

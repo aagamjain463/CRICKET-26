@@ -87,6 +87,14 @@ bool FEnvStadium::RunTest(const FString&)
 	}
 	TestEqual(TEXT("no block crowd alongside the fans"), Blocks, 0);
 	TestEqual(TEXT("fans face the middle"), Astray, 0);
+	// A few of them, all in a team's colours, hold up flags, and the flag mesh faces the field.
+	TestTrue(*FString::Printf(TEXT("a flag every so often (%d)"), F.Flags.Num()), F.Flags.Num() > F.Fans.Num() / 100 && F.Flags.Num() < F.Fans.Num() / 10);
+	int32 OffTeam = 0;
+	for (const FFan& Fl : F.Flags) OffTeam += Fl.Shirt != Spec.Home && Fl.Shirt != Spec.Away;
+	TestEqual(TEXT("flags in the teams' colours"), OffTeam, 0);
+	Bad = 0;
+	Check(Flag());
+	TestEqual(TEXT("flag windings agree with normals"), Bad, 0);
 
 	// The big screens stand above the roof, facing the middle.
 	TestEqual(TEXT("two big screens"), S.Screens.Num(), 2);

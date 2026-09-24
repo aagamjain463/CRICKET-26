@@ -791,6 +791,10 @@ void ASuperOverGameMode::BuildStadium()
 		Fans->SetStaticMesh(FanMesh);
 		CrowdMaterial = UMaterialInstanceDynamic::Create(FanMaterial, this);
 		Fans->SetMaterial(0, CrowdMaterial);
+		// Fill light on the crowd, a few percent of the venue's light (see M_Crowd).
+		const CricketStadium::FVenue& V = CricketStadium::Venue(VenueIndex);
+		const float Fill = 0.06f / PI * (V.bNight ? NightLux : V.Cloud > 0.5f ? SunLux * (1.f - 0.7f * V.Cloud) : SunLux);
+		CrowdMaterial->SetScalarParameterValue(TEXT("Fill"), Fill);
 		Fans->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		Fans->SetCastShadow(false);
 		Fans->NumCustomDataFloats = 5;
@@ -803,6 +807,28 @@ void ASuperOverGameMode::BuildStadium()
 		{
 			const CricketStadium::FFan& F = Stadium.Fans[I];
 			Fans->SetCustomData(I, { F.Shirt.R, F.Shirt.G, F.Shirt.B, F.Skin, F.Phase });
+		}
+		// Their flags, one more instanced mesh: colour and rhythm per flag, and the material waves them.
+		UMaterialInterface* FlagBase = LoadStadiumMaterial(TEXT("M_Flag"));
+		if (FlagBase && !Stadium.Flags.IsEmpty())
+		{
+			UHierarchicalInstancedStaticMeshComponent* Flags = NewObject<UHierarchicalInstancedStaticMeshComponent>(Holder);
+			FlagMaterial = UMaterialInstanceDynamic::Create(FlagBase, this);
+			FlagMaterial->SetScalarParameterValue(TEXT("Fill"), Fill);
+			Flags->SetStaticMesh(CricketStadium::ToStaticMesh(Holder, CricketStadium::Flag(), FlagMaterial));
+			Flags->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			Flags->SetCastShadow(false);
+			Flags->NumCustomDataFloats = 4;
+			Flags->SetupAttachment(Fans);
+			Flags->RegisterComponent();
+			TArray<FTransform> Poles;
+			for (const CricketStadium::FFan& F : Stadium.Flags) Poles.Add(FTransform(FRotator(0.f, F.Yaw, 0.f), ToWorld(F.Pos), FVector(F.Scale)));
+			Flags->AddInstances(Poles, false);
+			for (int32 I = 0; I < Stadium.Flags.Num(); ++I)
+			{
+				const CricketStadium::FFan& F = Stadium.Flags[I];
+				Flags->SetCustomData(I, { F.Shirt.R, F.Shirt.G, F.Shirt.B, F.Phase });
+			}
 		}
 	}
 	for (const CricketStadium::FColouredMesh& Section : Stadium.Crowd)
@@ -838,8 +864,8 @@ void ASuperOverGameMode::BuildStadium()
 	int32 Tris = Stadium.Structure.NumTriangles() + Stadium.Boards.NumTriangles();
 	if (!GrassMaterial) Tris += Stadium.Outfield[0].NumTriangles() + Stadium.Outfield[1].NumTriangles();
 	for (const CricketStadium::FColouredMesh& Section : Stadium.Crowd) Tris += Section.NumTriangles();
-	UE_LOG(LogCRICKET26, Display, TEXT("Stadium: %d spectators (%s), %d triangles besides, %d meshes, %s materials"), Stadium.Spectators,
-		Spec.bFanCrowd ? TEXT("3D") : TEXT("blocks"), Tris, (GrassMaterial ? 2 : 4) + (Spec.bFanCrowd ? 1 : Stadium.Crowd.Num()),
+	UE_LOG(LogCRICKET26, Display, TEXT("Stadium: %d spectators (%s), %d flags, %d triangles besides, %d meshes, %s materials"), Stadium.Spectators,
+		Spec.bFanCrowd ? TEXT("3D") : TEXT("blocks"), FlagMaterial ? Stadium.Flags.Num() : 0, Tris, (GrassMaterial ? 2 : 4) + (Spec.bFanCrowd ? 1 : Stadium.Crowd.Num()),
 		LedMaterial ? TEXT("stadium") : TEXT("flat"));
 }
 
@@ -848,6 +874,7 @@ void ASuperOverGameMode::UpdateCrowd()
 	// The crowd gets up and jumps as the noise swells on a boundary or wicket, and sits back down with it.
 	const float Excitement = FMath::Clamp((CrowdLevel - 0.4f) / 0.4f, 0.f, 1.f);
 	if (CrowdMaterial) CrowdMaterial->SetScalarParameterValue(TEXT("Excite"), Excitement);
+	if (FlagMaterial) FlagMaterial->SetScalarParameterValue(TEXT("Excite"), Excitement);
 	const float T = GetWorld()->GetTimeSeconds();
 	for (int32 I = 0; I < CrowdSections.Num(); ++I)
 	{

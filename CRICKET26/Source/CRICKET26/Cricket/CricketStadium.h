@@ -1,6 +1,6 @@
 // The ground around the playing area, generated rather than authored: a two-tier bowl of seating with a
 // roof and four floodlight towers, LED boards round the rope and on the upper tier, a padded rope, a mown
-// outfield and a seated crowd in the two teams' colours. Everything is flat-shaded boxes and quads in vertex colours, merged into a few
+// outfield, two dugouts, a media box and a seated crowd in the two teams' colours, some of them waving flags. Everything is flat-shaded boxes and quads in vertex colours, merged into a few
 // meshes so the whole stadium costs a handful of draw calls; the crowd is split into sections that can
 // jump independently when the ground erupts. Geometry is in the simulation frame (metres, pitch centre at
 // PitchCentre()).
@@ -96,6 +96,7 @@ namespace CricketStadium
 		FColouredMesh Outfield[2]; // mown stripes inside the rope, light and dark (drawn in the grass material)
 		TArray<FColouredMesh> Crowd; // [Section * NumGroups + Group]
 		TArray<FFan> Fans;           // with bFanCrowd
+		TArray<FFan> Flags;          // with bFanCrowd: flags in the team colour (Shirt), where a seated fan holds them up
 		TArray<FScreen> Screens;     // their frames are in Structure; the game draws what they show
 		FColouredMesh Lamps;         // the floodlights' lamps, which glow at night
 		TArray<FVector> Floodlights; // the middle of each tower's lamp bank, where its light comes from
@@ -103,6 +104,10 @@ namespace CricketStadium
 	};
 
 	FStadium Build(const FStadiumSpec& Spec);
+
+	/** One flag on its pole, the pole's foot at the origin and the cloth flying along +Y, facing +X. Vertex red runs
+	 *  from 0 at the pole to 1 at the fly end, green is 1 on the cloth, blue runs down it (for the flag material). */
+	FColouredMesh Flag();
 
 	/** Crowd jump height (m) for a group at time T, with Excitement 0 (seated) to 1 (the ground erupting). */
 	float JumpHeight(float T, float Excitement, int32 Section, int32 Group);
