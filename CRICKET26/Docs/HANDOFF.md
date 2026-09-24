@@ -1,0 +1,99 @@
+# Handoff: CRICKET26 parity work (2026-09-24)
+
+This note lets a new agent pick up the "make it like Cricket 26" work where it stopped. Read
+`Docs/MASTER_PLAN.md` first: it is the plan this work now follows (it absorbs the 8 items of
+`Docs/CRICKET26_PARITY_PLAN.md`).
+
+## Project basics
+
+- Unreal Engine 5.8 project at `/Users/aagamjain/Desktop/CRICKET-26/CRICKET26`. The git root is the parent
+  folder (`/Users/aagamjain/Desktop/CRICKET-26`), so git paths start with `CRICKET26/`.
+- Game code: `Source/CRICKET26/Cricket/` (Super Over game mode, HUD, ball simulation, delivery resolver,
+  batting model, AI). Tests: `Source/CRICKET26/Cricket/Tests/`.
+- Scripts:
+  - `Scripts/build.sh`: builds the game (compiled with `-Werror -Wshadow`, so shadowed locals fail the build).
+  - `Scripts/run_tests.sh [Filter]`: runs the automation tests and writes `Saved/TestRun.log`. The full suite is
+    51 tests and takes about 80 s. Count passes with `grep -c "Result={Success}" Saved/TestRun.log`.
+  - `Scripts/capture.sh N [args]`: plays AI vs AI and saves game-view frames of delivery N (including the wait
+    before it) to `Saved/Screenshots/MacEditor/BallN_*.png`, with a log in `Saved/Capture.log`. Never use the
+    desktop `screencapture`.
+  - `Scripts/profile.sh`: perf soak.
+  - `Scripts/metahuman/make_players.sh`: builds the MetaHuman players (see item 7).
+- The test helpers `PlaySuperOvers` and `FDifficultyStats` must stay in `SuperOverTests.cpp` (unity build).
+- clangd errors such as "'CoreMinimal.h' file not found" are noise: clangd has no UE include paths.
+- After code changes run `graphify update .`.
+
+## Rules the owner set
+
+- Do not restart the project or rebuild the Super Over from scratch. Never hard reset, blindly delete assets,
+  force checkout, or rewrite history.
+- Do not fake tests, playtesting or Cricket 26 comparisons. Cricket 26 comparisons stay UNVERIFIED.
+- Do not ship or copy unlicensed or proprietary content (team or IPL logos, official kits, real player likenesses,
+  broadcast graphics, commentary, music, Cricket 26 assets). Check licence, commercial use, skeleton and mobile
+  cost before importing any external asset. Do not use `~/Downloads/Cricket26_BasePlayer.fbx`: its licence
+  cannot be verified.
+- Commit only `Source/`, `Docs/`, `Config/`, `Scripts/` and `CRICKET26.uproject`. Never commit `Content/`,
+  `.serena/`, `graphify-out/` or `Saved/`. End each commit message with
+  `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- Do not start the auction or franchise mode.
+- Keep working from item to item without asking permission. Stop only for something only the owner can
+  supply. Give short progress notes during long work.
+
+## Status by plan item
+
+| # | Item | Status |
+|---|---|---|
+| 1 | Batting feel | Done, commit `1157fad` |
+| 2 | Broadcast HUD | Done, commit `5b5bf0c` (score bar, speed gun, this-over discs, player cards; checked in capture; 50/50 tests) |
+| 3 | Ball tracking | Started (design only, no code yet) |
+| 4 | Camera director | Not started |
+| 5 | Stadium | Not started (CC0 sources only) |
+| 6 | T20 and ODI formats | Not started |
+| 7 | MetaHuman players | Done (master plan M2) |
+| 8 | Audio | Not started |
+
+## Item 7: MetaHuman players (done)
+
+- `Scripts/metahuman/make_players.sh` builds 10 characters (8 players, 2 umpires) from the engine's MetaHuman
+  Creator presets into `Content/MetaHumans/<Name>/BP_<Name>`. Content is never committed, so a fresh clone must run it.
+- `AddBody(Marker, MetaHumanName)` spawns the blueprint on the figure marker and poses its "Body" component. It falls
+  back to the Manny mannequin when the blueprint is missing or with `-CricketMannequin`.
+- Hand IK: the blueprints froze each body's pose while it was off screen, so the first frames after every camera cut
+  drew stale limbs (hands up to 88 cm off the bat). Bodies now tick and refresh their bones off screen. The capture
+  log's "striker hands from bat grip" max is the regression check: 31 cm, all of it from one-frame load hitches
+  (the mannequin shows 32 cm).
+- Perf, Medium, 12 deliveries: MetaHumans 14.5 ms frame and 9.9 ms GPU; mannequin 11.2 ms and 7.8 ms.
+- The players are cooked through `DirectoriesToAlwaysCook` in `Config/DefaultGame.ini`. No packaged build has
+  tested this yet.
+- Kit is still the preset T-shirt and shorts, barefoot: master plan M5.
+
+MetaHuman scripting notes (UE 5.8 Python):
+- It runs as a commandlet:
+  `-run=pythonscript -AllowCommandletRendering -dpcvars=TextureGraph.AllowCommandlets=1`. Call
+  `save_directory` after the build.
+- `can_build_meta_human` needs both the face rig and the high-resolution textures. `prepare()` requests
+  textures first and asks for the rig only while the check still fails, with 3 attempts.
+- The cloud auto-rig takes about 4 to 5 minutes per character. The commandlet uses about 1.2 GB RAM.
+- To rebuild one character: `MHMAKE_ONLY=<Name> Scripts/metahuman/make_players.sh`. Already-built characters
+  are skipped. Progress is logged: `grep MHMAKE Saved/MHMake.log`.
+
+## Item 3: ball tracking (next after item 7)
+
+Plan: pitch map, wagon wheel, Hawk-Eye trail and an LBW projection, all from the simulated path.
+
+Useful code:
+- `FDeliveryResult` (`DeliveryResolver.h`) already has `BallPath` (samples at `SampleDt`), `PitchPos` and
+  `PitchTime`, `bPadImpact`, `Dismissal`, `Fielding.FieldPos` and `ContactTime`.
+- The LBW decision is in `DeliveryResolver.cpp` around line 250. There, `Track` is simulated on from the pad to
+  the stumps plane (`SimulateToPlane(Track, 0.f, C, 1.f)` then `HitsStumps`). Its three calls are:
+  pitched outside leg, impact in line, and wickets hitting.
+- The intended design (not started) is to store the projected path and the three calls in `FDeliveryResult` so
+  the HUD can show a Hawk-Eye review. Test the projection against the existing LBW decision.
+- The existing debug trajectory draw (F4, `bTrajectory`) is in `SuperOverGameMode.cpp` near the end of
+  `UpdatePresentation`.
+
+## Blocked on the owner
+
+- A motion-capture performer, voice commentary, and licences for teams, players and music.
+- A phone plus the Android SDK or an iOS signing identity for the mobile build.
+- Human playtesting and visual sign-off.

@@ -137,6 +137,7 @@ private:
 	UPROPERTY() TArray<TObjectPtr<AStaticMeshActor>> Umpires;
 	UPROPERTY() TObjectPtr<ACameraActor> Camera;
 	UPROPERTY() TObjectPtr<USkeletalMesh> BodyMesh;
+	UPROPERTY() TMap<TObjectPtr<AActor>, TObjectPtr<USkeletalMeshComponent>> Bodies; // each figure's posed body
 	UPROPERTY() TObjectPtr<UAnimSequence> IdleAnim;
 	UPROPERTY() TObjectPtr<UAnimSequence> JogAnim;
 	UPROPERTY() TArray<TObjectPtr<AStaticMeshActor>> Figures; // everyone who stands on the field
@@ -178,7 +179,8 @@ private:
 	void Emit(const TArray<ECricketEvent>& Events);
 	void PlaceForDelivery();
 	void UpdatePresentation(float Dt);
-	void AddBody(AStaticMeshActor* Marker);
+	void AddBody(AStaticMeshActor* Marker, const TCHAR* MetaHuman);
+	USkeletalMeshComponent* BodyOf(const AActor* Figure) const;
 	void UpdateFigures(float Dt);
 	void BuildStadium();
 	void UpdateCrowd();

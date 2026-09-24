@@ -186,44 +186,79 @@ void ASuperOverGameMode::Paint(AStaticMeshActor* A, const FLinearColor& Colour)
 	UMaterialInstanceDynamic* M = UMaterialInstanceDynamic::Create(ShapeMaterial, A);
 	M->SetVectorParameterValue(TEXT("Color"), Colour);
 	A->GetStaticMeshComponent()->SetMaterial(0, M);
-	// A player's mannequin is painted in the team colour (its own material's tint).
-	if (USkeletalMeshComponent* Body = A->FindComponentByClass<USkeletalMeshComponent>())
+	// A player's kit is painted in the team colour: the mannequin's own tint, or a MetaHuman's garment (every
+	// mesh but the skin: its shirt and shorts colours).
+	TArray<USkeletalMeshComponent*> Kit;
+	if (USkeletalMeshComponent* Body = BodyOf(A)) Body->GetOwner()->GetComponents(Kit);
+	for (USkeletalMeshComponent* Part : Kit)
 	{
-		for (int32 I = 0; I < Body->GetNumMaterials(); ++I)
+		if (Part->GetOwner() != A && (Part->GetFName() == TEXT("Body") || Part->GetFName() == TEXT("Face"))) continue;
+		for (int32 I = 0; I < Part->GetNumMaterials(); ++I)
 		{
-			if (UMaterialInstanceDynamic* Kit = Body->CreateDynamicMaterialInstance(I))
+			if (UMaterialInstanceDynamic* Cloth = Part->CreateDynamicMaterialInstance(I))
 			{
-				Kit->SetVectorParameterValue(TEXT("Paint Tint"), Colour);
-				Kit->SetVectorParameterValue(TEXT("LogoTint"), Colour);
+				for (const TCHAR* Name : { TEXT("Paint Tint"), TEXT("LogoTint"), TEXT("diffuse_color_1"), TEXT("diffuse_color_2"), TEXT("B_diffuse_color_1") })
+					Cloth->SetVectorParameterValue(Name, Colour);
 			}
 		}
 	}
 }
 
-void ASuperOverGameMode::AddBody(AStaticMeshActor* Marker)
+void ASuperOverGameMode::AddBody(AStaticMeshActor* Marker, const TCHAR* MetaHuman)
 {
 	Figures.Add(Marker);
-	if (!BodyMesh) return;
-	// The marker cylinder stays the authoritative position (centred 0.9 m up); the mannequin stands in it.
-	USkeletalMeshComponent* Body = NewObject<USkeletalMeshComponent>(Marker);
-	Body->SetSkeletalMesh(BodyMesh);
-	Body->SetUsingAbsoluteScale(true);
-	Body->SetupAttachment(Marker->GetRootComponent());
-	// In the marker's unscaled space: the basic cylinder is 100 cm tall about its centre, so its base (the
-	// ground, whatever the marker's height scale) is at -50.
-	Body->SetRelativeLocationAndRotation(FVector(0.f, 0.f, -50.f), FRotator(0.f, -90.f, 0.f));
-	Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	// The marker cylinder stays the authoritative position (centred 0.9 m up); the player stands in it. In the
+	// marker's unscaled space the basic cylinder is 100 cm tall about its centre, so its base (the ground,
+	// whatever the marker's height scale) is at -50.
+	const FVector Feet(0.f, 0.f, -50.f);
+	const FRotator Facing(0.f, -90.f, 0.f);
+	USkeletalMeshComponent* Body = nullptr;
+	// A MetaHuman built by Scripts/metahuman/make_players.sh when there is one: its blueprint brings the face,
+	// hair and kit, which follow its body. -CricketMannequin keeps everyone the mannequin, to compare against.
+	static const bool bMannequin = FParse::Param(FCommandLine::Get(), TEXT("CricketMannequin"));
+	const FString Path = FString::Printf(TEXT("/Game/MetaHumans/%s/BP_%s.BP_%s_C"), MetaHuman, MetaHuman, MetaHuman);
+	if (UClass* Look = bMannequin ? nullptr : LoadClass<AActor>(nullptr, *Path, nullptr, LOAD_Quiet | LOAD_NoWarn))
+	{
+		AActor* Player = GetWorld()->SpawnActor<AActor>(Look, Marker->GetActorTransform());
+		Player->SetActorEnableCollision(false);
+		Player->AttachToComponent(Marker->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
+		Player->GetRootComponent()->SetUsingAbsoluteScale(true);
+		Player->SetActorRelativeTransform(FTransform(Facing, Feet));
+		TArray<USkeletalMeshComponent*> Parts;
+		Player->GetComponents(Parts);
+		for (USkeletalMeshComponent* Part : Parts) if (Part->GetFName() == TEXT("Body")) Body = Part;
+	}
+	else if (BodyMesh)
+	{
+		Body = NewObject<USkeletalMeshComponent>(Marker);
+		Body->SetSkeletalMesh(BodyMesh);
+		Body->SetUsingAbsoluteScale(true);
+		Body->SetupAttachment(Marker->GetRootComponent());
+		Body->SetRelativeLocationAndRotation(Feet, Facing);
+		Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Body->RegisterComponent();
+	}
+	if (!Body) return;
+	Bodies.Add(Marker, Body);
 	Body->SetAnimationMode(EAnimationMode::AnimationBlueprint);
 	Body->SetAnimInstanceClass(UCricketAnimInstance::StaticClass());
 	// Pose the body after this game mode has set this frame's targets, so hands and bat move together.
 	Body->AddTickPrerequisiteActor(this);
-	Body->RegisterComponent();
+	// Posed and its bones refreshed even off screen: the broadcast cuts between cameras, and a body that only
+	// updated when seen drew one stale frame after each cut (the striker's hands 45 cm off the bat as a replay began).
+	Body->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 	if (UCricketAnimInstance* Anim = Cast<UCricketAnimInstance>(Body->GetAnimInstance()))
 	{
 		Anim->Idle = IdleAnim;
 		Anim->Jog = JogAnim;
 	}
 	Marker->GetStaticMeshComponent()->SetVisibility(false);
+}
+
+USkeletalMeshComponent* ASuperOverGameMode::BodyOf(const AActor* Figure) const
+{
+	const TObjectPtr<USkeletalMeshComponent>* Body = Bodies.Find(Figure);
+	return Body ? Body->Get() : nullptr;
 }
 
 void ASuperOverGameMode::SetupAudio()
@@ -269,7 +304,7 @@ void ASuperOverGameMode::UpdateFigures(float Dt)
 		S.Speed = FMath::Lerp(S.Speed, FVector2D(Vel).Size() / 100.f, FMath::Clamp(Dt * 8.f, 0.f, 1.f));
 		if (A->IsHidden()) continue;
 		UCricketAnimInstance* Anim = AnimOf(A);
-		const USkeletalMeshComponent* Body = A->FindComponentByClass<USkeletalMeshComponent>();
+		const USkeletalMeshComponent* Body = BodyOf(A);
 		// How far the striker's hands ended up from last frame's bat targets (the IK's reach), for the log. After a
 		// jump those targets are where the body was, not where it is; UpdatePoses replaces them before the body poses.
 		for (int32 H = 0; H < 2 && Anim && A == Striker && !bJumped && Anim->Pose.HandWeight[0] >= 1.f && Anim->Pose.HandWeight[1] >= 1.f; ++H)
@@ -303,28 +338,28 @@ void ASuperOverGameMode::CheckFigures()
 	// few centimetres up). Scripts grep the log for the error.
 	bFiguresChecked = true;
 	float Worst = 10.f;
-	int32 Bodies = 0;
+	int32 Checked = 0;
 	for (AStaticMeshActor* A : Figures)
 	{
-		const USkeletalMeshComponent* Body = A->FindComponentByClass<USkeletalMeshComponent>();
+		const USkeletalMeshComponent* Body = BodyOf(A);
 		if (!Body || A->IsHidden() || A->GetActorUpVector().Z < 0.95f) continue;
 		const float Foot = FMath::Min(Body->GetSocketLocation(TEXT("foot_l")).Z, Body->GetSocketLocation(TEXT("foot_r")).Z);
 		Worst = FMath::Abs(Foot - 10.f) > FMath::Abs(Worst - 10.f) ? Foot : Worst;
-		++Bodies;
+		++Checked;
 	}
-	if (Bodies > 0 && FMath::Abs(Worst - 10.f) > 12.f)
+	if (Checked > 0 && FMath::Abs(Worst - 10.f) > 12.f)
 	{
 		UE_LOG(LogTemp, Error, TEXT("Figure check FAILED: a body's lower ankle is %.0f cm above the ground"), Worst);
 	}
 	else
 	{
-		UE_LOG(LogTemp, Display, TEXT("Figure check passed: %d bodies, worst ankle height %.0f cm"), Bodies, Worst);
+		UE_LOG(LogTemp, Display, TEXT("Figure check passed: %d bodies, worst ankle height %.0f cm"), Checked, Worst);
 	}
 }
 
 UCricketAnimInstance* ASuperOverGameMode::AnimOf(AActor* Figure) const
 {
-	const USkeletalMeshComponent* Body = Figure ? Figure->FindComponentByClass<USkeletalMeshComponent>() : nullptr;
+	const USkeletalMeshComponent* Body = BodyOf(Figure);
 	return Body ? Cast<UCricketAnimInstance>(Body->GetAnimInstance()) : nullptr;
 }
 
@@ -454,8 +489,15 @@ void ASuperOverGameMode::BuildScene()
 	TargetMarker = Spawn(CylinderMesh, FVector::ZeroVector, FVector(0.3f, 0.3f, 0.004f), FLinearColor(1.f, 0.85f, 0.f));
 	for (int32 I = 0; I < 11; ++I) Fielders.Add(Spawn(CylinderMesh, FVector::ZeroVector, FVector(0.45f, 0.45f, 1.8f), FLinearColor::White));
 	for (int32 I = 0; I < 2; ++I) Umpires.Add(Spawn(CylinderMesh, FVector::ZeroVector, FVector(0.45f, 0.45f, 1.8f), FLinearColor::White));
-	for (AStaticMeshActor* P : { Striker.Get(), NonStriker.Get(), Bowler.Get(), Umpires[0].Get(), Umpires[1].Get() }) AddBody(P);
-	for (AStaticMeshActor* P : Fielders) AddBody(P);
+	// The same bodies play for both sides (their kit changes colour with the innings); fielders reuse the faces.
+	static const TCHAR* Players[] = { TEXT("MH_Home_Opener"), TEXT("MH_Away_Hitter"), TEXT("MH_Home_Quick"), TEXT("MH_Away_Anchor"),
+		TEXT("MH_Home_Finisher"), TEXT("MH_Away_KeeperBat"), TEXT("MH_Home_Allrounder"), TEXT("MH_Away_WristSpinner") };
+	AddBody(Striker, Players[0]);
+	AddBody(NonStriker, Players[1]);
+	AddBody(Bowler, Players[2]);
+	AddBody(Umpires[0], TEXT("MH_Umpire_1"));
+	AddBody(Umpires[1], TEXT("MH_Umpire_2"));
+	for (int32 I = 0; I < Fielders.Num(); ++I) AddBody(Fielders[I], Players[(I + 3) % UE_ARRAY_COUNT(Players)]);
 
 	Camera = W->SpawnActor<ACameraActor>(FVector::ZeroVector, FRotator::ZeroRotator);
 	Camera->GetCameraComponent()->SetConstraintAspectRatio(false);
@@ -564,6 +606,7 @@ void ASuperOverGameMode::PlaceForDelivery()
 	{
 		const bool bUsed = Ctx.Field.IsValidIndex(I) && !Ctx.Field[I].bBowler;
 		Fielders[I]->SetActorHiddenInGame(!bUsed);
+		if (USkeletalMeshComponent* Body = BodyOf(Fielders[I]); Body && Body->GetOwner() != Fielders[I]) Body->GetOwner()->SetActorHiddenInGame(!bUsed);
 		if (!bUsed) continue;
 		Fielders[I]->SetActorLocation(ToWorld(FVector(Ctx.Field[I].Home.X, Ctx.Field[I].Home.Y, 0.9f)));
 		Paint(Fielders[I], Ctx.Field[I].bKeeper ? FieldCol * 0.5f : FieldCol);
@@ -1184,7 +1227,7 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 
 	// Ball.
 	// In the bowling hand until release (last frame's hand: the arm is posed after this).
-	const USkeletalMeshComponent* BowlerBody = Bowler->FindComponentByClass<USkeletalMeshComponent>();
+	const USkeletalMeshComponent* BowlerBody = BodyOf(Bowler);
 	const FName BowlingHand = Arm > 0.f ? FName(TEXT("hand_r")) : FName(TEXT("hand_l"));
 	FVector BallPos = BowlerBody ? BowlerBody->GetSocketLocation(BowlingHand) + FVector(0.f, 0.f, -8.f) : ToWorld(FVector(BowlerPos.X - 0.3f, 0.4f * Arm, 1.1f));
 	if (bLive) BallPos = ToWorld(Result.BallAt(T));
