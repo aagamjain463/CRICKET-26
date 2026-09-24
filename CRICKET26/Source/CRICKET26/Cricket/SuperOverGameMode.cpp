@@ -829,11 +829,20 @@ void ASuperOverGameMode::Tick(float Dt)
 			}
 			break;
 		}
-		if (PhaseTime > (bReviewThis ? ReviewFrom() + ReviewTime + 0.5f : 1.8f + (bReplayThis ? ReplayTime : 0.f)))
+		if (InReel())
+		{
+			if (PhaseTime >= ReplayDelay + ReplayAngleTime) PlayClip(ReelClip + 1);
+		}
+		else if (PhaseTime > (bReviewThis ? ReviewFrom() + ReviewTime + 0.5f : 1.8f + (bReplayThis ? ReplayTime : 0.f)))
 		{
 			DPhase = EDeliveryPhase::Waiting;
 			PhaseTime = 0.f;
 			if (Match.Phase == EMatchPhase::ReadyForDelivery) PlaceForDelivery();
+			else if (Highlights.Num())
+			{
+				LiveClip = { Result, Ctx, BatInput, ReleaseTiming, Commentary };
+				PlayClip(0);
+			}
 		}
 		break;
 	}
@@ -892,6 +901,11 @@ void ASuperOverGameMode::HandleInput(APlayerController* PC, float Dt)
 	C.Merge(Touch);
 
 	if (HumanReviews() && (Pressed(EKeys::V) || C.bProgress)) SettleReview(Pressed(EKeys::V));
+	else if (C.bProgress && InReel())
+	{
+		PlayClip(INDEX_NONE); // skip the whole reel, back to the scorecard
+		C.bProgress = false;
+	}
 	else if (C.bProgress && IsReplaying()) PhaseTime = ReplayDelay + ReplayTime; // skip the replay
 	if (C.bProgress && DPhase == EDeliveryPhase::Waiting)
 	{
@@ -1211,8 +1225,35 @@ void ASuperOverGameMode::ScoreDelivery(FDeliveryOutcome Outcome)
 	bReplayThis = (Events.Contains(ECricketEvent::Wicket) || Events.Contains(ECricketEvent::BoundaryFour) || Events.Contains(ECricketEvent::BoundarySix))
 		&& Result.BallPath.Num() > 1 && !bReferredThis; // the third umpire's frames were the replay
 	bWicketThis = Events.Contains(ECricketEvent::Wicket);
+	if (bReplayThis) Highlights.Add({ Result, Ctx, BatInput, ReleaseTiming, Commentary });
 	bReviewThis = Result.bPadImpact && Result.Tracking.Projected.Num() > 1 && Result.BallPath.Num() > 1;
 	DPhase = EDeliveryPhase::DeadBall;
+	PhaseTime = 0.f;
+}
+
+void ASuperOverGameMode::PlayClip(int32 Clip)
+{
+	// ponytail: the fielders who do not move in a clip stay where the live field put them.
+	const FHighlight& H = Highlights.IsValidIndex(Clip) ? Highlights[Clip] : LiveClip;
+	Result = H.Result;
+	Ctx = H.Ctx;
+	BatInput = H.BatInput;
+	ReleaseTiming = H.ReleaseTiming;
+	Commentary = H.Commentary;
+	bReviewThis = false;
+	if (Highlights.IsValidIndex(Clip))
+	{
+		// The replay's side-on angle, from its start.
+		ReelClip = Clip;
+		bReplayThis = true;
+		DPhase = EDeliveryPhase::DeadBall;
+		PhaseTime = ReplayDelay;
+		return;
+	}
+	ReelClip = -1;
+	bReplayThis = false;
+	Highlights.Empty();
+	DPhase = EDeliveryPhase::Waiting;
 	PhaseTime = 0.f;
 }
 

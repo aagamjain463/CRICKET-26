@@ -319,9 +319,9 @@ void ASuperOverHUD::DrawHUD()
 	if (GM->IsReplaying())
 	{
 		const bool bSlow = GM->ReplayAngle() == 1;
-		const float TW = (bSlow ? 200 : 130) * S;
+		const float TW = (bSlow || GM->InReel() ? 200 : 130) * S;
 		DrawRect(FLinearColor(0.7f, 0.05f, 0.05f, 0.85f), W - 20 * S - TW, 20 * S, TW, 30 * S);
-		Text(bSlow ? TEXT("SUPER SLOW-MO") : TEXT("REPLAY"), W - 20 * S - TW * 0.5f, 24 * S, FLinearColor::White, 1.1f * S, true);
+		Text(GM->InReel() ? FString::Printf(TEXT("HIGHLIGHTS %d/%d"), GM->ReelClip + 1, GM->Highlights.Num()) : bSlow ? TEXT("SUPER SLOW-MO") : TEXT("REPLAY"), W - 20 * S - TW * 0.5f, 24 * S, FLinearColor::White, 1.1f * S, true);
 	}
 
 	// An LBW appeal waiting on a review: the umpire's call, and who may challenge it.

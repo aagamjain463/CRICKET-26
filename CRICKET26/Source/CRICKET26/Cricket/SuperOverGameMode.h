@@ -118,6 +118,23 @@ public:
 			: FMath::Max(0.f, Result.ContactTime - SuperSlowLead) + (Into - ReplayAngleTime) * SuperSlowSpeed;
 	}
 	/**
+	 * Highlights: every wicket and boundary of the innings, replayed side-on one after another once its last ball
+	 * is over, before the scorecard. Each clip swaps its ball in for the live one, which comes back at the end.
+	 */
+	struct FHighlight
+	{
+		FDeliveryResult Result;
+		FResolveContext Ctx;
+		FBatInput BatInput;
+		float ReleaseTiming = 0.f;
+		FString Commentary;
+	};
+	TArray<FHighlight> Highlights;
+	FHighlight LiveClip;
+	int32 ReelClip = -1;
+	bool InReel() const { return ReelClip >= 0; }
+	void PlayClip(int32 Clip);
+	/**
 	 * Ball tracking after every ball that hits the pad, once any replay is over: a view from behind the bowler's
 	 * stumps with the players hidden, drawing the delivery up to the pad and then where it would have gone, while
 	 * the HUD calls pitching, impact and wickets in turn.
@@ -136,7 +153,7 @@ public:
 	bool HumanReviews() const { return bAwaitingReview && !bAutoPlay && ReviewingTeam == HumanTeam; }
 	/**
 	 * Third umpire. A run out or stumping too close to see (CricketUmpire::RefersToThirdUmpire) waits on frames
-	 * around the stumps being broken: side-on to the crease, then from behind the stumps, each rolling in super slow
+	 * around the stumps being broken: side-on to the crease, then from down the pitch back at it, each rolling in super slow
 	 * motion from ThirdUmpireLead before the bails come off and freezing there. The delivery is scored after, and
 	 * the verdict shows while the close-up plays.
 	 */
