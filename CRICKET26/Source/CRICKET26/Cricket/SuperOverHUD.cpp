@@ -359,6 +359,64 @@ void ASuperOverHUD::DrawHUD()
 		const bool bWon = M.Phase == EMatchPhase::MatchComplete && !M.bTied;
 		DrawRect(bWon ? GM->Teams[M.Winner].Colour * 0.6f + FLinearColor(0, 0, 0, 0.85f) : FLinearColor(0.6f, 0.05f, 0.05f, 0.85f), X0, Y, CW, 32 * S);
 		Text(Line, W * 0.5f, Y + 5 * S, FLinearColor::White, 1.1f * S, true);
+
+		// Either side of the card, the innings just played: a wagon wheel of every stroke (seen from behind the
+		// striker, the off side of a right-hander to the right) and a pitch map of where each ball landed (seen
+		// from the bowler's end, the striker's stumps at the top).
+		const int32 Inn = M.Innings.Num() - 1;
+		auto Colour = [](const ASuperOverGameMode::FBallMark& B)
+		{
+			return B.bWicket ? FLinearColor(0.95f, 0.15f, 0.12f) : B.Runs >= 6 ? FLinearColor(0.75f, 0.35f, 1.f)
+				: B.Runs >= 4 ? FLinearColor(0.2f, 0.6f, 1.f) : B.Runs > 0 ? FLinearColor(1.f, 0.85f, 0.2f) : FLinearColor(0.85f, 0.85f, 0.85f);
+		};
+		const float PS = 260 * S, PY = H * 0.22f, Pad = 20 * S;
+		auto Panel = [&](float PX, const TCHAR* Title)
+		{
+			DrawRect(FLinearColor(0.02f, 0.02f, 0.05f, 0.85f), PX, PY, PS, 34 * S);
+			Text(FString::Printf(TEXT("%s  -  %s"), Title, *GM->Teams[M.Innings[Inn].BattingTeam].Short), PX + PS * 0.5f, PY + 7 * S, FLinearColor(1, 0.85f, 0.3f), 0.9f * S, true);
+			DrawRect(FLinearColor(0.04f, 0.04f, 0.08f, 0.8f), PX, PY + 34 * S, PS, PS);
+		};
+
+		const float WX = X0 - Pad - PS;
+		Panel(WX, TEXT("WAGON WHEEL"));
+		{
+			const float K = (PS * 0.5f - 12 * S) / CricketGeo::BoundaryRadius, CX = WX + PS * 0.5f, CY = PY + 34 * S + PS * 0.5f;
+			auto ToScreen = [&](FVector2D P) { return FVector2D(CX + P.Y * K, CY - (P.X - CricketGeo::PitchLength * 0.5f) * K); };
+			const FLinearColor Grass(0.15f, 0.45f, 0.18f);
+			for (int32 I = 0; I < 48; ++I)
+			{
+				const float A0 = 2.f * PI * I / 48.f, A1 = 2.f * PI * (I + 1) / 48.f, R = CricketGeo::BoundaryRadius * K;
+				DrawLine(CX + R * FMath::Cos(A0), CY + R * FMath::Sin(A0), CX + R * FMath::Cos(A1), CY + R * FMath::Sin(A1), Grass, 2.f * S);
+			}
+			const FVector2D Striker = ToScreen(FVector2D::ZeroVector), Bowler = ToScreen(FVector2D(CricketGeo::PitchLength, 0.f));
+			DrawRect(FLinearColor(0.75f, 0.65f, 0.45f), Striker.X - 2 * S, Bowler.Y, 4 * S, Striker.Y - Bowler.Y);
+			for (const ASuperOverGameMode::FBallMark& B : GM->Marks)
+			{
+				if (B.SuperOver != M.SuperOverNumber || B.Innings != Inn || !B.bHit) continue;
+				const FVector2D E = ToScreen(B.End);
+				DrawLine(Striker.X, Striker.Y, E.X, E.Y, Colour(B), 2.f * S);
+			}
+		}
+
+		const float MX = X0 + CW + Pad;
+		Panel(MX, TEXT("PITCH MAP"));
+		{
+			// The first 12 m of the pitch fill the panel's height: nothing that matters pitches further up.
+			const float Len = 12.f, K = (PS - 24 * S) / Len, CX = MX + PS * 0.5f, Top = PY + 34 * S + 12 * S;
+			auto ToScreen = [&](FVector2D P) { return FVector2D(CX - P.Y * K, Top + P.X * K); };
+			const float HW = CricketGeo::PitchHalfWidth * K;
+			DrawRect(FLinearColor(0.75f, 0.65f, 0.45f, 0.9f), CX - HW, Top, 2 * HW, Len * K);
+			const FLinearColor Crease(1.f, 1.f, 1.f, 0.8f);
+			DrawRect(Crease, CX - HW, Top + CricketGeo::PoppingCrease * K, 2 * HW, 1.5f * S);
+			for (int32 I = -1; I <= 1; ++I) DrawRect(FLinearColor(0.95f, 0.9f, 0.8f), CX + I * CricketGeo::StumpsHalfWidth * K - 1.5f * S, Top - 6 * S, 3 * S, 9 * S);
+			for (const ASuperOverGameMode::FBallMark& B : GM->Marks)
+			{
+				if (B.SuperOver != M.SuperOverNumber || B.Innings != Inn || !B.bPitched || B.Pitch.X > Len) continue;
+				const FVector2D P = ToScreen(B.Pitch);
+				DrawRect(FLinearColor(0, 0, 0, 0.8f), P.X - 5 * S, P.Y - 5 * S, 10 * S, 10 * S);
+				DrawRect(Colour(B), P.X - 4 * S, P.Y - 4 * S, 8 * S, 8 * S);
+			}
+		}
 	}
 
 	// Event banner, until the next ball is on its way.

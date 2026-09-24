@@ -1092,6 +1092,16 @@ void ASuperOverGameMode::FinishDelivery()
 	}
 	const CricketCommentary::FNames Names{ StrikerPlayer().Name, Teams[Match.BattingTeam()].Batters[Match.Cur().NonStriker].Name, Teams[Match.BattingTeam()].Name };
 	const float OffSign = OffSideSign(StrikerPlayer().BatHand);
+	FBallMark& Mark = Marks.AddDefaulted_GetRef();
+	Mark.SuperOver = Match.SuperOverNumber;
+	Mark.Innings = Match.Innings.Num() - 1;
+	Mark.bPitched = Result.PitchTime >= 0.f;
+	Mark.Pitch = FVector2D(Result.PitchPos);
+	Mark.bHit = Outcome.bBatContact;
+	const FFieldingOutcome& Fld = Result.Fielding;
+	Mark.End = FVector2D(Fld.Boundary > 0 ? Result.BallAt(Result.ContactTime + Fld.BoundaryTime) : Fld.Fielder >= 0 ? Fld.FieldPos : Result.BallAt(Result.DeadTime));
+	Mark.Runs = Outcome.Boundary + Outcome.RunsRun;
+	Mark.bWicket = Outcome.Dismissal != EDismissal::None;
 	TArray<ECricketEvent> Events;
 	if (!Match.CompleteDelivery(Outcome, Events))
 	{

@@ -45,7 +45,7 @@ This note lets a new agent pick up the "make it like Cricket 26" work where it s
 |---|---|---|
 | 1 | Batting feel | Done, commit `1157fad` |
 | 2 | Broadcast HUD | Done, commit `5b5bf0c` (score bar, speed gun, this-over discs, player cards; checked in capture; 50/50 tests) |
-| 3 | Ball tracking | LBW tracking and its Hawk-Eye view done (master plan M8, 6.5); pitch map and wagon wheel not started |
+| 3 | Ball tracking | LBW tracking and its Hawk-Eye view done (master plan M8, 6.5); pitch map and wagon wheel on the scorecard done (6.4) |
 | 4 | Camera director | First cuts done: boundary, fielder and close-up shots (master plan M8, 6.1) |
 | 5 | Stadium | Not started (CC0 sources only) |
 | 6 | T20 and ODI formats | Not started |
@@ -97,7 +97,10 @@ MetaHuman scripting notes (UE 5.8 Python):
   review reveals it, and hides the players through the player controller's `HiddenActors`. The HUD draws the
   "BALL TRACKING" panel.
 - To see one: `Scripts/capture.sh 3 -CricketAiLeaves` (the AI batter leaves every ball; ball 3 is an LBW).
-- Not started: the pitch map and wagon wheel (plan 6.4), the edge detector and player reviews.
+- `FinishDelivery` records every ball in `Marks` (`FBallMark`: where it pitched, where the stroke went, runs,
+  wicket). The scorecard draws the innings just played as a wagon wheel on its left and a pitch map on its right.
+  To see them: `Scripts/capture.sh 7 -CricketQuitAfter=7` (the innings break before ball 7).
+- Not started: the edge detector and player reviews.
 
 ## Item 4: camera director
 

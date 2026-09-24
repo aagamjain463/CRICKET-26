@@ -68,6 +68,18 @@ public:
 	FString BowlerIntent;          // AI plan label (debug only: a human batter should not see it)
 	FString LastSummary;           // the simulation's technical summary (debug overlay and log)
 	FString Commentary;            // caption for the last delivery
+	/** Every ball of the match, for the scorecard's pitch map and wagon wheel. Positions are simulation metres. */
+	struct FBallMark
+	{
+		int32 SuperOver = 0, Innings = 0;
+		FVector2D Pitch = FVector2D::ZeroVector; // where it pitched, if it did
+		bool bPitched = false;
+		FVector2D End = FVector2D::ZeroVector;   // where the stroke went (fielded, or over the rope), if the bat hit it
+		bool bHit = false;
+		int32 Runs = 0;
+		bool bWicket = false;
+	};
+	TArray<FBallMark> Marks;
 	float HumanRunMargin = 0.35f;
 	float ShotDirection = 0.f;
 	bool bDebug = false, bTrajectory = false, bAutoPlay = false, bForceWicket = false;
