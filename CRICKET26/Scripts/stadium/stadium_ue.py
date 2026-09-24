@@ -41,7 +41,7 @@ float px = max(length(ddx(q)), length(ddy(q))); // metres per pixel: fine detail
 """
 
 GRASS = NOISE + """
-float3 c = float3(0.085, 0.23, 0.045);
+float3 c = float3(0.1, 0.19, 0.05);
 // Mowing stripes: 5 m bands square to the pitch, the light and dark of grass laid away from and toward the eye.
 c *= lerp(0.9, 1.1, n.S(-0.15, 0.15, sin(q.x * 3.14159 / 5.0)));
 // Patches of lusher and drier grass.
@@ -265,6 +265,34 @@ def led(ads):
     finish(m)
 
 
+# The big screen: whatever the game draws into its Screen texture. (No LED pixel grid: at stadium distances it
+# only shimmers into moire.)
+SCREEN = """
+return Texture2DSample(Screen, ScreenSampler, UV).rgb;
+"""
+
+
+def screen(ads):
+    m = new_material("M_Screen")
+    c = custom(m, SCREEN, ["UV", "Screen"])
+    uv = mel.create_material_expression(m, unreal.MaterialExpressionTextureCoordinate, -800, 0)
+    mel.connect_material_expressions(uv, "", c, "UV")
+    t = mel.create_material_expression(m, unreal.MaterialExpressionTextureObjectParameter, -800, 200)
+    t.set_editor_property("parameter_name", "Screen")
+    t.set_editor_property("texture", ads)
+    mel.connect_material_expressions(t, "", c, "Screen")
+    glow = mel.create_material_expression(m, unreal.MaterialExpressionScalarParameter, -400, 200)
+    glow.set_editor_property("parameter_name", "Glow")
+    glow.set_editor_property("default_value", 6000.0)
+    mul = mel.create_material_expression(m, unreal.MaterialExpressionMultiply, -200, 200)
+    mel.connect_material_expressions(c, "", mul, "A")
+    mel.connect_material_expressions(glow, "", mul, "B")
+    mel.connect_material_property(mul, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    constant(m, 0.0, unreal.MaterialProperty.MP_BASE_COLOR, 300)
+    constant(m, 0.3, unreal.MaterialProperty.MP_ROUGHNESS, 400)
+    finish(m)
+
+
 def import_fan():
     base = os.path.join(DIR, "Fan_LOD0.fbx")
     if not os.path.exists(base):
@@ -354,5 +382,6 @@ ads = import_texture("T_Ads")
 ground("M_Grass", GRASS, logo)
 ground("M_Pitch", PITCH)
 led(ads)
+screen(ads)
 import_fan()
 crowd()

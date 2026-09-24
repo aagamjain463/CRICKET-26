@@ -128,8 +128,8 @@ FStadium Build(const FStadiumSpec& Spec)
 	};
 	Band(BoundaryRadius + BoardRadiusOffset, 0.f, 0.95f, 0.15f);
 	// The rope: a padded white cushion, triangular in section.
-	Ring(M, C, BoundaryRadius - 0.22f, 0.f, BoundaryRadius, 0.2f, 240, 1.f, 1.f, [](float) { return FLinearColor(0.85f, 0.85f, 0.87f); });
-	Ring(M, C, BoundaryRadius, 0.2f, BoundaryRadius + 0.22f, 0.f, 240, -1.f, 1.f, [](float) { return FLinearColor(0.7f, 0.7f, 0.72f); });
+	Ring(M, C, BoundaryRadius - 0.12f, 0.f, BoundaryRadius, 0.12f, 240, 1.f, 1.f, [](float) { return FLinearColor(0.85f, 0.85f, 0.87f); });
+	Ring(M, C, BoundaryRadius, 0.12f, BoundaryRadius + 0.12f, 0.f, 240, -1.f, 1.f, [](float) { return FLinearColor(0.7f, 0.7f, 0.72f); });
 
 	// Stands: eight blocks of coloured seats, each tier a flight of steps; a pitch-side wall and a facade.
 	const FLinearColor SeatCols[] = { { 0.03f, 0.06f, 0.22f }, { 0.22f, 0.025f, 0.03f }, { 0.02f, 0.15f, 0.17f }, { 0.1f, 0.1f, 0.11f } };
@@ -189,6 +189,20 @@ FStadium Build(const FStadiumSpec& Spec)
 			const float Drop0 = FMath::Lerp(1.2f, 0.2f, float(B) / Bays);
 			Beam(M, Roof(R0) - FVector(0, 0, Drop0), Roof(R1), 0.12f, 0.12f, Steel * 0.9f);
 		}
+	}
+	// Two big screens up on the roof at opposite corners, square to the middle, facing the broadcast ends' cameras.
+	for (const float A : { 145.f, 325.f })
+	{
+		const FVector D = Radial(A);
+		FScreen Sc{ C + D * (Back - 1.f) + FVector(0, 0, Top + 15.f), -D, 18.f, 9.f };
+		const FVector Side = Radial(A + 90.f);
+		M.AddBox(Sc.Centre + D * 0.5f, D, FVector(0.45f, Sc.Width / 2.f + 0.5f, Sc.Height / 2.f + 0.5f), FLinearColor(0.06f, 0.06f, 0.07f));
+		M.AddQuad(Sc.Centre - Side * (Sc.Width / 2.f) - FVector(0, 0, Sc.Height / 2.f), Sc.Centre - Side * (Sc.Width / 2.f) + FVector(0, 0, Sc.Height / 2.f),
+			Sc.Centre + Side * (Sc.Width / 2.f) + FVector(0, 0, Sc.Height / 2.f), Sc.Centre + Side * (Sc.Width / 2.f) - FVector(0, 0, Sc.Height / 2.f), FLinearColor(0.01f, 0.012f, 0.02f), Sc.Facing);
+		for (const float Leg : { -0.3f, 0.3f })
+			M.AddBox(C + D * (Back - 0.5f) + Side * (Leg * Sc.Width) + FVector(0, 0, (Top + 6.f + Sc.Centre.Z - Sc.Height / 2.f) / 2.f), D,
+				FVector(0.3f, 0.3f, (Sc.Centre.Z - Sc.Height / 2.f - Top - 6.f) / 2.f), FLinearColor(0.2f, 0.2f, 0.22f), false);
+		S.Screens.Add(Sc);
 	}
 	// Floodlight towers behind the four corners, their lamp banks tilted toward the square.
 	for (const float A : { 45.f, 135.f, 225.f, 315.f })

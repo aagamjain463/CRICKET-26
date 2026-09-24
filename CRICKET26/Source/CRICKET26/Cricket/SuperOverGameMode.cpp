@@ -12,6 +12,11 @@
 #include "Components/SkyLightComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Kismet/KismetRenderingLibrary.h"
+#include "Engine/Canvas.h"
+#include "Engine/TextureRenderTarget2D.h"
+#include "Engine/Font.h"
+#include "CanvasItem.h"
 #include "Animation/AnimSequence.h"
 #include "AudioMixerBlueprintLibrary.h"
 #include "Components/AudioComponent.h"
@@ -722,6 +727,29 @@ void ASuperOverGameMode::BuildStadium()
 		A->GetStaticMeshComponent()->SetCastShadow(false); // ponytail: the stand's own shadow reads fine; a crowd's is thousands of tiny casters
 		CrowdSections.Add(A);
 	}
+	// The big screens: a plane on each face showing one canvas the game draws the score into (UpdateBigScreens).
+	UMaterialInterface* ScreenMaterial = LoadStadiumMaterial(TEXT("M_Screen"));
+	UStaticMesh* Plane = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Plane.Plane"));
+	if (ScreenMaterial && Plane)
+	{
+		ScreenTarget = UKismetRenderingLibrary::CreateRenderTarget2D(this, 512, 256, RTF_RGBA8_SRGB);
+		UMaterialInstanceDynamic* Face = UMaterialInstanceDynamic::Create(ScreenMaterial, this);
+		Face->SetTextureParameterValue(TEXT("Screen"), ScreenTarget);
+		for (const CricketStadium::FScreen& Sc : Stadium.Screens)
+		{
+			// The plane is 1 m square facing up, its texture across X: turn its face to the field, its X to the right.
+			const FVector Right = FVector::CrossProduct(FVector::UpVector, -Sc.Facing);
+			const FRotator Turn = FRotationMatrix::MakeFromZX(Sc.Facing, Right).Rotator();
+			AStaticMeshActor* A = GetWorld()->SpawnActor<AStaticMeshActor>(ToWorld(Sc.Centre + Sc.Facing * 0.05f), Turn);
+			UStaticMeshComponent* C = A->GetStaticMeshComponent();
+			C->SetMobility(EComponentMobility::Movable);
+			C->SetStaticMesh(Plane);
+			C->SetMaterial(0, Face);
+			C->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			C->SetCastShadow(false);
+			A->SetActorScale3D(FVector(Sc.Width, Sc.Height, 1.f));
+		}
+	}
 	int32 Tris = Stadium.Structure.NumTriangles() + Stadium.Boards.NumTriangles();
 	if (!GrassMaterial) Tris += Stadium.Outfield[0].NumTriangles() + Stadium.Outfield[1].NumTriangles();
 	for (const CricketStadium::FColouredMesh& Section : Stadium.Crowd) Tris += Section.NumTriangles();
@@ -741,6 +769,41 @@ void ASuperOverGameMode::UpdateCrowd()
 		const float Z = CricketStadium::JumpHeight(T, Excitement, I / CricketStadium::NumGroups, I % CricketStadium::NumGroups);
 		CrowdSections[I]->SetActorLocation(FVector(0.f, 0.f, Z * 100.f));
 	}
+}
+
+void ASuperOverGameMode::UpdateBigScreens()
+{
+	if (!ScreenTarget) return;
+	// The batting side and its score, the overs, then the chase or the replay; redrawn only when that changes.
+	const FInningsState& In = Match.Cur();
+	const FCricketTeam& Batting = Teams[Match.BattingTeam()];
+	const FString Score = FString::Printf(TEXT("%s  %d-%d"), *Batting.Short, In.Runs, In.Wickets);
+	const FString Overs = FString::Printf(TEXT("OVERS  %d.%d"), In.LegalBalls / 6, In.LegalBalls % 6);
+	const FString Foot = IsReplaying() ? FString(TEXT("REPLAY")) : Match.Target > 0 ? FString::Printf(TEXT("TARGET  %d"), Match.Target) : FString(TEXT("CRICKET 26"));
+	const FString Shown = Score + Overs + Foot;
+	if (Shown == ScreenShown) return;
+	ScreenShown = Shown;
+
+	UKismetRenderingLibrary::ClearRenderTarget2D(this, ScreenTarget, FLinearColor(0.004f, 0.006f, 0.02f));
+	UCanvas* Canvas = nullptr;
+	FVector2D Size;
+	FDrawToRenderTargetContext Context;
+	UKismetRenderingLibrary::BeginDrawCanvasToRenderTarget(this, ScreenTarget, Canvas, Size, Context);
+	UFont* Font = GEngine->GetLargeFont();
+	auto Line = [&](const FString& S, float Y, float Scale, const FLinearColor& Colour)
+	{
+		float W, H;
+		Canvas->TextSize(Font, S, W, H, Scale, Scale);
+		FCanvasTextItem Item(FVector2D((Size.X - W) / 2.f, Y), FText::FromString(S), Font, Colour);
+		Item.Scale = FVector2D(Scale, Scale);
+		Canvas->DrawItem(Item);
+	};
+	FCanvasTileItem Band(FVector2D(0.f, 0.f), FVector2D(Size.X, Size.Y * 0.44f), Batting.Colour * 0.8f);
+	Canvas->DrawItem(Band);
+	Line(Score, Size.Y * 0.03f, 4.2f, FLinearColor::White);
+	Line(Overs, Size.Y * 0.47f, 2.6f, FLinearColor::White);
+	Line(Foot, Size.Y * 0.72f, 2.6f, FLinearColor(1.f, 0.78f, 0.2f));
+	UKismetRenderingLibrary::EndDrawCanvasToRenderTarget(this, Context);
 }
 
 FString ASuperOverGameMode::DirectionName() const
@@ -1755,6 +1818,7 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	UpdateFigures(Dt);
 	UpdatePoses(T, bLive, Post, Off, Arm);
 	UpdateCrowd();
+	UpdateBigScreens();
 	UpdateTracking();
 
 	if (bTrajectory && Result.BallPath.Num() > 1)

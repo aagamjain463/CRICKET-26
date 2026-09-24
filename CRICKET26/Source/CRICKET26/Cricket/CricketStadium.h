@@ -66,6 +66,13 @@ namespace CricketStadium
 	/** The two shades of the mown outfield. */
 	const FLinearColor StripeColours[2] = { { 0.1f, 0.3f, 0.075f }, { 0.075f, 0.24f, 0.06f } };
 
+	/** A big screen on the roof: the middle of its face (metres), the way the face looks, and its size. */
+	struct FScreen
+	{
+		FVector Centre, Facing;
+		float Width = 0.f, Height = 0.f;
+	};
+
 	struct FStadium
 	{
 		FColouredMesh Structure;   // stands, roof, towers, rope cushion
@@ -73,6 +80,7 @@ namespace CricketStadium
 		FColouredMesh Outfield[2]; // mown stripes inside the rope, light and dark (drawn in the grass material)
 		TArray<FColouredMesh> Crowd; // [Section * NumGroups + Group]
 		TArray<FFan> Fans;           // with bFanCrowd
+		TArray<FScreen> Screens;     // their frames are in Structure; the game draws what they show
 		int32 Spectators = 0;
 	};
 

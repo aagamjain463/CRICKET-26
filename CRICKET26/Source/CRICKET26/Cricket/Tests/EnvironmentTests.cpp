@@ -87,6 +87,14 @@ bool FEnvStadium::RunTest(const FString&)
 	TestEqual(TEXT("no block crowd alongside the fans"), Blocks, 0);
 	TestEqual(TEXT("fans face the middle"), Astray, 0);
 
+	// The big screens stand above the roof, facing the middle.
+	TestEqual(TEXT("two big screens"), S.Screens.Num(), 2);
+	for (const FScreen& Sc : S.Screens)
+	{
+		TestTrue(TEXT("screen faces the middle"), FVector::DotProduct(Sc.Facing, FVector(C - Sc.Centre).GetSafeNormal2D()) > 0.99f);
+		TestTrue(TEXT("screen high above the stands"), Sc.Centre.Z - Sc.Height / 2.f > 25.f);
+	}
+
 	// The crowd sits still until the ground erupts, then jumps, and neighbours are out of step.
 	TestEqual(TEXT("seated when quiet"), JumpHeight(3.f, 0.f, 4, 1), 0.f);
 	float Max = 0.f, Apart = 0.f;
