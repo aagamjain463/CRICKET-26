@@ -1,19 +1,23 @@
-# Blender script: makes a player's cricket kit (collared shirt, trousers, shoes) from his own full body.
+# Blender script: makes a player's cricket kit (collared shirt, trousers, shoes) and batting gear (pads, gloves, helmet)
+# from his own full body.
 #
 # Each piece is cut from the body exported without its garment (Scripts/metahuman/make_kit.sh builds and exports
 # it), smoothed so the fabric does not show the muscles under it, and pushed out from the skin. Every vertex keeps
 # the body's skin weights, so the kit follows the body through any pose with no simulation, and fits each body shape.
-# The pieces carry the materials Kit_Shirt, Kit_Trousers and Kit_Shoes, which the game paints in team colours.
+# The pieces carry the materials Kit_Shirt, Kit_Trousers and Kit_Shoes, which the game paints in team colours. The
+# gear (worn only by the batters) is a second mesh with Gear_Pads, Gear_Gloves, Gear_Helmet and Gear_Grille; the
+# helmet is rigid on the head bone.
 #
 # All of it is generated here from the MetaHuman body: an original design, no third-party asset.
 #
-# Run: Blender -b --python make_kit.py -- BODY.fbx KIT.fbx
+# Run: Blender -b --python make_kit.py -- BODY.fbx KIT.fbx GEAR.fbx
 import sys
 import bmesh
 import bpy
-from mathutils import Vector
+import math
+from mathutils import Matrix, Vector
 
-BODY, KIT = sys.argv[sys.argv.index("--") + 1:][:2]
+BODY, KIT, GEAR = sys.argv[sys.argv.index("--") + 1:][:3]
 
 # Offsets from the skin in cm. Outer layers sit further out where they overlap: the shirt hem over the trousers,
 # the trouser hem over the shoes.
@@ -101,8 +105,9 @@ def piece(kind, keep, offset, smooth):
     return o, bm
 
 
-def finish(o, bm, material):
-    bmesh.ops.solidify(bm, geom=bm.faces[:], thickness=THICKNESS)
+def finish(o, bm, material, thickness=THICKNESS):
+    if thickness:
+        bmesh.ops.solidify(bm, geom=bm.faces[:], thickness=thickness)
     bm.to_mesh(o.data)
     bm.free()
     o.data.materials.clear()
@@ -148,15 +153,130 @@ for v in bm.verts:
     v.co += v.normal * SHOES
 shoes = finish(o, bm, "Kit_Shoes")
 
-for o in (shirt, trousers, shoes):
-    print(f"KIT {o.name}: {len(o.data.vertices)} vertices")
+
+
+def export(parts, name, path):
+    for o in parts:
+        print(f"KIT {o.name}: {len(o.data.vertices)} vertices")
+    with bpy.context.temp_override(active_object=parts[0], selected_editable_objects=parts):
+        bpy.ops.object.join()
+    parts[0].name = name
+    bpy.ops.object.select_all(action='DESELECT')
+    parts[0].select_set(True)
+    arm.select_set(True)
+    bpy.ops.export_scene.fbx(filepath=path, use_selection=True, object_types={'ARMATURE', 'MESH'}, add_leaf_bones=False,
+                             bake_anim=False, use_mesh_modifiers=False)
+    bpy.data.objects.remove(parts[0])
+    print(f"KIT written {path}")
+
+
+export([shirt, trousers, shoes], "Kit", KIT)
+
+# Batting pads: the front two thirds of each shin from the shoe to above the knee, pushed well out, with raised canes.
+FORWARD = Vector((0.0, -1.0, 0.0))
+thigh = {s: joint(f"thigh_{s}") for s in "lr"}
+pad_top = knee_z + 0.3 * (sum(t.z for t in thigh.values()) / 2 - knee_z)
+
+
+def leg_side(p):
+    return "l" if (p.x - pelvis.x) * (foot["l"].x - pelvis.x) > 0 else "r"
+
+
+def round_leg(p):
+    """Horizontal direction from the leg's axis to p."""
+    s = leg_side(p)
+    a, b = (foot[s], knee[s]) if p.z < knee[s].z else (knee[s], thigh[s])
+    d = p - a.lerp(b, min(max((p.z - a.z) / (b.z - a.z), 0.0), 1.0))
+    d.z = 0.0
+    return d.normalized() if d.length else FORWARD
+
+
+def pad_keep(i):
+    v = body.data.vertices[i]
+    return (arm_weight(v)[0] < 0.5 and ankle_z + 2.0 < v.co.z < pad_top and round_leg(v.co).dot(FORWARD) > -0.35)
+
+
+def pad_offset(p):
+    d = round_leg(p)
+    angle = math.atan2(d.cross(FORWARD).z, d.dot(FORWARD))
+    return 3.2 + 0.6 * (0.5 + 0.5 * math.cos(angle * 10.0))
+
+
+pads = finish(*piece("Pads", pad_keep, pad_offset, 20), "Gear_Pads", 1.2)
+
+# Batting gloves: the hands padded out, with a gauntlet over the wrist.
+HAND_PARTS = ("hand", "wrist", "thumb", "index", "middle", "ring", "pinky")
+hand = {s: joint(f"hand_{s}") for s in "lr"}
+
+
+def hand_weight(v):
+    return sum(g.weight for g in v.groups if groups.get(g.group, "").startswith(HAND_PARTS))
+
+
+def glove_keep(i):
+    v = body.data.vertices[i]
+    w, side = arm_weight(v)
+    return w > 0.5 and (hand_weight(v) > 0.5 or (v.co - hand[side]).length < 8.0)
+
+
+def glove_offset(p):
+    side = "l" if (p - hand["l"]).length < (p - hand["r"]).length else "r"
+    return 0.8 + (0.7 if along(p, hand[side], elbow[side]) > 0.02 else 0.0)
+
+
+gloves = finish(*piece("Gloves", glove_keep, glove_offset, 2), "Gear_Gloves", 0.5)
+
+
+def rigid(name, build):
+    """A mesh made by build(bm, centre) that moves with the head bone."""
+    o = body.copy()
+    o.data = bpy.data.meshes.new(name)
+    o.name = name
+    bpy.context.scene.collection.objects.link(o)
+    group = (o.vertex_groups.get("head") or o.vertex_groups.new(name="head")).index
+    bm = bmesh.new()
+    build(bm)
+    layer = bm.verts.layers.deform.verify()
+    for v in bm.verts:
+        v[layer][group] = 1.0
+    return o, bm
+
+
+# The helmet: a shell over the skull, open at the face, and a grille of bars in front of it.
+head = joint("head")
+CENTRE, RADII = head + Vector((0.0, -2.0, 9.5)), Vector((11.0, 12.5, 12.0))
+
+
+def shell(bm):
+    bmesh.ops.create_uvsphere(bm, u_segments=32, v_segments=20, radius=1.0)
+    for v in bm.verts:
+        v.co = CENTRE + Vector((v.co.x * RADII.x, v.co.y * RADII.y, v.co.z * RADII.z))
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z - CENTRE.z < -8.0
+                               or (v.co.y - CENTRE.y < -0.3 * RADII.y and v.co.z - CENTRE.z < 1.5)], context='VERTS')
+    bm.normal_update()
+
+
+def bar(bm, a, b, thick=0.45):
+    d = b - a
+    m = Matrix.LocRotScale((a + b) / 2, d.to_track_quat('X', 'Z'), (d.length + thick, thick, thick))
+    bmesh.ops.create_cube(bm, size=1.0, matrix=m)
+
+
+def grille(bm):
+    at = lambda deg, dz: CENTRE + Vector((math.sin(math.radians(deg)) * (RADII.x + 1.5),
+                                         -math.cos(math.radians(deg)) * (RADII.y + 1.5), dz))
+    for dz in (0.5, -5.0, -10.5, -15.0):
+        span = 70 if dz > -12 else 45
+        for deg in range(-span, span, 10):
+            bar(bm, at(deg, dz), at(deg + 10, dz))
+    for deg in (-35, 0, 35):
+        bar(bm, at(deg, 0.5), at(deg, -15.0 if abs(deg) < 40 else -10.5))
+    # The side struts joining the grille to the shell.
+    for deg in (-70, 70):
+        bar(bm, at(deg, 0.5), at(deg, -10.5))
+
+
+helmet = finish(*rigid("Helmet", shell), "Gear_Helmet", 1.0)
+bars = finish(*rigid("Grille", grille), "Gear_Grille", 0.0)
 bpy.data.objects.remove(body)
-with bpy.context.temp_override(active_object=shirt, selected_editable_objects=[shirt, trousers, shoes]):
-    bpy.ops.object.join()
-shirt.name = "Kit"
-bpy.ops.object.select_all(action='DESELECT')
-shirt.select_set(True)
-arm.select_set(True)
-bpy.ops.export_scene.fbx(filepath=KIT, use_selection=True, object_types={'ARMATURE', 'MESH'}, add_leaf_bones=False,
-                         bake_anim=False, use_mesh_modifiers=False)
-print(f"KIT written {KIT}")
+export([pads, gloves, helmet, bars], "Gear", GEAR)

@@ -3,8 +3,9 @@
 # KIT_STEP=export: builds each player once more without the preset garment into /Game/MetaHumans/Bare (the
 #   garment's hidden-face map cuts the skin under it out of the real build, and the kit needs the whole body),
 #   and exports that body to $KIT_DIR/<Name>_Body.fbx. The source character is not saved, so it keeps its garment.
-# KIT_STEP=import: imports $KIT_DIR/<Name>_Kit.fbx onto the player's own skeleton as
-#   /Game/MetaHumans/<Name>/Kit/SKM_<Name>_Kit, and makes the kit fabric material /Game/MetaHumans/Kit/M_Kit.
+# KIT_STEP=import: imports $KIT_DIR/<Name>_Kit.fbx and <Name>_Gear.fbx onto the player's own skeleton as
+#   /Game/MetaHumans/<Name>/Kit/SKM_<Name>_Kit and SKM_<Name>_Gear, and makes the fabric material
+#   /Game/MetaHumans/Kit/M_Kit.
 import os
 import unreal
 
@@ -68,7 +69,7 @@ def kit_material():
     lib.save_loaded_asset(m)
 
 
-def import_kit(name):
+def import_kit(name, part):
     ui = unreal.FbxImportUI()
     ui.import_mesh = True
     ui.import_as_skeletal = True
@@ -78,16 +79,20 @@ def import_kit(name):
     ui.create_physics_asset = False
     ui.skeletal_mesh_import_data.set_editor_property("import_morph_targets", False)
     t = unreal.AssetImportTask()
-    t.filename = f"{DIR}/{name}_Kit.fbx"
+    t.filename = f"{DIR}/{name}_{part}.fbx"
     t.destination_path = f"/Game/MetaHumans/{name}/Kit"
-    t.destination_name = f"SKM_{name}_Kit"
+    t.destination_name = f"SKM_{name}_{part}"
     t.automated = t.replace_existing = t.save = True
     t.options = ui
     unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([t])
-    unreal.log(f"KIT {name}: kit imported {list(t.imported_object_paths)}")
+    unreal.log(f"KIT {name}: {part} imported {list(t.imported_object_paths)}")
 
 
 if STEP == "import":
     kit_material()
 for n in NAMES:
-    export(n) if STEP == "export" else import_kit(n)
+    if STEP == "export":
+        export(n)
+    else:
+        for part in ("Kit", "Gear"):
+            import_kit(n, part)

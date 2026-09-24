@@ -191,7 +191,7 @@ void ASuperOverGameMode::Paint(AStaticMeshActor* A, const FLinearColor& Colour)
 	A->GetStaticMeshComponent()->SetMaterial(0, M);
 	// A player's kit is painted in the team colour: the mannequin's own tint, or a MetaHuman's garment (every
 	// mesh but the skin: its shirt and shorts colours). The cricket kit has a shirt in the team colour, trousers in
-	// a darker shade of it, and white shoes.
+	// a darker shade of it, and white shoes; the batting gear white pads and gloves and a helmet in the darkest shade.
 	TArray<USkeletalMeshComponent*> Kit;
 	if (USkeletalMeshComponent* Body = BodyOf(A)) Body->GetOwner()->GetComponents(Kit);
 	for (USkeletalMeshComponent* Part : Kit)
@@ -202,10 +202,13 @@ void ASuperOverGameMode::Paint(AStaticMeshActor* A, const FLinearColor& Colour)
 		{
 			if (UMaterialInstanceDynamic* Cloth = Part->CreateDynamicMaterialInstance(I))
 			{
-				if (Part->GetFName() == TEXT("Kit") && Slots.IsValidIndex(I))
+				if ((Part->GetFName() == TEXT("Kit") || Part->GetFName() == TEXT("Gear")) && Slots.IsValidIndex(I))
 				{
-					Cloth->SetVectorParameterValue(TEXT("Color"), Slots[I] == TEXT("Kit_Shoes") ? FLinearColor(0.75f, 0.75f, 0.75f)
-						: Slots[I] == TEXT("Kit_Trousers") ? Colour * 0.45f : Colour);
+					const FName Slot = Slots[I];
+					const FLinearColor Pale(0.75f, 0.75f, 0.75f);
+					Cloth->SetVectorParameterValue(TEXT("Color"), Slot == TEXT("Kit_Shoes") || Slot == TEXT("Gear_Pads") || Slot == TEXT("Gear_Gloves") ? Pale
+						: Slot == TEXT("Kit_Trousers") ? Colour * 0.45f : Slot == TEXT("Gear_Helmet") ? Colour * 0.3f
+						: Slot == TEXT("Gear_Grille") ? FLinearColor(0.1f, 0.1f, 0.1f) : Colour);
 					continue;
 				}
 				for (const TCHAR* Name : { TEXT("Paint Tint"), TEXT("LogoTint"), TEXT("diffuse_color_1"), TEXT("diffuse_color_2"), TEXT("B_diffuse_color_1") })
@@ -239,22 +242,30 @@ void ASuperOverGameMode::AddBody(AStaticMeshActor* Marker, const TCHAR* MetaHuma
 		Player->GetComponents(Parts);
 		for (USkeletalMeshComponent* Part : Parts) if (Part->GetFName() == TEXT("Body")) Body = Part;
 		// The cricket kit made by Scripts/metahuman/make_kit.sh, when there is one, in place of the preset T-shirt and
-		// shorts. It is skinned to this body's skeleton and takes its pose.
-		const FString KitPath = FString::Printf(TEXT("/Game/MetaHumans/%s/Kit/SKM_%s_Kit.SKM_%s_Kit"), MetaHuman, MetaHuman, MetaHuman);
-		if (USkeletalMesh* KitMesh = Body ? LoadObject<USkeletalMesh>(nullptr, *KitPath, nullptr, LOAD_Quiet | LOAD_NoWarn) : nullptr)
+		// shorts, and the batting gear (pads, gloves, helmet) on the two batters. Both are skinned to this body's
+		// skeleton and take its pose.
+		auto Wear = [&](const TCHAR* Part)
 		{
-			TArray<USkinnedMeshComponent*> Garment;
-			Player->GetComponents(Garment);
-			for (USkinnedMeshComponent* Part : Garment) if (Part != Body && Part->GetFName() != TEXT("Face")) Part->SetVisibility(false);
+			const FString MeshPath = FString::Printf(TEXT("/Game/MetaHumans/%s/Kit/SKM_%s_%s.SKM_%s_%s"), MetaHuman, MetaHuman, Part, MetaHuman, Part);
+			USkeletalMesh* Mesh = Body ? LoadObject<USkeletalMesh>(nullptr, *MeshPath, nullptr, LOAD_Quiet | LOAD_NoWarn) : nullptr;
+			if (!Mesh) return false;
 			UMaterialInterface* Fabric = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/MetaHumans/Kit/M_Kit.M_Kit"), nullptr, LOAD_Quiet | LOAD_NoWarn);
-			USkeletalMeshComponent* Kit = NewObject<USkeletalMeshComponent>(Player, TEXT("Kit"));
-			Kit->SetSkeletalMesh(KitMesh);
-			for (int32 I = 0; Fabric && I < Kit->GetNumMaterials(); ++I) Kit->SetMaterial(I, Fabric);
-			Kit->SetupAttachment(Body);
-			Kit->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-			Kit->SetLeaderPoseComponent(Body);
-			Kit->RegisterComponent();
-			Player->AddInstanceComponent(Kit);
+			USkeletalMeshComponent* Worn = NewObject<USkeletalMeshComponent>(Player, Part);
+			Worn->SetSkeletalMesh(Mesh);
+			for (int32 I = 0; Fabric && I < Worn->GetNumMaterials(); ++I) Worn->SetMaterial(I, Fabric);
+			Worn->SetupAttachment(Body);
+			Worn->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			Worn->SetLeaderPoseComponent(Body);
+			Worn->RegisterComponent();
+			Player->AddInstanceComponent(Worn);
+			return true;
+		};
+		TArray<USkinnedMeshComponent*> Garment;
+		Player->GetComponents(Garment);
+		if (Wear(TEXT("Kit")))
+		{
+			for (USkinnedMeshComponent* Part : Garment) if (Part != Body && Part->GetFName() != TEXT("Face")) Part->SetVisibility(false);
+			if (Marker == Striker || Marker == NonStriker) Wear(TEXT("Gear"));
 		}
 	}
 	else if (BodyMesh)
