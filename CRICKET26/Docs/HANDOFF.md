@@ -108,6 +108,12 @@ MetaHuman scripting notes (UE 5.8 Python):
   `CricketUmpire::Review` and `ScoreDelivery` scores the ball. The ball-tracking panel ends with the verdict. Each
   team has `Rules.ReviewsPerTeam` (1) reviews, lost when the decision stands. To see one:
   `Scripts/capture.sh 3 -CricketAiLeaves`.
+- Third umpire: `FDeliveryResult::BrokenTime`, `bBrokenAtStrikerEnd` and `HomeMargin` describe every broken wicket
+  (run out chance or stumping chance). `CricketUmpire::RefersToThirdUmpire` sends calls within `CloseCall` (0.12 s)
+  upstairs; `bAwaitingThirdUmpire` holds the ball for `ThirdUmpireTime` while `ThirdUmpireBallTime()` rolls the
+  frames, then `ScoreDelivery` scores it and the HUD shows the verdict over the close-up. `-CricketRunMargin=S` sets
+  the AI batters' running margin (negative: suicidal) to make run outs. To see one:
+  `Scripts/capture.sh 18 -CricketDifficulty=1 -CricketQuitAfter=18`.
 
 ## Item 4: camera director
 

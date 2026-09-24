@@ -1593,7 +1593,7 @@ bool FSOKeeper::RunTest(const FString&)
 
 namespace
 {
-	struct FDifficultyStats { int32 Innings = 0, Runs = 0, Wickets = 0, RunOuts = 0, Balls = 0, Sixes = 0; };
+	struct FDifficultyStats { int32 Innings = 0, Runs = 0, Wickets = 0, RunOuts = 0, Balls = 0, Sixes = 0, CloseCalls = 0, WrongMargins = 0; };
 
 	/** Whole Super Overs with the batting AI and the bowling AI at separate skills; same seeds, same players
 	  * unless Setup changes them. */
@@ -1637,6 +1637,11 @@ namespace
 				++S.Balls;
 				S.Wickets += Ev.Contains(ECricketEvent::Wicket);
 				S.RunOuts += R.Dismissal == EDismissal::RunOut;
+				if (R.BrokenTime >= 0.f)
+				{
+					S.CloseCalls += CricketUmpire::RefersToThirdUmpire(R);
+					S.WrongMargins += (R.HomeMargin < 0.f) != (R.Dismissal == EDismissal::RunOut || R.Dismissal == EDismissal::Stumped);
+				}
 				S.Sixes += Ev.Contains(ECricketEvent::BoundarySix);
 				if (M.Phase == EMatchPhase::MatchComplete && M.bTied)
 				{
@@ -1750,6 +1755,18 @@ bool FSOAIDifficulty::RunTest(const FString&)
 	TestTrue(TEXT("the easy gap is felt: at least 10% more runs off an easy bowler"), PerInnings(BowlEasy) > 1.1f * PerInnings(BatHard));
 	for (const CricketAI::EDifficulty D : { CricketAI::EDifficulty::Easy, CricketAI::EDifficulty::Medium, CricketAI::EDifficulty::Hard })
 		TestTrue(TEXT("levels ascend"), CricketAI::SkillOf(D) < CricketAI::SkillOf(CricketAI::EDifficulty(uint8(D) + 1)));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOThirdUmpire, "CRICKET26.Umpire.ThirdUmpireSeesTheMargin", CricketTestFlags)
+bool FSOThirdUmpire::RunTest(const FString&)
+{
+	// Every broken wicket's margin agrees with the decision, so the third umpire's frozen frame shows what was
+	// given; and an easy batting AI, which runs riskily, leaves some calls close enough to go upstairs.
+	const FDifficultyStats S = PlaySuperOvers(150, 0.f, CricketAI::DefaultSkill);
+	UE_LOG(LogTemp, Display, TEXT("Third umpire: %d close calls, %d run outs in %d balls"), S.CloseCalls, S.RunOuts, S.Balls);
+	TestEqual(TEXT("the margin decides every run out and stumping"), S.WrongMargins, 0);
+	TestTrue(TEXT("some calls are close"), S.CloseCalls > 0);
 	return true;
 }
 

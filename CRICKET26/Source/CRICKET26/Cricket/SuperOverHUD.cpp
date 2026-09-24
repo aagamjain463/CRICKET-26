@@ -202,6 +202,7 @@ void ASuperOverHUD::DrawHUD()
 		if (In.Bowler.Balls == 0 && In.Deliveries == 0) Card(BX0 + BarW - 250 * S, BowlT.Colour, BowlT.Bowler.Name, CricketHUD::RoleName(BowlT.Bowler, false));
 	}
 
+
 	// Prompts.
 	FString Prompt;
 	const TCHAR* Go = bTouch ? TEXT("Tap") : TEXT("Press Enter");
@@ -292,7 +293,7 @@ void ASuperOverHUD::DrawHUD()
 	}
 
 	// Last ball (raised clear of the touch buttons when they are shown).
-	if (!GM->Commentary.IsEmpty() && !GM->bAwaitingReview) Text(GM->Commentary, W * 0.5f, bTouch ? H * 0.64f : BarY - 160 * S, FLinearColor(1, 0.9f, 0.5f), 1.f * S, true);
+	if (!GM->Commentary.IsEmpty() && !GM->bAwaitingReview && !GM->bAwaitingThirdUmpire) Text(GM->Commentary, W * 0.5f, bTouch ? H * 0.64f : BarY - 160 * S, FLinearColor(1, 0.9f, 0.5f), 1.f * S, true);
 	if (GM->bDebug && !GM->LastSummary.IsEmpty()) Text(GM->LastSummary, W * 0.5f, bTouch ? H - 80 * S : BarY - 182 * S, FLinearColor(0.7f, 0.7f, 0.7f), 0.8f * S, true);
 
 	if (GM->IsReplaying())
@@ -318,6 +319,27 @@ void ASuperOverHUD::DrawHUD()
 		Text(Ask, PX + PW * 0.5f, PY + 78 * S, FLinearColor(1, 0.85f, 0.3f), 0.85f * S, true);
 		if (GM->HumanReviews())
 			DrawRect(FLinearColor(1, 0.85f, 0.3f, 0.9f), PX, PY + 100 * S, PW * FMath::Max(0.f, 1.f - GM->PhaseTime / ASuperOverGameMode::ReviewWindow), 2 * S);
+	}
+
+	// Third umpire: the referral while the frames roll, then the verdict over the close-up.
+	const bool bVerdict = GM->bReferredThis && GM->DPhase == EDeliveryPhase::DeadBall && GM->PhaseTime < ASuperOverGameMode::ReplayDelay;
+	if (GM->bAwaitingThirdUmpire || bVerdict)
+	{
+		const float PW = 420 * S, PX = W * 0.5f - PW * 0.5f, PY = H * 0.14f;
+		const bool bStumping = GM->Result.Running.Attempted == 0;
+		DrawRect(FLinearColor(0.1f, 0.4f, 0.95f, 0.9f), PX, PY, PW, 28 * S);
+		Text(bStumping ? TEXT("THIRD UMPIRE - STUMPING") : TEXT("THIRD UMPIRE - RUN OUT"), PX + PW * 0.5f, PY + 4 * S, FLinearColor::White, 1.f * S, true);
+		const bool bOut = GM->Result.Dismissal != EDismissal::None;
+		DrawRect(!bVerdict ? FLinearColor(0.02f, 0.03f, 0.07f, 0.88f) : bOut ? FLinearColor(0.75f, 0.08f, 0.08f, 0.9f) : FLinearColor(0.1f, 0.6f, 0.2f, 0.9f),
+			PX, PY + 28 * S, PW, 44 * S);
+		Text(!bVerdict ? TEXT("DECISION PENDING") : bOut ? TEXT("OUT") : TEXT("NOT OUT"), PX + PW * 0.5f, PY + 33 * S,
+			!bVerdict ? FLinearColor(1, 0.85f, 0.3f) : FLinearColor::White, 1.5f * S, true);
+		if (GM->bAwaitingThirdUmpire)
+		{
+			const float TW = 200 * S;
+			DrawRect(FLinearColor(0.7f, 0.05f, 0.05f, 0.85f), W - 20 * S - TW, 20 * S, TW, 30 * S);
+			Text(GM->ThirdUmpireAngle() == 0 ? TEXT("SIDE-ON") : TEXT("FRONT-ON"), W - 20 * S - TW * 0.5f, 24 * S, FLinearColor::White, 1.1f * S, true);
+		}
 	}
 
 	// Edge detector under the super slow-motion replay of a ball that passed the bat: the sound trace drawn as the

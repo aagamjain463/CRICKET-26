@@ -78,6 +78,11 @@ struct FDeliveryResult
 	FFieldingOutcome Fielding;
 	FRunningOutcome Running;
 	float ContactTime = 0.f;   // absolute (s after release); fielding/running times are relative to this
+	/** A run out or stumping chance: when the stumps were broken (s after release; -1 if they never were), at which
+	 *  end, and how long the batter had been in their ground by then (s; negative: still short of it, so out). */
+	float BrokenTime = -1.f;
+	bool bBrokenAtStrikerEnd = true;
+	float HomeMargin = 0.f;
 	float DeadTime = 0.f;
 	FString Summary;
 
@@ -111,4 +116,7 @@ namespace CricketUmpire
 	enum class EReview : uint8 { Upheld, Overturned, UmpiresCall };
 	/** A player review of an LBW decision against ball tracking. Umpire's call on the wickets leaves it standing. */
 	EReview Review(bool bOnFieldOut, const FBallTracking& T);
+	/** A run out or stumping this close (s either way) is too close for the naked eye: the umpire asks the third umpire. */
+	constexpr float CloseCall = 0.12f;
+	inline bool RefersToThirdUmpire(const FDeliveryResult& R) { return R.BrokenTime >= 0.f && FMath::Abs(R.HomeMargin) < CloseCall; }
 }

@@ -777,7 +777,7 @@ void ASuperOverGameMode::Tick(float Dt)
 			float(FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles())) });
 	if (!bFiguresChecked && GetWorld()->GetTimeSeconds() > 2.f) CheckFigures();
 	// Dev capture of the game view alone, 5 times a second (the desktop is never recorded).
-	const int32 LiveBall = DPhase == EDeliveryPhase::DeadBall && !bAwaitingReview ? BallsPlayed : BallsPlayed + 1; // dead ball: the one just finished
+	const int32 LiveBall = DPhase == EDeliveryPhase::DeadBall && !bAwaitingReview && !bAwaitingThirdUmpire ? BallsPlayed : BallsPlayed + 1; // dead ball: the one just finished
 	if (ShotBall == LiveBall && (ShotClock += Dt) >= ShotEvery) // from the wait before the ball, which shows the player cards
 	{
 		ShotClock = 0.f;
@@ -817,6 +817,16 @@ void ASuperOverGameMode::Tick(float Dt)
 		{
 			if (!HumanReviews() && PhaseTime > 1.5f) SettleReview(AiReviews());
 			else if (PhaseTime > ReviewWindow) SettleReview(false);
+			break;
+		}
+		if (bAwaitingThirdUmpire)
+		{
+			if (PhaseTime > ThirdUmpireTime)
+			{
+				bAwaitingThirdUmpire = false;
+				bReferredThis = true;
+				ScoreDelivery(PendingOutcome);
+			}
 			break;
 		}
 		if (PhaseTime > (bReviewThis ? ReviewFrom() + ReviewTime + 0.5f : 1.8f + (bReplayThis ? ReplayTime : 0.f)))
@@ -1051,6 +1061,8 @@ void ASuperOverGameMode::BeginRunUp()
 	Ctx.Seed = Rng.RandHelper(1 << 30);
 	const float Aggr = CricketAI::Aggression(Match);
 	Ctx.RunMargin = HumanBats() ? HumanRunMargin : CricketAI::RunMargin(Match, Aggr, AiSkill());
+	// -CricketRunMargin=S: the AI batters run with this margin (negative: suicidal), to inspect run outs and the third umpire.
+	FParse::Value(FCommandLine::Get(), TEXT("CricketRunMargin="), Ctx.RunMargin);
 	if (!HumanBowls())
 	{
 		const FBowlingChoice Choice = CricketAI::ChooseDelivery(BowlerPlayer(), StrikerPlayer().BatHand, Match, RecentPlans, Rng, AiSkill());
@@ -1098,6 +1110,8 @@ void ASuperOverGameMode::FinishDelivery()
 		Result.Summary = TEXT("[DEBUG] Forced wicket  >  BOWLED!");
 		bForceWicket = false;
 	}
+	// Nothing of the last ball's presentation carries into this one's appeal or referral.
+	bReplayThis = bWicketThis = bReviewThis = bReferredThis = false;
 	// An LBW appeal: the umpire decides, and the ball is dead once given out, so no leg byes either way.
 	bAwaitingReview = bReviewTaken = false;
 	const FBallTracking& Tr = Result.Tracking;
@@ -1122,6 +1136,16 @@ void ASuperOverGameMode::FinishDelivery()
 			PhaseTime = 0.f;
 			return;
 		}
+	}
+	if (CricketUmpire::RefersToThirdUmpire(Result) && Result.BallPath.Num() > 1
+		&& (Outcome.Dismissal == EDismissal::None || Outcome.Dismissal == EDismissal::RunOut || Outcome.Dismissal == EDismissal::Stumped))
+	{
+		UE_LOG(LogCRICKET26, Display, TEXT("Referred to the third umpire: home %.2f s before the stumps were broken"), Result.HomeMargin);
+		PendingOutcome = Outcome;
+		bAwaitingThirdUmpire = true;
+		DPhase = EDeliveryPhase::DeadBall;
+		PhaseTime = 0.f;
+		return;
 	}
 	ScoreDelivery(Outcome);
 }
@@ -1178,13 +1202,14 @@ void ASuperOverGameMode::ScoreDelivery(FDeliveryOutcome Outcome)
 	LastSummary = Result.Summary;
 	Commentary = CricketCommentary::Describe(Result, Outcome, Match, Names, OffSign, BallsPlayed);
 	if (bReviewTaken && ReviewResult == CricketUmpire::EReview::Overturned) Commentary = TEXT("Overturned on review! ") + Commentary;
+	if (bReferredThis) Commentary = (Outcome.Dismissal == EDismissal::None ? TEXT("Not out, says the third umpire. ") : TEXT("Given out by the third umpire. ")) + Commentary;
 	UE_LOG(LogCRICKET26, Display, TEXT("Commentary: %s"), *Commentary);
 	++BallsPlayed;
 	UE_LOG(LogCRICKET26, Display, TEXT("%s %d/%d (%d.%d): %s"), *Teams[Match.BattingTeam()].Short, Match.Cur().Runs,
 		Match.Cur().Wickets, Match.Cur().LegalBalls / 6, Match.Cur().LegalBalls % 6, *LastSummary);
 	Emit(Events);
 	bReplayThis = (Events.Contains(ECricketEvent::Wicket) || Events.Contains(ECricketEvent::BoundaryFour) || Events.Contains(ECricketEvent::BoundarySix))
-		&& Result.BallPath.Num() > 1;
+		&& Result.BallPath.Num() > 1 && !bReferredThis; // the third umpire's frames were the replay
 	bWicketThis = Events.Contains(ECricketEvent::Wicket);
 	bReviewThis = Result.bPadImpact && Result.Tracking.Projected.Num() > 1 && Result.BallPath.Num() > 1;
 	DPhase = EDeliveryPhase::DeadBall;
@@ -1399,7 +1424,7 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	const bool bReplay = IsReplaying();
 	const bool bReview = IsReviewing();
 	const bool bScorecard = ShowingScorecard();
-	const float T = bReplay ? ReplayBallTime() : DPhase == EDeliveryPhase::DeadBall ? Result.DeadTime : PhaseTime;
+	const float T = bAwaitingThirdUmpire ? ThirdUmpireBallTime() : bReplay ? ReplayBallTime() : DPhase == EDeliveryPhase::DeadBall ? Result.DeadTime : PhaseTime;
 
 	// Ball sounds when the presented ball passes each moment, so a replay plays them again.
 	if (T < PrevCueT) PrevCueT = T; // a new ball or a replay rewinds the clock
@@ -1517,7 +1542,9 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	{
 		// Footwork: the striker steps to where the stroke is played (down the track to a spinner), then back.
 		const float S = FMath::Clamp((T - BatInput.PressTime) / FMath::Max(Result.Shot.SwingTime, 0.05f), 0.f, 1.f);
-		const float Back = FMath::Clamp((T - Result.ContactTime - 0.4f) / 0.8f, 0.f, 1.f);
+		// Beaten down the track, they are back in their ground when the simulation says they regained it.
+		const float Home = Result.BrokenTime >= 0.f ? Result.BrokenTime - Result.HomeMargin : Result.ContactTime + 1.2f;
+		const float Back = FMath::Clamp((T - Home + 0.8f) / 0.8f, 0.f, 1.f);
 		const float X = FMath::Lerp(FMath::Lerp(0.9f, Result.Shot.ContactX() - 0.45f, FMath::SmoothStep(0.f, 1.f, S)), 0.9f, Back);
 		Striker->SetActorLocation(ToWorld(FVector(X, -0.35f * Off, 0.9f)));
 	}
@@ -1586,6 +1613,17 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 			LookAt = ToWorld(FVector(Result.Shot.ContactX(), 0.f, 1.f));
 			WantFov = 3.f;
 		}
+	}
+	if (bAwaitingThirdUmpire)
+	{
+		// Square-on to the popping crease at the broken wicket, then from down the pitch back at it (behind the
+		// stumps, the umpire and the fielder taking the ball stand in the way).
+		Shot = ThirdUmpireAngle() == 0 ? Replay : SuperSlow;
+		const bool bNear = Result.bBrokenAtStrikerEnd;
+		const float StumpsX = bNear ? 0.f : PitchLength, Toward = bNear ? 1.f : -1.f, CreaseX = StumpsX + Toward * PoppingCrease;
+		WantLoc = ToWorld(ThirdUmpireAngle() == 0 ? FVector(CreaseX, 22.f * Off, 1.2f) : FVector(CreaseX + Toward * 14.f, 0.f, 2.5f));
+		LookAt = ToWorld(FVector(ThirdUmpireAngle() == 0 ? CreaseX : CreaseX - Toward * 0.5f, 0.f, 0.5f));
+		WantFov = ThirdUmpireAngle() == 0 ? 14.f : 20.f;
 	}
 	if (bReview)
 	{

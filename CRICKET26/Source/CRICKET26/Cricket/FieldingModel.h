@@ -81,6 +81,7 @@ struct FRunningOutcome
 	float SentBackAt = 0.f;         // when they turned back
 	float SentBackFrom = 0.f;       // how far along that run they were (0..1)
 	float BackIn = 0.f;             // when they regained their ground (or would have)
+	float Margin = 0.f;             // how long the last runner was home before the stumps could be broken (negative: run out)
 
 	/** When the last runner is home or out. */
 	float EndTime() const { return FMath::Max(RunTimes.Num() ? RunTimes.Last() : 0.f, BackIn); }

@@ -134,6 +134,20 @@ public:
 	CricketUmpire::EReview ReviewResult = CricketUmpire::EReview::Upheld;
 	FDeliveryOutcome PendingOutcome;
 	bool HumanReviews() const { return bAwaitingReview && !bAutoPlay && ReviewingTeam == HumanTeam; }
+	/**
+	 * Third umpire. A run out or stumping too close to see (CricketUmpire::RefersToThirdUmpire) waits on frames
+	 * around the stumps being broken: side-on to the crease, then from behind the stumps, each rolling in super slow
+	 * motion from ThirdUmpireLead before the bails come off and freezing there. The delivery is scored after, and
+	 * the verdict shows while the close-up plays.
+	 */
+	static constexpr float ThirdUmpireTime = 5.f, ThirdUmpireLead = 0.4f;
+	bool bAwaitingThirdUmpire = false, bReferredThis = false;
+	int32 ThirdUmpireAngle() const { return PhaseTime < 0.5f * ThirdUmpireTime ? 0 : 1; }
+	float ThirdUmpireBallTime() const
+	{
+		const float Into = FMath::Fmod(PhaseTime, 0.5f * ThirdUmpireTime);
+		return Result.BrokenTime - ThirdUmpireLead + FMath::Min(Into * SuperSlowSpeed, ThirdUmpireLead);
+	}
 	bool bReviewThis = false;
 	float ReviewFrom() const { return ReplayDelay + (bReplayThis ? ReplayTime : 0.f); }
 	bool IsReviewing() const { return bReviewThis && DPhase == EDeliveryPhase::DeadBall && PhaseTime >= ReviewFrom() && PhaseTime < ReviewFrom() + ReviewTime; }

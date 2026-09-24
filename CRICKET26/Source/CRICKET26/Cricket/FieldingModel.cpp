@@ -466,6 +466,7 @@ FRunningOutcome CricketField::SolveRunning(const FFieldingOutcome& Fd, const FCr
 	}
 	R.Completed = R.RunTimes.Num();
 	const float Home = R.bSentBack ? R.BackIn : R.RunTimes.Num() ? R.RunTimes.Last() : 0.f;
+	R.Margin = R.BreakTime - Home;
 	if (R.Attempted > 0 && Home > R.BreakTime)
 	{
 		R.bRunOut = true;

@@ -395,6 +395,8 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 				// The keeper's take decides it: a fumble gives the batter time to get back.
 				const float Break = F.FieldTime + (F.Action == EFieldAction::Fumble ? 0.9f : 0.25f);
 				if (Break < Regain) R.Dismissal = EDismissal::Stumped;
+				R.BrokenTime = T0 + Break;
+				R.HomeMargin = Break - Regain;
 				StumpingNote = R.Dismissal == EDismissal::Stumped ? (bOverbalanced ? TEXT(" (overbalanced)") : TEXT(" (down the track)"))
 					: F.Action == EFieldAction::Fumble ? TEXT(" - keeper fumbles, stumping missed") : TEXT(" - just back in");
 				Hold(R.BallPath, FVector(0.f, 0.f, 0.5f), 1.5f);
@@ -437,6 +439,12 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 				else Throw(Hand, Stumps, Run.ThrowArrive - Run.ThrowRelease);
 				Hold(R.BallPath, Stumps, 1.2f);
 				if (R.Running.bRunOut) R.Dismissal = EDismissal::RunOut;
+				if (Run.Attempted > 0)
+				{
+					R.BrokenTime = T0 + Run.BreakTime;
+					R.bBrokenAtStrikerEnd = Run.bThrowToStrikerEnd;
+					R.HomeMargin = Run.Margin;
+				}
 				R.DeadTime = T0 + FMath::Max(R.Running.ThrowArrive, R.Running.EndTime()) + 1.2f;
 			}
 			else
@@ -452,6 +460,7 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 	// Only a run out stands off a no-ball or a free hit.
 	const bool bProtected = R.bNoBall || Ctx.bFreeHit;
 	if (bProtected && R.Dismissal != EDismissal::None && R.Dismissal != EDismissal::RunOut) R.Dismissal = EDismissal::None;
+	if (bProtected && !R.Running.bRunOut) R.BrokenTime = -1.f; // a stumping chance that cannot be out
 
 	// Commentary-style summary for the HUD.
 	// Timing readout so the player can learn the window: perfect / good, else early or late by how much.
