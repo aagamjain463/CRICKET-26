@@ -206,7 +206,7 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 	const EFootwork Foot = bShot ? R.Shot.Foot : EFootwork::Back;
 	const float PadX = Foot == EFootwork::Advance ? R.Shot.AdvanceX - 0.25f : Foot == EFootwork::Front ? 1.75f : 0.8f;
 	const float PadMin = Foot == EFootwork::Back ? -0.32f : -0.22f, PadMax = Foot == EFootwork::Back ? 0.0f : 0.10f;
-	const float InLine = CricketGeo::StumpsHalfWidth + CricketGeo::BallRadius;
+	const float InLine = FBallTracking::InLine;
 
 	// Phase 1: release until bat, pad, stumps, or past the batter.
 	FBallState B = Release.Ball;
@@ -256,12 +256,19 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 			{
 				R.bPadImpact = true;
 				// Ball tracking: would it have gone on to hit the stumps?
+				FBallTracking& T = R.Tracking;
 				FBallState Track = S;
-				const bool bWouldHit = SimulateToPlane(Track, 0.f, C, 1.f) && HitsStumps(Track.Pos);
-				const bool bPitchedOutsideLeg = R.PitchTime >= 0.f && R.PitchPos.Y * Off < -InLine;
-				const bool bImpactInLine = FMath::Abs(Lat) <= InLine;
-				const bool bNoShotOutsideOff = !bShot && Lat > InLine;
-				if (!bPitchedOutsideLeg && (bImpactInLine || bNoShotOutsideOff) && bWouldHit) R.Dismissal = EDismissal::LBW;
+				T.Impact = S.Pos;
+				T.Projected.Add(S.Pos);
+				T.PitchLine = R.PitchPos.Y * Off;
+				T.ImpactLine = Lat;
+				T.bWouldHit = SimulateToPlane(Track, 0.f, C, 1.f, &T.Projected) && HitsStumps(Track.Pos);
+				T.bPitchedOutsideLeg = R.PitchTime >= 0.f && R.PitchPos.Y * Off < -InLine;
+				T.bImpactInLine = FMath::Abs(Lat) <= InLine || (!bShot && Lat > InLine);
+				// The ball's centre outside the stumps (wide of them or over the bails) means less than half of it
+				// is inside their outline.
+				T.bUmpiresCall = T.bWouldHit && (FMath::Abs(Track.Pos.Y) > CricketGeo::StumpsHalfWidth || Track.Pos.Z > CricketGeo::StumpHeight);
+				if (!T.bPitchedOutsideLeg && T.bImpactInLine && T.bWouldHit) R.Dismissal = EDismissal::LBW;
 
 				// The pads are rounded: a ball striking off-centre glances away toward that side, one
 				// struck square-on drops dead in front. Pads absorb most of the impact.

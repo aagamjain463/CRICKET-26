@@ -91,11 +91,22 @@ public:
 	static constexpr float ReplayDelay = 1.2f, ReplaySpeed = 0.5f, ReplayLead = 0.8f, ReplayAction = 1.6f;
 	bool bReplayThis = false;
 	bool IsReplaying() const { return bReplayThis && DPhase == EDeliveryPhase::DeadBall && PhaseTime >= ReplayDelay && PhaseTime < ReplayDelay + ReplayAction / ReplaySpeed; }
+	/**
+	 * Ball tracking after every ball that hits the pad, once any replay is over: a view from behind the bowler's
+	 * stumps with the players hidden, drawing the delivery up to the pad and then where it would have gone, while
+	 * the HUD calls pitching, impact and wickets in turn.
+	 */
+	static constexpr float ReviewTime = 5.f;
+	bool bReviewThis = false;
+	float ReviewFrom() const { return ReplayDelay + (bReplayThis ? ReplayAction / ReplaySpeed : 0.f); }
+	bool IsReviewing() const { return bReviewThis && DPhase == EDeliveryPhase::DeadBall && PhaseTime >= ReviewFrom() && PhaseTime < ReviewFrom() + ReviewTime; }
+	/** How far the review has got, 0 to 1: the path reaches the pad at 0.4 and the stumps at 0.7. */
+	float ReviewProgress() const { return FMath::Clamp((PhaseTime - ReviewFrom()) / ReviewTime, 0.f, 1.f); }
 	/** The innings break or result: after the last ball's banner and replay, a scorecard over a wide shot of the ground. */
 	static constexpr float ScorecardDelay = 2.2f;
 	bool ShowingScorecard() const
 	{
-		return (Match.Phase == EMatchPhase::InningsBreak || Match.Phase == EMatchPhase::MatchComplete) && !IsReplaying()
+		return (Match.Phase == EMatchPhase::InningsBreak || Match.Phase == EMatchPhase::MatchComplete) && !IsReplaying() && !IsReviewing()
 			&& (DPhase != EDeliveryPhase::DeadBall || PhaseTime >= ScorecardDelay);
 	}
 
@@ -137,6 +148,7 @@ private:
 	UPROPERTY() TArray<TObjectPtr<AStaticMeshActor>> Fielders;
 	UPROPERTY() TArray<TObjectPtr<AStaticMeshActor>> Umpires;
 	UPROPERTY() TObjectPtr<ACameraActor> Camera;
+	UPROPERTY() TArray<TObjectPtr<AStaticMeshActor>> TrackSegments; // the ball-tracking trail, spawned on the first review
 	UPROPERTY() TObjectPtr<USkeletalMesh> BodyMesh;
 	UPROPERTY() TMap<TObjectPtr<AActor>, TObjectPtr<USkeletalMeshComponent>> Bodies; // each figure's posed body
 	UPROPERTY() TObjectPtr<UAnimSequence> IdleAnim;
@@ -168,7 +180,7 @@ private:
 	FRandomStream Rng;
 	TArray<int32> RecentPlans;
 	float ReleaseTiming = 0.f;
-	bool bViewSet = false, bCutCamera = true, bWasReplaying = false, bWasScorecard = false;
+	bool bViewSet = false, bCutCamera = true, bWasReplaying = false, bWasReviewing = false, bWasScorecard = false;
 
 	AStaticMeshActor* Spawn(UStaticMesh* Mesh, const FVector& PosM, const FVector& SizeM, const FLinearColor& Colour);
 	void Paint(AStaticMeshActor* Actor, const FLinearColor& Colour);
@@ -185,6 +197,7 @@ private:
 	void UpdateFigures(float Dt);
 	void BuildStadium();
 	void UpdateCrowd();
+	void UpdateTracking();
 	void UpdatePoses(float T, bool bLive, float Post, float Off, float Arm);
 	class UCricketAnimInstance* AnimOf(AActor* Figure) const;
 	void CheckFigures();

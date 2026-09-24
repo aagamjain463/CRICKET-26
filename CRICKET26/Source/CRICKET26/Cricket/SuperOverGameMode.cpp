@@ -177,6 +177,73 @@ AStaticMeshActor* ASuperOverGameMode::Spawn(UStaticMesh* Mesh, const FVector& Po
 	return A;
 }
 
+void ASuperOverGameMode::UpdateTracking()
+{
+	constexpr int32 Delivered = 40, Projected = 20; // trail segments before and after the pad
+	const bool bShow = IsReviewing();
+	if (!bShow && TrackSegments.IsEmpty()) return;
+	if (TrackSegments.IsEmpty())
+	{
+		for (int32 I = 0; I < Delivered + Projected; ++I)
+			TrackSegments.Add(Spawn(CylinderMesh, FVector(0.f, 0.f, -5.f), FVector(0.07f), I < Delivered ? FLinearColor(0.85f, 0.05f, 0.05f) : FLinearColor(0.1f, 0.4f, 0.95f)));
+		TrackSegments.Add(Spawn(CylinderMesh, FVector(0.f, 0.f, -5.f), FVector(0.22f, 0.22f, 0.004f), FLinearColor(0.95f, 0.95f, 0.95f))); // where it pitched
+		for (AStaticMeshActor* A : TrackSegments) A->GetStaticMeshComponent()->SetCastShadow(false);
+	}
+
+	// The players and their bats are hidden from the view, so the trail is drawn on the bare pitch.
+	if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
+	{
+		PC->HiddenActors.Reset();
+		if (bShow)
+		{
+			for (AStaticMeshActor* A : Figures) PC->HiddenActors.Add(A);
+			for (const auto& B : Bodies) PC->HiddenActors.Add(B.Value->GetOwner());
+			for (AStaticMeshActor* A : BatHandles) PC->HiddenActors.Add(A);
+			PC->HiddenActors.Add(Bat);
+			PC->HiddenActors.Add(NonStrikerBat);
+		}
+	}
+
+	// The delivery as bowled up to the pad, then its projection, each drawn as the review reveals it.
+	const FBallTracking& Tr = Result.Tracking;
+	TArray<FVector> Before;
+	for (const FVector& P : Result.BallPath)
+	{
+		if (P.X <= Tr.Impact.X) break;
+		Before.Add(P);
+	}
+	Before.Add(Tr.Impact);
+	auto Along = [](const TArray<FVector>& Path, float U)
+	{
+		const float F = FMath::Clamp(U, 0.f, 1.f) * (Path.Num() - 1);
+		const int32 K = FMath::Min(int32(F), Path.Num() - 2);
+		return FMath::Lerp(Path[K], Path[K + 1], F - K);
+	};
+	auto Lay = [&](const TArray<FVector>& Path, int32 First, int32 Count, float Shown)
+	{
+		for (int32 I = 0; I < Count; ++I)
+		{
+			AStaticMeshActor* Seg = TrackSegments[First + I];
+			const float U0 = float(I) / Count, U1 = FMath::Min(float(I + 1) / Count, Shown);
+			const bool bOn = bShow && Path.Num() > 1 && U1 > U0;
+			Seg->SetActorHiddenInGame(!bOn);
+			if (!bOn) continue;
+			const FVector A = ToWorld(Along(Path, U0)), B = ToWorld(Along(Path, U1));
+			Seg->SetActorLocationAndRotation(0.5f * (A + B), FRotationMatrix::MakeFromZ(B - A).Rotator());
+			Seg->SetActorScale3D(FVector(0.07f, 0.07f, FMath::Max(FVector::Dist(A, B) / 100.f, 0.001f)));
+		}
+	};
+	const float Progress = ReviewProgress(), ToPad = Progress / 0.4f, OnFromPad = (Progress - 0.4f) / 0.3f;
+	Lay(Before, 0, Delivered, ToPad);
+	Lay(Tr.Projected, Delivered, Projected, OnFromPad);
+
+	AStaticMeshActor* Pitched = TrackSegments.Last();
+	const float PitchU = Result.PitchTime / Result.SampleDt / FMath::Max(1, Before.Num() - 1);
+	Pitched->SetActorHiddenInGame(!bShow || Result.PitchTime < 0.f || ToPad < PitchU);
+	Pitched->SetActorLocation(ToWorld(FVector(Result.PitchPos.X, Result.PitchPos.Y, 0.003f)));
+	if (bShow) Ball->SetActorLocation(ToWorld(ToPad < 1.f ? Along(Before, ToPad) : Along(Tr.Projected, OnFromPad))); // the ball leads the trail
+}
+
 float ASuperOverGameMode::BallDisplayScale(float DistanceM, float HorizontalFovDeg, float Aspect)
 {
 	const float ViewHeight = 2.f * DistanceM * FMath::Tan(FMath::DegreesToRadians(HorizontalFovDeg) * 0.5f) / Aspect;
@@ -746,7 +813,7 @@ void ASuperOverGameMode::Tick(float Dt)
 		if (PhaseTime >= Result.DeadTime) FinishDelivery();
 		break;
 	case EDeliveryPhase::DeadBall:
-		if (PhaseTime > 1.8f + (bReplayThis ? ReplayAction / ReplaySpeed : 0.f))
+		if (PhaseTime > (bReviewThis ? ReviewFrom() + ReviewTime + 0.5f : 1.8f + (bReplayThis ? ReplayAction / ReplaySpeed : 0.f)))
 		{
 			DPhase = EDeliveryPhase::Waiting;
 			PhaseTime = 0.f;
@@ -1000,7 +1067,9 @@ void ASuperOverGameMode::DoRelease(float Timing)
 	Release = CricketBowling::Execute(BowlerPlayer(), Batter.BatHand, HumanPlan, Timing, Ctx.Seed, Ctx.Conditions);
 	ReleaseTiming = Timing;
 	BatInput = FBatInput();
-	if (!HumanBats())
+	// -CricketAiLeaves: the AI batter lets every ball go (to inspect pad impacts and their ball tracking).
+	static const bool bAiLeaves = FParse::Param(FCommandLine::Get(), TEXT("CricketAiLeaves"));
+	if (!HumanBats() && !bAiLeaves)
 	{
 		FRandomStream AiRng(Ctx.Seed + 1);
 		BatInput = CricketAI::ChooseShot(Release, Batter, BowlerPlayer().BowlerType, CricketAI::Aggression(Match), Ctx.Field, Ctx.Conditions, AiRng, AiSkill());
@@ -1041,6 +1110,7 @@ void ASuperOverGameMode::FinishDelivery()
 	Emit(Events);
 	bReplayThis = (Events.Contains(ECricketEvent::Wicket) || Events.Contains(ECricketEvent::BoundaryFour) || Events.Contains(ECricketEvent::BoundarySix))
 		&& Result.BallPath.Num() > 1;
+	bReviewThis = Result.bPadImpact && Result.Tracking.Projected.Num() > 1 && Result.BallPath.Num() > 1;
 	DPhase = EDeliveryPhase::DeadBall;
 	PhaseTime = 0.f;
 }
@@ -1253,6 +1323,9 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	const bool bReplay = IsReplaying();
 	if (bReplay != bWasReplaying) bCutCamera = true; // cut into and out of the replay
 	bWasReplaying = bReplay;
+	const bool bReview = IsReviewing();
+	if (bReview != bWasReviewing) bCutCamera = true;
+	bWasReviewing = bReview;
 	const bool bScorecard = ShowingScorecard();
 	if (bScorecard != bWasScorecard) bCutCamera = true; // cut to the ground and back
 	bWasScorecard = bScorecard;
@@ -1395,6 +1468,15 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 		LookAt = T < Result.ContactTime + 0.3f ? ToWorld(FVector(Result.Shot.ContactX(), 0.f, 1.f)) : BallPos;
 		WantFov = T < Result.ContactTime + 0.3f ? 12.f : 35.f;
 	}
+	if (bReview)
+	{
+		// Ball tracking: from above the bowler's stumps while the path comes down the pitch, then round to the
+		// off side of the striker's stumps, to see from the pad on to them.
+		const bool bClose = ReviewProgress() > 0.4f;
+		WantLoc = ToWorld(bClose ? FVector(4.5f, 2.5f * Off, 1.6f) : FVector(PitchLength + 5.f, 0.f, 3.f));
+		LookAt = ToWorld(bClose ? FVector(0.6f, 0.f, 0.35f) : FVector(2.f, 0.f, 0.5f));
+		WantFov = bClose ? 32.f : 24.f;
+	}
 	if (bScorecard)
 	{
 		// High in the square-leg stand, across the square to the far stands.
@@ -1428,6 +1510,7 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	UpdateFigures(Dt);
 	UpdatePoses(T, bLive, Post, Off, Arm);
 	UpdateCrowd();
+	UpdateTracking();
 
 	if (bTrajectory && Result.BallPath.Num() > 1)
 	{

@@ -40,6 +40,20 @@ struct FBallRead
 	bool bPitched = false;     // the ball had already pitched when read
 };
 
+/** Ball tracking of a ball that hit the pad: where it would have gone, and the three LBW calls. */
+struct FBallTracking
+{
+	FVector Impact = FVector::ZeroVector;
+	TArray<FVector> Projected;         // from the impact to the stumps plane (or where the ball stopped), every step
+	/** Half the width of the stumps plus the ball: a ball's centre closer than this to middle stump is in line. */
+	static constexpr float InLine = CricketGeo::StumpsHalfWidth + CricketGeo::BallRadius;
+	float PitchLine = 0.f, ImpactLine = 0.f; // metres to the off side of middle stump (negative: leg side)
+	bool bPitchedOutsideLeg = false;
+	bool bImpactInLine = false;        // or outside off with no stroke offered, which also counts
+	bool bWouldHit = false;
+	bool bUmpiresCall = false;         // the ball only clips the stumps: less than half of it inside their outline
+};
+
 struct FDeliveryResult
 {
 	static constexpr float SampleDt = CricketBall::FixedDt;
@@ -56,6 +70,7 @@ struct FDeliveryResult
 	FContactResult Contact;
 	bool bTooLate = false;
 	bool bPadImpact = false;
+	FBallTracking Tracking;        // filled on a pad impact
 	bool bStumpsHit = false;
 	float StumpsTime = 0.f;
 	EDismissal Dismissal = EDismissal::None;

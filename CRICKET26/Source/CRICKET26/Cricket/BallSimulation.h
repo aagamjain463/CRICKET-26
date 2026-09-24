@@ -53,8 +53,9 @@ namespace CricketBall
 	 *  as a batter would read it (drag, gravity, a nominal bounce; no swing, seam or spin). */
 	bool PredictAtPlane(FBallState Ball, float PlaneX, const FPitchConditions& Conditions, FVector& OutPos, float& OutTime);
 
-	/** Simulates until PlaneX is crossed (moving toward -X). Returns false if the ball stops first. */
-	bool SimulateToPlane(FBallState& Ball, float PlaneX, const FPitchConditions& Conditions, float MaxTime = 3.f);
+	/** Simulates until PlaneX is crossed (moving toward -X). Returns false if the ball stops first. Path, when given,
+	 *  gets the position after every step, ending on the plane. */
+	bool SimulateToPlane(FBallState& Ball, float PlaneX, const FPitchConditions& Conditions, float MaxTime = 3.f, TArray<FVector>* Path = nullptr);
 
 	/** Spin vector producing a Magnus force along Direction for a ball moving along Velocity. */
 	FVector SpinForMagnus(const FVector& Velocity, const FVector& Direction, float RadPerSec);

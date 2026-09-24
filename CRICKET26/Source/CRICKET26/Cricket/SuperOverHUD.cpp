@@ -263,7 +263,7 @@ void ASuperOverHUD::DrawHUD()
 	// with the grade, the shot and where it came off the bat, so the window can be learnt.
 	const FDeliveryResult& Last = GM->Result;
 	if (GM->bTimingFeedback && Last.Contact.Shot != EShotType::Leave && GM->DPhase == EDeliveryPhase::DeadBall && GM->PhaseTime < 3.f
-		&& !GM->IsReplaying() && !GM->ShowingScorecard())
+		&& !GM->IsReplaying() && !GM->IsReviewing() && !GM->ShowingScorecard())
 	{
 		using namespace CricketDelivery;
 		constexpr float Span = 0.12f; // s either side of ideal: the swing misses beyond it
@@ -289,6 +289,37 @@ void ASuperOverHUD::DrawHUD()
 	{
 		DrawRect(FLinearColor(0.7f, 0.05f, 0.05f, 0.85f), W - 150 * S, 20 * S, 130 * S, 30 * S);
 		Text(TEXT("REPLAY"), W - 85 * S, 24 * S, FLinearColor::White, 1.1f * S, true);
+	}
+
+	// Ball tracking: the three LBW calls, each as the trail reaches it, then the decision.
+	if (GM->IsReviewing())
+	{
+		const FBallTracking& T = Last.Tracking;
+		const float P = GM->ReviewProgress(), PW = 300 * S, PX = 20 * S;
+		float Y = H * 0.2f;
+		const FLinearColor Good(0.1f, 0.6f, 0.2f, 0.9f), Bad(0.75f, 0.08f, 0.08f, 0.9f), Call(0.9f, 0.6f, 0.05f, 0.9f);
+		auto Side = [](float Line) { return Line > FBallTracking::InLine ? TEXT("OUTSIDE OFF") : Line < -FBallTracking::InLine ? TEXT("OUTSIDE LEG") : TEXT("IN LINE"); };
+		auto Row = [&](const TCHAR* Label, const FString& Value, const FLinearColor& Colour)
+		{
+			DrawRect(FLinearColor(0.02f, 0.03f, 0.07f, 0.88f), PX, Y, PW, 34 * S);
+			Text(Label, PX + 12 * S, Y + 8 * S, Dim, 0.85f * S);
+			DrawRect(Colour, PX + PW - 160 * S, Y + 4 * S, 156 * S, 26 * S);
+			Text(Value, PX + PW - 82 * S, Y + 7 * S, FLinearColor::White, 0.85f * S, true);
+			Y += 38 * S;
+		};
+		DrawRect(FLinearColor(0.1f, 0.4f, 0.95f, 0.9f), PX, Y, PW, 30 * S);
+		Text(TEXT("BALL TRACKING"), PX + PW * 0.5f, Y + 5 * S, FLinearColor::White, 1.f * S, true);
+		Y += 34 * S;
+		if (P >= 0.25f) Row(TEXT("PITCHING"), Last.PitchTime < 0.f ? FString(TEXT("FULL TOSS")) : FString(Side(T.PitchLine)), T.bPitchedOutsideLeg ? Bad : Good);
+		if (P >= 0.42f) Row(TEXT("IMPACT"), Side(T.ImpactLine), T.bImpactInLine ? Good : Bad);
+		if (P >= 0.72f) Row(TEXT("WICKETS"), T.bUmpiresCall ? TEXT("UMPIRE'S CALL") : T.bWouldHit ? TEXT("HITTING") : TEXT("MISSING"),
+			T.bUmpiresCall ? Call : T.bWouldHit ? Good : Bad);
+		if (P >= 0.82f)
+		{
+			const bool bOut = Last.Dismissal == EDismissal::LBW;
+			DrawRect(bOut ? Bad : Good, PX, Y + 6 * S, PW, 44 * S);
+			Text(bOut ? TEXT("OUT") : TEXT("NOT OUT"), PX + PW * 0.5f, Y + 11 * S, FLinearColor::White, 1.6f * S, true);
+		}
 	}
 
 	// Scorecard at the innings break and the result, once the banner and the replay have had their moment.
@@ -331,7 +362,7 @@ void ASuperOverHUD::DrawHUD()
 	}
 
 	// Event banner, until the next ball is on its way.
-	if (GetWorld()->GetTimeSeconds() - BannerAt < 2.2 && !GM->IsReplaying() && GM->DPhase != EDeliveryPhase::RunUp && GM->DPhase != EDeliveryPhase::BallInPlay && !GM->ShowingScorecard())
+	if (GetWorld()->GetTimeSeconds() - BannerAt < 2.2 && !GM->IsReplaying() && !GM->IsReviewing() && GM->DPhase != EDeliveryPhase::RunUp && GM->DPhase != EDeliveryPhase::BallInPlay && !GM->ShowingScorecard())
 	{
 		DrawRect(FLinearColor(0.02f, 0.02f, 0.05f, 0.7f), 0, H * 0.36f, W, 70 * S);
 		Text(Banner, W * 0.5f, H * 0.36f + 12 * S, FLinearColor(1, 0.85f, 0.2f), 2.5f * S, true);

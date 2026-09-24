@@ -45,7 +45,7 @@ This note lets a new agent pick up the "make it like Cricket 26" work where it s
 |---|---|---|
 | 1 | Batting feel | Done, commit `1157fad` |
 | 2 | Broadcast HUD | Done, commit `5b5bf0c` (score bar, speed gun, this-over discs, player cards; checked in capture; 50/50 tests) |
-| 3 | Ball tracking | Started (design only, no code yet) |
+| 3 | Ball tracking | LBW tracking and its Hawk-Eye view done (master plan M8, 6.5); pitch map and wagon wheel not started |
 | 4 | Camera director | Not started |
 | 5 | Stadium | Not started (CC0 sources only) |
 | 6 | T20 and ODI formats | Not started |
@@ -86,20 +86,18 @@ MetaHuman scripting notes (UE 5.8 Python):
 - To rebuild one character: `MHMAKE_ONLY=<Name> Scripts/metahuman/make_players.sh`. Already-built characters
   are skipped. Progress is logged: `grep MHMAKE Saved/MHMake.log`.
 
-## Item 3: ball tracking (next after item 7)
+## Item 3: ball tracking
 
-Plan: pitch map, wagon wheel, Hawk-Eye trail and an LBW projection, all from the simulated path.
-
-Useful code:
-- `FDeliveryResult` (`DeliveryResolver.h`) already has `BallPath` (samples at `SampleDt`), `PitchPos` and
-  `PitchTime`, `bPadImpact`, `Dismissal`, `Fielding.FieldPos` and `ContactTime`.
-- The LBW decision is in `DeliveryResolver.cpp` around line 250. There, `Track` is simulated on from the pad to
-  the stumps plane (`SimulateToPlane(Track, 0.f, C, 1.f)` then `HitsStumps`). Its three calls are:
-  pitched outside leg, impact in line, and wickets hitting.
-- The intended design (not started) is to store the projected path and the three calls in `FDeliveryResult` so
-  the HUD can show a Hawk-Eye review. Test the projection against the existing LBW decision.
-- The existing debug trajectory draw (F4, `bTrajectory`) is in `SuperOverGameMode.cpp` near the end of
-  `UpdatePresentation`.
+- `FDeliveryResult::Tracking` (`FBallTracking`, `DeliveryResolver.h`) is filled on every pad impact: the impact
+  point, the projected path to the stumps plane (`SimulateToPlane` now records the path), the pitch and impact
+  lines, and the calls (pitched outside leg, impact in line, wickets hitting, umpire's call). The LBW decision is
+  made from these calls; `CRICKET26.Umpire.BallTrackingMatchesLBW` checks they agree.
+- The game mode reviews every pad impact (`bReviewThis`, `IsReviewing()`, `ReviewProgress()`), after the replay if
+  there is one. `UpdateTracking` spawns the trail segments on the first review, lays them along the path as the
+  review reveals it, and hides the players through the player controller's `HiddenActors`. The HUD draws the
+  "BALL TRACKING" panel.
+- To see one: `Scripts/capture.sh 3 -CricketAiLeaves` (the AI batter leaves every ball; ball 3 is an LBW).
+- Not started: the pitch map and wagon wheel (plan 6.4), the edge detector and player reviews.
 
 ## Blocked on the owner
 

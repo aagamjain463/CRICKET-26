@@ -918,6 +918,31 @@ bool FSOLegByes::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOBallTracking, "CRICKET26.Umpire.BallTrackingMatchesLBW", CricketTestFlags)
+bool FSOBallTracking::RunTest(const FString&)
+{
+	// Every pad hit across lengths and lines, left alone: the tracking runs from the impact to the stumps, and its
+	// three calls give exactly the LBW decision.
+	int32 Outs = 0, NotOuts = 0;
+	for (float Length = 2.f; Length <= 8.f; Length += 1.f)
+	{
+		for (float Line = -0.4f; Line <= 0.4f; Line += 0.05f)
+		{
+			const FDeliveryResult R = CricketDelivery::Resolve(Release(EDeliveryType::Stock, Length, Line), FBatInput(), Ctx());
+			if (!R.bPadImpact) continue;
+			const FBallTracking& T = R.Tracking;
+			if (!TestTrue(*FString::Printf(TEXT("tracking starts at the impact (%s)"), *R.Summary), T.Projected.Num() > 1 && T.Projected[0] == T.Impact)) return false;
+			if (T.bWouldHit) TestTrue(TEXT("a ball hitting the stumps is tracked to them"), FMath::IsNearlyZero(T.Projected.Last().X, 0.01f));
+			TestEqual(*FString::Printf(TEXT("calls match the decision (%s)"), *R.Summary), R.Dismissal == EDismissal::LBW,
+				!T.bPitchedOutsideLeg && T.bImpactInLine && T.bWouldHit);
+			TestTrue(TEXT("umpire's call only on a hit"), !T.bUmpiresCall || T.bWouldHit);
+			(R.Dismissal == EDismissal::LBW ? Outs : NotOuts)++;
+		}
+	}
+	TestTrue(*FString::Printf(TEXT("both LBWs (%d) and not-outs (%d) checked"), Outs, NotOuts), Outs > 0 && NotOuts > 0);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOStumping, "CRICKET26.Umpire.StumpedDownTheTrack", CricketTestFlags)
 bool FSOStumping::RunTest(const FString&)
 {

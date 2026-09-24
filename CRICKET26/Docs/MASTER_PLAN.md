@@ -409,7 +409,7 @@ Checks:
 | M5 | 2.1 to 2.7 kit, gear, bat | Asset budget or Marvelous Designer | 2.2 first pass done: `Scripts/metahuman/make_kit.sh` cuts a collared shirt, trousers and shoes from each player's own full body in Blender. The kit keeps the body's skin weights, and the game paints it in team colours. 2.3 batting gear done: pads, gloves and a helmet with a grille, skinned to each batter's body by the same script. 2.4 bat done: `make_bat.py` lofts an original willow bat (spine, edges, shoulders, ribbed grip, fictional KESTREL stickers) with a procedural grain material. Keeper gear done: the keeper wears white pads and gloves (`SKM_<Name>_Keeper`). Umpire kit: a white wide-brimmed hat (`SKM_<Name>_Hat`) over the preset's dark clothes. Still to do: names and numbers |
 | M6 | 3.1 locomotion by motion matching | No (free Epic sample) | |
 | M7 | 3.2 to 3.8 cricket mocap and simulation-driven animation | Performer and capture route | |
-| M8 | 6.1 to 6.6 camera director, replays, graphics, DRS | No | |
+| M8 | 6.1 to 6.6 camera director, replays, graphics, DRS | No | 6.5 first part done: every pad impact stores its projected path and the three LBW calls (`FBallTracking`), tested against the LBW decision. After the replay, a ball-tracking view hides the players and draws the path down the pitch in red and the projection in blue, while the HUD calls pitching, impact and wickets (with umpire's call), then OUT or NOT OUT. `-CricketAiLeaves` makes the AI batter leave every ball, to inspect it. Still to do: the edge detector, player reviews, 6.1 to 6.4 and 6.6 |
 | M9 | 5.1 to 5.7 stadium, pitch, crowd | Asset budget | |
 | M10 | 4.2, 4.4 to 4.8 controls, bowling, field setting | Playtests | |
 | M11 | 7.1 to 7.5 audio | Voice actors, music | |

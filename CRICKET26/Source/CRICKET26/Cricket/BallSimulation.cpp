@@ -81,7 +81,7 @@ CricketBall::EStep CricketBall::Step(FBallState& B, const FPitchConditions& C, f
 	return EStep::None;
 }
 
-bool CricketBall::SimulateToPlane(FBallState& B, float PlaneX, const FPitchConditions& C, float MaxTime)
+bool CricketBall::SimulateToPlane(FBallState& B, float PlaneX, const FPitchConditions& C, float MaxTime, TArray<FVector>* Path)
 {
 	const float EndTime = B.Time + MaxTime;
 	while (B.Pos.X > PlaneX)
@@ -93,8 +93,10 @@ bool CricketBall::SimulateToPlane(FBallState& B, float PlaneX, const FPitchCondi
 			const float F = (Prev.Pos.X - PlaneX) / FMath::Max(Prev.Pos.X - B.Pos.X, KINDA_SMALL_NUMBER);
 			B.Pos = FMath::Lerp(Prev.Pos, B.Pos, F);
 			B.Time = FMath::Lerp(Prev.Time, B.Time, F);
+			if (Path) Path->Add(B.Pos);
 			return true;
 		}
+		if (Path) Path->Add(B.Pos);
 	}
 	return true;
 }
