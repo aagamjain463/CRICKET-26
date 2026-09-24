@@ -110,10 +110,13 @@ void ASuperOverGameMode::StartPlay()
 	QuitAfter = ShotBall;
 	FParse::Value(FCommandLine::Get(), TEXT("CricketShotEvery="), ShotEvery);
 	// -CricketDevCam=X,Y,Z,LookX,LookY,LookZ,Fov (simulation metres): a fixed camera for inspecting bodies;
-	// -CricketDevCam=fielder: 7 m from whoever fields the ball, on the pitch side.
+	// -CricketDevCam=fielder: 7 m from whoever fields the ball, on the pitch side; or a named review shot of the
+	// striker: face (head and shoulders) or kit (head to toe).
 	FString Cam;
 	if (FParse::Value(FCommandLine::Get(), TEXT("CricketDevCam="), Cam, false))
 	{
+		if (Cam == TEXT("face")) Cam = TEXT("4.5,-1.5,1.5,0.6,0,1.2,22");
+		else if (Cam == TEXT("kit")) Cam = TEXT("3.5,3,1,0.9,-0.35,0.85,40");
 		bDevCamFielder = Cam == TEXT("fielder");
 		TArray<FString> V;
 		Cam.ParseIntoArray(V, TEXT(","));
