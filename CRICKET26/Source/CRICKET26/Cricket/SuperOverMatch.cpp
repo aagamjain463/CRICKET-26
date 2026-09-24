@@ -65,6 +65,8 @@ bool FSuperOverMatch::CompleteDelivery(const FDeliveryOutcome& O, TArray<ECricke
 
 	In.Deliveries++;
 	In.Runs += Total;
+	In.PartnershipRuns += Total;
+	In.PartnershipBalls += bLegal ? 1 : 0;
 	In.Extras += Byes + Wides + NoBall;
 	(O.bLegBye ? In.LegByes : In.Byes) += Byes;
 	In.Bowler.Runs += OffBat + Wides + NoBall; // byes and leg byes are not the bowler's fault
@@ -99,6 +101,7 @@ bool FSuperOverMatch::CompleteDelivery(const FDeliveryOutcome& O, TArray<ECricke
 	if (D != EDismissal::None)
 	{
 		In.Wickets++;
+		In.PartnershipRuns = In.PartnershipBalls = 0;
 		OutEvents.Add(ECricketEvent::Wicket);
 		if (D != EDismissal::RunOut) In.Bowler.Wickets++;
 

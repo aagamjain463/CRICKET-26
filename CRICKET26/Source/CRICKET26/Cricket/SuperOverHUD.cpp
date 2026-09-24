@@ -170,6 +170,16 @@ void ASuperOverHUD::DrawHUD()
 
 	// Speed gun, from release until the next ball.
 	const float Above = bTouch ? BarY + BarH + 8 * S : BarY - 38 * S;
+	// Under the batting side: the partnership, the run rate and, in a chase, the rate required.
+	if (!GM->ShowingScorecard() && !GM->IsReviewing())
+	{
+		FString Rates = FString::Printf(TEXT("P'SHIP %d (%d)    RR %.2f"), In.PartnershipRuns, In.PartnershipBalls,
+			In.LegalBalls > 0 ? 6.f * In.Runs / In.LegalBalls : 0.f);
+		if (M.IsChase() && M.Phase != EMatchPhase::MatchComplete && M.BallsRemaining() > 0)
+			Rates += FString::Printf(TEXT("    RRR %.2f"), 6.f * M.RunsRequired() / M.BallsRemaining());
+		DrawRect(FLinearColor(0.02f, 0.03f, 0.07f, 0.88f), BX0, Above, 330 * S, 30 * S);
+		Text(Rates, BX0 + 12 * S, Above + 6 * S, Dim, 0.8f * S);
+	}
 	if ((GM->DPhase == EDeliveryPhase::BallInPlay || GM->DPhase == EDeliveryPhase::DeadBall) && GM->Result.SpeedKph > 0.f && !GM->ShowingScorecard())
 	{
 		DrawRect(FLinearColor(0.02f, 0.03f, 0.07f, 0.88f), BX0 + BarW - 170 * S, Above, 170 * S, 30 * S);

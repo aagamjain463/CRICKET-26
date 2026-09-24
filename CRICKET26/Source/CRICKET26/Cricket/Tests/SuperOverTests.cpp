@@ -154,6 +154,25 @@ bool FSORulesWickets::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesPartnership, "CRICKET26.Rules.PartnershipResetsOnWicket", CricketTestFlags)
+bool FSORulesPartnership::RunTest(const FString&)
+{
+	FSuperOverMatch M;
+	M.Start(0);
+	Bowl(M, Four());
+	Bowl(M, Wide());
+	Bowl(M, Runs(2));
+	TestEqual(TEXT("partnership runs, extras included"), M.Cur().PartnershipRuns, 7);
+	TestEqual(TEXT("partnership balls, legal only"), M.Cur().PartnershipBalls, 2);
+	Bowl(M, Out(EDismissal::Bowled));
+	TestEqual(TEXT("reset by the wicket"), M.Cur().PartnershipRuns, 0);
+	TestEqual(TEXT("balls reset too"), M.Cur().PartnershipBalls, 0);
+	Bowl(M, Runs(1));
+	TestEqual(TEXT("the new pair's first run"), M.Cur().PartnershipRuns, 1);
+	TestEqual(TEXT("the new pair's first ball"), M.Cur().PartnershipBalls, 1);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesStrike, "CRICKET26.Rules.StrikeRotation", CricketTestFlags)
 bool FSORulesStrike::RunTest(const FString&)
 {

@@ -85,6 +85,8 @@ struct FInningsState
 	UPROPERTY(BlueprintReadOnly) int32 Byes = 0;
 	UPROPERTY(BlueprintReadOnly) int32 LegByes = 0;
 	UPROPERTY(BlueprintReadOnly) int32 Bouncers = 0;   // this over (a Super Over innings is one over)
+	UPROPERTY(BlueprintReadOnly) int32 PartnershipRuns = 0;  // since the last wicket, extras included
+	UPROPERTY(BlueprintReadOnly) int32 PartnershipBalls = 0; // legal balls since the last wicket
 	UPROPERTY(BlueprintReadOnly) int32 Striker = 0;    // index into the batting order
 	UPROPERTY(BlueprintReadOnly) int32 NonStriker = 1;
 	UPROPERTY(BlueprintReadOnly) int32 NextBatter = 2;
