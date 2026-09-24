@@ -18,7 +18,8 @@ unreal() {
 }
 unreal export
 for NAME in ${(s:,:)KIT_NAMES}; do
-  "$BLENDER" -b --python "$ROOT/Scripts/metahuman/make_kit.py" -- "$KIT_DIR/${NAME}_Body.fbx" "$KIT_DIR/${NAME}_Kit.fbx" "$KIT_DIR/${NAME}_Gear.fbx" 2>&1 | grep -E "^KIT written|Error" || true
+  "$BLENDER" -b --python "$ROOT/Scripts/metahuman/make_kit.py" -- "$KIT_DIR/${NAME}_Body.fbx" "$KIT_DIR/${NAME}_Kit.fbx" "$KIT_DIR/${NAME}_Gear.fbx" "$KIT_DIR/${NAME}_Keeper.fbx" \
+    "$KIT_DIR/${NAME}_Hat.fbx" 2>&1 | grep -E "^KIT written|Error" || true
 done
 "$BLENDER" -b --python "$ROOT/Scripts/metahuman/make_bat.py" -- "$KIT_DIR/Bat.fbx" 2>&1 | grep -E "^KIT written|Error" || true
 unreal import

@@ -72,7 +72,8 @@ This note lets a new agent pick up the "make it like Cricket 26" work where it s
   kit comes back as `/Game/MetaHumans/<Name>/Kit/SKM_<Name>_Kit`. `AddBody` hides the preset garment and gives
   the kit the body's pose. `Paint` colours the shirt in the team colour, the trousers in a darker shade and the
   shoes white. The same script makes `SKM_<Name>_Gear` (pads, gloves, and a helmet with a grille), which only the
-  two batters wear. `make_bat.py` models the bat (`/Game/MetaHumans/Kit/SM_Bat`, willow grain from `M_Bat`), which
+  two batters wear, `SKM_<Name>_Keeper` (white pads and gloves for the keeper, who is always `Fielders[0]`) and
+  `SKM_<Name>_Hat` (the umpires' white hat). `make_bat.py` models the bat (`/Game/MetaHumans/Kit/SM_Bat`, willow grain from `M_Bat`), which
   replaces the box blade and cylinder handle when it is there. Needs Blender at `/Applications/Blender.app`.
 
 MetaHuman scripting notes (UE 5.8 Python):

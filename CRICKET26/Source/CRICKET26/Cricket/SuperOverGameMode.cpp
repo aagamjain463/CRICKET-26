@@ -191,7 +191,8 @@ void ASuperOverGameMode::Paint(AStaticMeshActor* A, const FLinearColor& Colour)
 	A->GetStaticMeshComponent()->SetMaterial(0, M);
 	// A player's kit is painted in the team colour: the mannequin's own tint, or a MetaHuman's garment (every
 	// mesh but the skin: its shirt and shorts colours). The cricket kit has a shirt in the team colour, trousers in
-	// a darker shade of it, and white shoes; the batting gear white pads and gloves and a helmet in the darkest shade.
+	// a darker shade of it, and white shoes; the batting gear white pads and gloves and a helmet in the darkest shade,
+	// the keeper's gear white, and the umpire's hat white.
 	TArray<USkeletalMeshComponent*> Kit;
 	if (USkeletalMeshComponent* Body = BodyOf(A)) Body->GetOwner()->GetComponents(Kit);
 	for (USkeletalMeshComponent* Part : Kit)
@@ -202,11 +203,12 @@ void ASuperOverGameMode::Paint(AStaticMeshActor* A, const FLinearColor& Colour)
 		{
 			if (UMaterialInstanceDynamic* Cloth = Part->CreateDynamicMaterialInstance(I))
 			{
-				if ((Part->GetFName() == TEXT("Kit") || Part->GetFName() == TEXT("Gear")) && Slots.IsValidIndex(I))
+				const FName Worn = Part->GetFName();
+				if ((Worn == TEXT("Kit") || Worn == TEXT("Gear") || Worn == TEXT("Keeper") || Worn == TEXT("Hat")) && Slots.IsValidIndex(I))
 				{
 					const FName Slot = Slots[I];
 					const FLinearColor Pale(0.75f, 0.75f, 0.75f);
-					Cloth->SetVectorParameterValue(TEXT("Color"), Slot == TEXT("Kit_Shoes") || Slot == TEXT("Gear_Pads") || Slot == TEXT("Gear_Gloves") ? Pale
+					Cloth->SetVectorParameterValue(TEXT("Color"), Slot == TEXT("Kit_Shoes") || Slot == TEXT("Gear_Pads") || Slot == TEXT("Gear_Gloves") || Slot == TEXT("Gear_Hat") ? Pale
 						: Slot == TEXT("Kit_Trousers") ? Colour * 0.45f : Slot == TEXT("Gear_Helmet") ? Colour * 0.3f
 						: Slot == TEXT("Gear_Grille") ? FLinearColor(0.1f, 0.1f, 0.1f) : Colour);
 					continue;
@@ -266,6 +268,9 @@ void ASuperOverGameMode::AddBody(AStaticMeshActor* Marker, const TCHAR* MetaHuma
 		{
 			for (USkinnedMeshComponent* Part : Garment) if (Part != Body && Part->GetFName() != TEXT("Face")) Part->SetVisibility(false);
 			if (Marker == Striker || Marker == NonStriker) Wear(TEXT("Gear"));
+			// Every field preset puts the keeper first (CricketField::Make).
+			if (!Fielders.IsEmpty() && Marker == Fielders[0]) Wear(TEXT("Keeper"));
+			if (Umpires.Contains(Marker)) Wear(TEXT("Hat"));
 		}
 	}
 	else if (BodyMesh)

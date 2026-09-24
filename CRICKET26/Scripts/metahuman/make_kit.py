@@ -6,18 +6,19 @@
 # the body's skin weights, so the kit follows the body through any pose with no simulation, and fits each body shape.
 # The pieces carry the materials Kit_Shirt, Kit_Trousers and Kit_Shoes, which the game paints in team colours. The
 # gear (worn only by the batters) is a second mesh with Gear_Pads, Gear_Gloves, Gear_Helmet and Gear_Grille; the
-# helmet is rigid on the head bone.
+# helmet is rigid on the head bone. The keeper's gear is a third, with lighter pads and big webbed gloves, and the
+# umpire's wide-brimmed hat (Gear_Hat) a fourth.
 #
 # All of it is generated here from the MetaHuman body: an original design, no third-party asset.
 #
-# Run: Blender -b --python make_kit.py -- BODY.fbx KIT.fbx GEAR.fbx
+# Run: Blender -b --python make_kit.py -- BODY.fbx KIT.fbx GEAR.fbx KEEPER.fbx HAT.fbx
 import sys
 import bmesh
 import bpy
 import math
 from mathutils import Matrix, Vector
 
-BODY, KIT, GEAR = sys.argv[sys.argv.index("--") + 1:][:3]
+BODY, KIT, GEAR, KEEPER, HAT = sys.argv[sys.argv.index("--") + 1:][:5]
 
 # Offsets from the skin in cm. Outer layers sit further out where they overlap: the shirt hem over the trousers,
 # the trouser hem over the shoes.
@@ -111,7 +112,8 @@ def finish(o, bm, material, thickness=THICKNESS):
     bm.to_mesh(o.data)
     bm.free()
     o.data.materials.clear()
-    o.data.materials.append(bpy.data.materials.new(material))
+    # Reused by name: a second new one would come out as "Gear_Pads.001", a slot the game does not know.
+    o.data.materials.append(bpy.data.materials.get(material) or bpy.data.materials.new(material))
     for p in o.data.polygons:
         p.material_index = 0
     return o
@@ -225,6 +227,9 @@ def glove_offset(p):
 
 
 gloves = finish(*piece("Gloves", glove_keep, glove_offset, 2), "Gear_Gloves", 0.5)
+# The keeper's: slimmer pads, and gloves twice as padded, smoothed into mitts that web the thumb to the fingers.
+keeper_pads = finish(*piece("KeeperPads", pad_keep, lambda p: pad_offset(p) - 1.2, 20), "Gear_Pads", 1.0)
+keeper_gloves = finish(*piece("KeeperGloves", glove_keep, lambda p: glove_offset(p) + 1.0, 8), "Gear_Gloves", 0.6)
 
 
 def rigid(name, build):
@@ -276,7 +281,25 @@ def grille(bm):
         bar(bm, at(deg, 0.5), at(deg, -10.5))
 
 
+def hat(bm):
+    """The umpire's sun hat: a low crown and a wide brim sloping down a little all round."""
+    top = CENTRE + Vector((0.0, 1.0, -1.0))
+    bmesh.ops.create_uvsphere(bm, u_segments=32, v_segments=12, radius=1.0)
+    for v in bm.verts:
+        v.co = top + Vector((v.co.x * 10.0, v.co.y * 11.5, v.co.z * 9.0))
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z < top.z - 0.01], context='VERTS')
+    rim = sorted((v for v in bm.verts if v.is_boundary), key=lambda v: math.atan2(v.co.y - top.y, v.co.x - top.x))
+    outer = [bm.verts.new(top + Vector(((v.co.x - top.x) * 1.65, (v.co.y - top.y) * 1.6, -2.5))) for v in rim]
+    for i in range(len(rim)):
+        j = (i + 1) % len(rim)
+        bm.faces.new((rim[i], rim[j], outer[j], outer[i]))
+    bm.normal_update()
+
+
 helmet = finish(*rigid("Helmet", shell), "Gear_Helmet", 1.0)
+sunhat = finish(*rigid("Hat", hat), "Gear_Hat", 0.4)
 bars = finish(*rigid("Grille", grille), "Gear_Grille", 0.0)
 bpy.data.objects.remove(body)
 export([pads, gloves, helmet, bars], "Gear", GEAR)
+export([keeper_pads, keeper_gloves], "Keeper", KEEPER)
+export([sunhat], "Hat", HAT)

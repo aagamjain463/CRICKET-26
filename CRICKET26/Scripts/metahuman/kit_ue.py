@@ -3,8 +3,8 @@
 # KIT_STEP=export: builds each player once more without the preset garment into /Game/MetaHumans/Bare (the
 #   garment's hidden-face map cuts the skin under it out of the real build, and the kit needs the whole body),
 #   and exports that body to $KIT_DIR/<Name>_Body.fbx. The source character is not saved, so it keeps its garment.
-# KIT_STEP=import: imports $KIT_DIR/<Name>_Kit.fbx and <Name>_Gear.fbx onto the player's own skeleton as
-#   /Game/MetaHumans/<Name>/Kit/SKM_<Name>_Kit and SKM_<Name>_Gear, and makes the fabric material
+# KIT_STEP=import: imports $KIT_DIR/<Name>_<Part>.fbx for the parts Kit, Gear, Keeper and Hat onto the player's own
+#   skeleton as /Game/MetaHumans/<Name>/Kit/SKM_<Name>_<Part>, and makes the fabric material
 #   /Game/MetaHumans/Kit/M_Kit. It also imports the bat, $KIT_DIR/Bat.fbx, as /Game/MetaHumans/Kit/SM_Bat with its
 #   willow material M_Bat.
 import os
@@ -142,5 +142,5 @@ for n in NAMES:
     if STEP == "export":
         export(n)
     else:
-        for part in ("Kit", "Gear"):
+        for part in ("Kit", "Gear", "Keeper", "Hat"):
             import_kit(n, part)
