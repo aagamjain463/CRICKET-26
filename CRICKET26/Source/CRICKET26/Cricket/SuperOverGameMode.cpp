@@ -1110,6 +1110,7 @@ void ASuperOverGameMode::FinishDelivery()
 	Emit(Events);
 	bReplayThis = (Events.Contains(ECricketEvent::Wicket) || Events.Contains(ECricketEvent::BoundaryFour) || Events.Contains(ECricketEvent::BoundarySix))
 		&& Result.BallPath.Num() > 1;
+	bWicketThis = Events.Contains(ECricketEvent::Wicket);
 	bReviewThis = Result.bPadImpact && Result.Tracking.Projected.Num() > 1 && Result.BallPath.Num() > 1;
 	DPhase = EDeliveryPhase::DeadBall;
 	PhaseTime = 0.f;
@@ -1321,14 +1322,8 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	const float Off = OffSideSign(StrikerPlayer().BatHand);
 	const bool bLive = DPhase == EDeliveryPhase::BallInPlay || DPhase == EDeliveryPhase::DeadBall;
 	const bool bReplay = IsReplaying();
-	if (bReplay != bWasReplaying) bCutCamera = true; // cut into and out of the replay
-	bWasReplaying = bReplay;
 	const bool bReview = IsReviewing();
-	if (bReview != bWasReviewing) bCutCamera = true;
-	bWasReviewing = bReview;
 	const bool bScorecard = ShowingScorecard();
-	if (bScorecard != bWasScorecard) bCutCamera = true; // cut to the ground and back
-	bWasScorecard = bScorecard;
 	const float ReplayFrom = FMath::Max(0.f, Result.ContactTime - ReplayLead);
 	const float T = bReplay ? ReplayFrom + (PhaseTime - ReplayDelay) * ReplaySpeed : DPhase == EDeliveryPhase::DeadBall ? Result.DeadTime : PhaseTime;
 
@@ -1460,8 +1455,50 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	FVector WantLoc = bFollow ? ToWorld(FVector(PitchLength + 32.f, 0.f, 20.f)) : ToWorld(FVector(PitchLength + 62.f, 0.f, 12.f));
 	FVector LookAt = bFollow ? BallPos : ToWorld(FVector(0.5f, 0.f, 1.3f));
 	float WantFov = bFollow ? 42.f : 8.f;
+	// Director: cuts on the simulation's events. A camera beyond the rope watches a boundary come to it; a
+	// fielder's pickup or catch is seen from in front of them; once the ball is dead, a close-up of the bowler
+	// after a wicket, or of the striker otherwise, until the replay or the next ball. Any change of shot is a
+	// cut, except the delivery shot pulling out to follow the ball.
+	enum EShot { Delivery, Follow, Boundary, Fielding, CloseUp, Replay, Review, Scorecard };
+	EShot Shot = bFollow ? Follow : Delivery;
+	const FFieldingOutcome& Fld = Result.Fielding;
+	const float After = T - Result.ContactTime;
+	if (bFollow && Fld.Boundary > 0 && After > Fld.BoundaryTime - 0.8f)
+	{
+		// Beyond the rope where the ball crosses it, a little to one side so it does not fly into the lens, wide
+		// enough to take in the rope.
+		const FVector2D Centre(PitchCentre());
+		const FVector2D Out = (FVector2D(Result.BallAt(Result.ContactTime + Fld.BoundaryTime)) - Centre).GetSafeNormal();
+		Shot = Boundary;
+		WantLoc = ToWorld(FVector(Centre + Out * (BoundaryRadius + 6.f) + FVector2D(-Out.Y, Out.X) * 5.f, 2.5f));
+		LookAt = BallPos;
+		WantFov = 50.f;
+	}
+	else if (bFollow && Fld.Fielder > 0 && Fielders.IsValidIndex(Fld.Fielder) && After > Fld.FieldTime - 0.7f && After < Fld.FieldTime + 1.5f)
+	{
+		// Fielders[0] is the keeper, whose takes the delivery shot already frames.
+		const FVector At = Fielders[Fld.Fielder]->GetActorLocation();
+		const FVector In = FVector(FVector2D(PitchCentre() * 100.f - At), 0.f).GetSafeNormal();
+		Shot = Fielding;
+		WantLoc = At + In * 900.f + FVector(0.f, 0.f, 120.f);
+		LookAt = At + FVector(0.f, 0.f, 40.f);
+		WantFov = 30.f;
+	}
+	if (DPhase == EDeliveryPhase::DeadBall && PhaseTime > 0.7f)
+	{
+		AStaticMeshActor* Who = bWicketThis ? Bowler : Striker;
+		const USkeletalMeshComponent* WhoBody = BodyOf(Who);
+		const FVector Head = WhoBody ? WhoBody->GetSocketLocation(TEXT("head")) : Who->GetActorLocation() + FVector(0.f, 0.f, 70.f);
+		// In front of them: the bowler faces back down the pitch, the striker toward the off side.
+		const FVector Front = bWicketThis ? FVector(-1.f, 0.3f * Arm, 0.f) : FVector(0.3f, Off, 0.15f);
+		Shot = CloseUp;
+		WantLoc = Head + Front.GetSafeNormal() * 800.f;
+		LookAt = Head - FVector(0.f, 0.f, 35.f); // the head above the banner
+		WantFov = 20.f;
+	}
 	if (bReplay)
 	{
+		Shot = Replay;
 		// Side-on from the off side at batter height (facing the stance, clear of the square-leg umpire):
 		// the stroke, then the ball's flight on a wider lens.
 		WantLoc = ToWorld(FVector(Result.Shot.ContactX() + 2.f, 38.f * Off, 2.2f));
@@ -1472,6 +1509,7 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	{
 		// Ball tracking: from above the bowler's stumps while the path comes down the pitch, then round to the
 		// off side of the striker's stumps, to see from the pad on to them.
+		Shot = Review;
 		const bool bClose = ReviewProgress() > 0.4f;
 		WantLoc = ToWorld(bClose ? FVector(4.5f, 2.5f * Off, 1.6f) : FVector(PitchLength + 5.f, 0.f, 3.f));
 		LookAt = ToWorld(bClose ? FVector(0.6f, 0.f, 0.35f) : FVector(2.f, 0.f, 0.5f));
@@ -1480,6 +1518,7 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	if (bScorecard)
 	{
 		// High in the square-leg stand, across the square to the far stands.
+		Shot = Scorecard;
 		WantLoc = ToWorld(FVector(0.5f * PitchLength, -80.f, 26.f));
 		LookAt = ToWorld(FVector(0.5f * PitchLength, 30.f, 4.f));
 		WantFov = 70.f;
@@ -1500,6 +1539,8 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 		WantFov = DevCam[6];
 		bCutCamera = true;
 	}
+	if (Shot != LastShot && !(LastShot == Delivery && Shot == Follow)) bCutCamera = true;
+	LastShot = Shot;
 	const float K = FMath::Clamp(Dt * 3.f, 0.f, 1.f);
 	UCameraComponent* Cam = Camera->GetCameraComponent();
 	const FVector Loc = bCutCamera ? WantLoc : FMath::Lerp(Camera->GetActorLocation(), WantLoc, bViewSet ? K : 1.f);

@@ -88,8 +88,8 @@ public:
 	bool bDevCamFielder = false;                 // -CricketQuitAfter=N: quit after N deliveries (default: after the shot ball)
 	float ShotClock = 0.f;
 	/** Action replay of the key moment after a wicket or boundary, from side-on at half speed. */
-	static constexpr float ReplayDelay = 1.2f, ReplaySpeed = 0.5f, ReplayLead = 0.8f, ReplayAction = 1.6f;
-	bool bReplayThis = false;
+	static constexpr float ReplayDelay = 2.f, ReplaySpeed = 0.5f, ReplayLead = 0.8f, ReplayAction = 1.6f;
+	bool bReplayThis = false, bWicketThis = false;
 	bool IsReplaying() const { return bReplayThis && DPhase == EDeliveryPhase::DeadBall && PhaseTime >= ReplayDelay && PhaseTime < ReplayDelay + ReplayAction / ReplaySpeed; }
 	/**
 	 * Ball tracking after every ball that hits the pad, once any replay is over: a view from behind the bowler's
@@ -180,7 +180,8 @@ private:
 	FRandomStream Rng;
 	TArray<int32> RecentPlans;
 	float ReleaseTiming = 0.f;
-	bool bViewSet = false, bCutCamera = true, bWasReplaying = false, bWasReviewing = false, bWasScorecard = false;
+	bool bViewSet = false, bCutCamera = true;
+	int32 LastShot = -1; // the camera director's shot last frame: a change of shot is a cut
 
 	AStaticMeshActor* Spawn(UStaticMesh* Mesh, const FVector& PosM, const FVector& SizeM, const FLinearColor& Colour);
 	void Paint(AStaticMeshActor* Actor, const FLinearColor& Colour);

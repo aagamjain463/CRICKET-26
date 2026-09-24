@@ -46,7 +46,7 @@ This note lets a new agent pick up the "make it like Cricket 26" work where it s
 | 1 | Batting feel | Done, commit `1157fad` |
 | 2 | Broadcast HUD | Done, commit `5b5bf0c` (score bar, speed gun, this-over discs, player cards; checked in capture; 50/50 tests) |
 | 3 | Ball tracking | LBW tracking and its Hawk-Eye view done (master plan M8, 6.5); pitch map and wagon wheel not started |
-| 4 | Camera director | Not started |
+| 4 | Camera director | First cuts done: boundary, fielder and close-up shots (master plan M8, 6.1) |
 | 5 | Stadium | Not started (CC0 sources only) |
 | 6 | T20 and ODI formats | Not started |
 | 7 | MetaHuman players | Done (master plan M2) |
@@ -98,6 +98,17 @@ MetaHuman scripting notes (UE 5.8 Python):
   "BALL TRACKING" panel.
 - To see one: `Scripts/capture.sh 3 -CricketAiLeaves` (the AI batter leaves every ball; ball 3 is an LBW).
 - Not started: the pitch map and wagon wheel (plan 6.4), the edge detector and player reviews.
+
+## Item 4: camera director
+
+- `UpdatePresentation` picks one shot a frame (`EShot`): the delivery view, the follow view, then a boundary
+  camera beyond the rope where a four or six crosses it, a fielder camera as the fielder gathers or catches, and
+  once the ball is dead a close-up of the bowler after a wicket or of the striker otherwise. The replay, review
+  and scorecard shots come after these.
+- A change of shot is a cut (`LastShot`, `bCutCamera`), except delivery to follow, which stays a smooth move.
+- `ReplayDelay` is 2 seconds, so the close-up plays before the replay.
+- To see them: `Scripts/capture.sh 1` (a four) and `Scripts/capture.sh 4` (a diving catch, then a wicket
+  close-up).
 
 ## Blocked on the owner
 
