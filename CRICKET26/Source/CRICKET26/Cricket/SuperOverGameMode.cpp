@@ -27,6 +27,7 @@
 #include "Engine/SkyLight.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
+#include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
@@ -555,8 +556,14 @@ void ASuperOverGameMode::BuildScene()
 	PP->Settings.AmbientOcclusionIntensity = 0.5f;
 
 	const FVector C = PitchCentre();
-	Spawn(CylinderMesh, FVector(C.X, 0.f, -0.06f), FVector(800.f, 800.f, 0.1f), Grass);
-	Spawn(CubeMesh, FVector(C.X, 0.f, -0.005f), FVector(PitchLength + 2.4f, 2.f * PitchHalfWidth, 0.01f), Strip);
+	// The ground's own materials (Scripts/stadium/make_stadium.sh) draw the grass, the square, the wear, the painted
+	// logos and the 30-yard circle, and the pitch's clay, cracks and footmarks; without them, flat colours.
+	GrassMaterial = LoadStadiumMaterial(TEXT("M_Grass"));
+	UMaterialInterface* PitchMaterial = LoadStadiumMaterial(TEXT("M_Pitch"));
+	AStaticMeshActor* Ground = Spawn(CylinderMesh, FVector(C.X, 0.f, -0.06f), FVector(800.f, 800.f, 0.1f), Grass);
+	if (GrassMaterial) Ground->GetStaticMeshComponent()->SetMaterial(0, GrassMaterial);
+	AStaticMeshActor* Pitch = Spawn(CubeMesh, FVector(C.X, 0.f, -0.005f), FVector(PitchLength + 2.4f, 2.f * PitchHalfWidth, 0.01f), Strip);
+	if (PitchMaterial) Pitch->GetStaticMeshComponent()->SetMaterial(0, PitchMaterial);
 	for (float X : { 0.f, PitchLength })
 	{
 		const float Dir = X == 0.f ? 1.f : -1.f;
@@ -568,26 +575,21 @@ void ASuperOverGameMode::BuildScene()
 			Spawn(CylinderMesh, FVector(X, Y, StumpHeight * 0.5f), FVector(0.036f, 0.036f, StumpHeight), Wood);
 		}
 	}
-	// Boundary rope and the 30-yard circle.
-	for (int32 I = 0; I < 96; ++I)
-	{
-		const float A = 2.f * PI * I / 96.f;
-		const FVector P(C.X + BoundaryRadius * FMath::Cos(A), BoundaryRadius * FMath::Sin(A), 0.04f);
-		AStaticMeshActor* Seg = Spawn(CubeMesh, P, FVector(0.08f, 2.f * PI * BoundaryRadius / 96.f, 0.08f), White);
-		Seg->SetActorRotation(FRotator(0.f, FMath::RadiansToDegrees(A), 0.f));
-	}
-	BuildStadium();
-	for (int32 I = 0; I < 72; ++I)
+	BuildStadium(); // with the rope
+	for (int32 I = 0; I < 72 && !GrassMaterial; ++I) // the 30-yard circle
 	{
 		const float A = 2.f * PI * I / 72.f;
 		Spawn(CylinderMesh, FVector(C.X + 27.4f * FMath::Cos(A), 27.4f * FMath::Sin(A), 0.01f), FVector(0.25f, 0.25f, 0.02f), White);
 	}
 
-	// Sightscreens behind both ends on the line of the pitch, so the batter (and the viewer) sees the ball
-	// against white.
+	// Sightscreens behind both ends on the line of the pitch: black, so the batter (and the viewer) sees the white
+	// ball against them, in a grey frame on legs.
 	for (const float Dir : { -1.f, 1.f })
 	{
-		Spawn(CubeMesh, FVector(C.X + Dir * (BoundaryRadius + 4.f), 0.f, 2.5f), FVector(1.f, 16.f, 5.f), FLinearColor(0.95f, 0.95f, 0.95f));
+		const float X = C.X + Dir * (BoundaryRadius + 4.f);
+		Spawn(CubeMesh, FVector(X, 0.f, 3.4f), FVector(0.6f, 16.4f, 5.6f), FLinearColor(0.2f, 0.2f, 0.21f));
+		Spawn(CubeMesh, FVector(X - Dir * 0.32f, 0.f, 3.4f), FVector(0.05f, 15.6f, 4.9f), FLinearColor(0.015f, 0.015f, 0.018f));
+		for (const float Y : { -7.f, 0.f, 7.f }) Spawn(CubeMesh, FVector(X, Y, 0.3f), FVector(0.3f, 0.3f, 0.6f), FLinearColor(0.2f, 0.2f, 0.21f));
 	}
 
 	Ball = Spawn(SphereMesh, FVector(0.f, 0.f, -5.f), FVector(2.f * BallRadius), FLinearColor(0.85f, 0.85f, 0.8f));
@@ -654,6 +656,11 @@ void ASuperOverGameMode::ApplyQuality()
 	UE_LOG(LogCRICKET26, Display, TEXT("Quality %d"), Quality);
 }
 
+UMaterialInterface* ASuperOverGameMode::LoadStadiumMaterial(const TCHAR* Name)
+{
+	return LoadObject<UMaterialInterface>(nullptr, *FString::Printf(TEXT("/Game/Stadium/%s.%s"), Name, Name), nullptr, LOAD_Quiet | LOAD_NoWarn);
+}
+
 void ASuperOverGameMode::BuildStadium()
 {
 	// A lit material that takes its base colour from the vertex colours (the modeling plugin's; Epic, UE EULA).
@@ -663,6 +670,12 @@ void ASuperOverGameMode::BuildStadium()
 	Spec.CrowdDensity = Quality == 0 ? 0.35f : Quality == 1 ? 0.5f : 0.7f;
 	Spec.Home = Teams[0].Colour;
 	Spec.Away = Teams[1].Colour;
+	UMaterialInterface* LedMaterial = LoadStadiumMaterial(TEXT("M_LED"));
+	Spec.bLedBoards = LedMaterial != nullptr;
+	// The 3D crowd when its assets are built (Scripts/stadium/make_stadium.sh), otherwise blocks.
+	UStaticMesh* FanMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/Stadium/SM_Fan.SM_Fan"), nullptr, LOAD_Quiet | LOAD_NoWarn);
+	UMaterialInterface* FanMaterial = LoadStadiumMaterial(TEXT("M_Crowd"));
+	Spec.bFanCrowd = FanMesh && FanMaterial;
 	const CricketStadium::FStadium Stadium = CricketStadium::Build(Spec);
 	auto Place = [&](const CricketStadium::FColouredMesh& Mesh, float Z, UMaterialInterface* Material)
 	{
@@ -674,24 +687,54 @@ void ASuperOverGameMode::BuildStadium()
 		return A;
 	};
 	Place(Stadium.Structure, 0.f, VertexColourMaterial);
-	// The grass keeps the shape material: the vertex colour material's sheen washes out a flat field seen
-	// at a grazing angle.
-	for (int32 I = 0; I < 2; ++I) Paint(Place(Stadium.Outfield[I], -0.8f, ShapeMaterial), CricketStadium::StripeColours[I]); // under the strip's top and the creases
+	Place(Stadium.Boards, 0.f, LedMaterial ? LedMaterial : VertexColourMaterial.Get());
+	// Without the grass material the stripes are meshes, in the shape material: the vertex colour material's sheen
+	// washes out a flat field seen at a grazing angle.
+	for (int32 I = 0; I < 2 && !GrassMaterial; ++I) Paint(Place(Stadium.Outfield[I], -0.8f, ShapeMaterial), CricketStadium::StripeColours[I]); // under the strip's top and the creases
+	if (Spec.bFanCrowd)
+	{
+		// One instanced mesh for the whole crowd; each fan's look and rhythm go in its custom data, and the material
+		// moves them all (Excite, from UpdateCrowd).
+		AActor* Holder = GetWorld()->SpawnActor<AActor>();
+		UHierarchicalInstancedStaticMeshComponent* Fans = NewObject<UHierarchicalInstancedStaticMeshComponent>(Holder);
+		Holder->SetRootComponent(Fans);
+		Fans->SetStaticMesh(FanMesh);
+		CrowdMaterial = UMaterialInstanceDynamic::Create(FanMaterial, this);
+		Fans->SetMaterial(0, CrowdMaterial);
+		Fans->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Fans->SetCastShadow(false);
+		Fans->NumCustomDataFloats = 5;
+		Fans->RegisterComponent();
+		TArray<FTransform> Seats;
+		Seats.Reserve(Stadium.Fans.Num());
+		for (const CricketStadium::FFan& F : Stadium.Fans) Seats.Add(FTransform(FRotator(0.f, F.Yaw, 0.f), ToWorld(F.Pos), FVector(F.Scale)));
+		Fans->AddInstances(Seats, false);
+		for (int32 I = 0; I < Stadium.Fans.Num(); ++I)
+		{
+			const CricketStadium::FFan& F = Stadium.Fans[I];
+			Fans->SetCustomData(I, { F.Shirt.R, F.Shirt.G, F.Shirt.B, F.Skin, F.Phase });
+		}
+	}
 	for (const CricketStadium::FColouredMesh& Section : Stadium.Crowd)
 	{
+		if (Section.Tri.IsEmpty()) continue;
 		AStaticMeshActor* A = Place(Section, 0.f, VertexColourMaterial);
 		A->GetStaticMeshComponent()->SetCastShadow(false); // ponytail: the stand's own shadow reads fine; a crowd's is thousands of tiny casters
 		CrowdSections.Add(A);
 	}
-	int32 Tris = Stadium.Structure.NumTriangles() + Stadium.Outfield[0].NumTriangles() + Stadium.Outfield[1].NumTriangles();
+	int32 Tris = Stadium.Structure.NumTriangles() + Stadium.Boards.NumTriangles();
+	if (!GrassMaterial) Tris += Stadium.Outfield[0].NumTriangles() + Stadium.Outfield[1].NumTriangles();
 	for (const CricketStadium::FColouredMesh& Section : Stadium.Crowd) Tris += Section.NumTriangles();
-	UE_LOG(LogCRICKET26, Display, TEXT("Stadium: %d spectators, %d triangles, %d meshes"), Stadium.Spectators, Tris, 3 + Stadium.Crowd.Num());
+	UE_LOG(LogCRICKET26, Display, TEXT("Stadium: %d spectators (%s), %d triangles besides, %d meshes, %s materials"), Stadium.Spectators,
+		Spec.bFanCrowd ? TEXT("3D") : TEXT("blocks"), Tris, (GrassMaterial ? 2 : 4) + (Spec.bFanCrowd ? 1 : Stadium.Crowd.Num()),
+		LedMaterial ? TEXT("stadium") : TEXT("flat"));
 }
 
 void ASuperOverGameMode::UpdateCrowd()
 {
 	// The crowd gets up and jumps as the noise swells on a boundary or wicket, and sits back down with it.
 	const float Excitement = FMath::Clamp((CrowdLevel - 0.4f) / 0.4f, 0.f, 1.f);
+	if (CrowdMaterial) CrowdMaterial->SetScalarParameterValue(TEXT("Excite"), Excitement);
 	const float T = GetWorld()->GetTimeSeconds();
 	for (int32 I = 0; I < CrowdSections.Num(); ++I)
 	{

@@ -16,7 +16,7 @@ bool FEnvStadium::RunTest(const FString&)
 	const FVector C = CricketGeo::PitchCentre();
 
 	TestTrue(*FString::Printf(TEXT("a full house (%d)"), S.Spectators), S.Spectators > 15000);
-	int32 Tris = S.Structure.NumTriangles();
+	int32 Tris = S.Structure.NumTriangles() + S.Boards.NumTriangles();
 	for (const FColouredMesh& M : S.Crowd) Tris += M.NumTriangles();
 	TestTrue(*FString::Printf(TEXT("within the mobile triangle budget (%d)"), Tris), Tris < 300000);
 	TestEqual(TEXT("one crowd mesh per section and group"), S.Crowd.Num(), NumSections * NumGroups);
@@ -54,8 +54,38 @@ bool FEnvStadium::RunTest(const FString&)
 	};
 	Check(S.Structure);
 	Check(S.Outfield[0]);
+	Check(S.Boards);
 	for (const FColouredMesh& M : S.Crowd) Check(M);
 	TestEqual(TEXT("windings agree with normals"), Bad, 0);
+
+	// With LED boards, vertex red runs from 0 along each band's foot to 1 along its top, where the material reads it
+	// as the height within the printed ad.
+	FStadiumSpec Led = Spec;
+	Led.bLedBoards = true;
+	const FStadium L = Build(Led);
+	int32 Misread = 0;
+	for (int32 I = 0; I < L.Boards.Pos.Num(); I += 4)
+	{
+		Misread += L.Boards.Colour[I].R != 0.f || L.Boards.Colour[I + 3].R != 0.f || L.Boards.Colour[I + 1].R != 1.f || L.Boards.Colour[I + 2].R != 1.f;
+		Misread += L.Boards.Pos[I + 1].Z <= L.Boards.Pos[I].Z;
+	}
+	TestTrue(TEXT("boards built"), L.Boards.Pos.Num() > 0 && L.Boards.Pos.Num() % 4 == 0);
+	TestEqual(TEXT("LED boards read top to bottom"), Misread, 0);
+
+	// With the instanced crowd, the same seats are filled by fans instead of blocks, each facing the middle.
+	FStadiumSpec Instanced = Spec;
+	Instanced.bFanCrowd = true;
+	const FStadium F = Build(Instanced);
+	TestEqual(TEXT("one fan per spectator"), F.Fans.Num(), S.Spectators);
+	int32 Blocks = 0, Astray = 0;
+	for (const FColouredMesh& M : F.Crowd) Blocks += M.Tri.Num();
+	for (const FFan& Fan : F.Fans)
+	{
+		const FVector ToMiddle = FVector(C - Fan.Pos).GetSafeNormal2D();
+		Astray += FVector::DotProduct(FRotator(0.f, Fan.Yaw, 0.f).Vector(), ToMiddle) < 0.99f;
+	}
+	TestEqual(TEXT("no block crowd alongside the fans"), Blocks, 0);
+	TestEqual(TEXT("fans face the middle"), Astray, 0);
 
 	// The crowd sits still until the ground erupts, then jumps, and neighbours are out of step.
 	TestEqual(TEXT("seated when quiet"), JumpHeight(3.f, 0.f, 4, 1), 0.f);

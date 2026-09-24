@@ -47,6 +47,25 @@ namespace
 		return FMath::Min(A, 180.f - A);
 	}
 
+	/** True inside one of the aisles that run up the stands at every section boundary; R is the radius in metres. */
+	bool InAisle(float AngleDeg, float R)
+	{
+		const float Step = 360.f / NumSections, Off = FMath::Fmod(AngleDeg + 360.f, Step);
+		return FMath::DegreesToRadians(FMath::Min(Off, Step - Off)) * R < AisleHalfWidth;
+	}
+
+	/** A bar from A to B, W wide and H deep: both sides and the underside, which are all the stands see of it. */
+	void Beam(FColouredMesh& M, const FVector& A, const FVector& B, float W, float H, const FLinearColor& Col)
+	{
+		const FVector Along = (B - A).GetSafeNormal();
+		const FVector Side = FVector::CrossProduct(Along, FVector::UpVector).GetSafeNormal() * (W / 2.f);
+		FVector Up = FVector::CrossProduct(Side, Along).GetSafeNormal() * (H / 2.f);
+		if (Up.Z < 0.f) Up = -Up;
+		M.AddQuad(A + Side - Up, A + Side + Up, B + Side + Up, B + Side - Up, Col, Side);
+		M.AddQuad(A - Side - Up, A - Side + Up, B - Side + Up, B - Side - Up, Col, -Side);
+		M.AddQuad(A + Side - Up, A - Side - Up, B - Side - Up, B + Side - Up, Col * 0.7f, -Up);
+	}
+
 	/**
 	 * A ring of quads from (R0, Z0) to (R1, Z1) round the ground, in Segments pieces, facing In toward the
 	 * field and Up (either may be negative); Colour by angle.
@@ -98,28 +117,56 @@ FStadium Build(const FStadiumSpec& Spec)
 	}
 
 	FColouredMesh& M = S.Structure;
-	// Boundary boards: plain panels (no sponsors), alternating the two teams' colours, darkened.
-	Ring(M, C, BoundaryRadius + BoardRadiusOffset, 0.f, BoundaryRadius + BoardRadiusOffset, 0.9f, 120, 1.f, 0.f,
-		[&](float A) { return (int32(A / 6.f) % 2 ? Spec.Home : Spec.Away) * 0.9f + FLinearColor(0.04f, 0.04f, 0.05f); });
+	// LED bands: the boards just beyond the rope, leaning back a little, and a ribbon along the upper tier's front.
+	auto Band = [&](float R, float Z0, float Z1, float Lean)
+	{
+		const int32 First = S.Boards.Pos.Num();
+		Ring(S.Boards, C, R, Z0, R + Lean, Z1, FMath::CeilToInt(2.f * PI * R / 2.f), 1.f, 0.f,
+			[&](float A) { return (int32(A / 6.f) % 2 ? Spec.Home : Spec.Away) * 0.9f + FLinearColor(0.04f, 0.04f, 0.05f); });
+		if (!Spec.bLedBoards) return;
+		for (int32 I = First; I < S.Boards.Pos.Num(); ++I) S.Boards.Colour[I] = FLinearColor((I - First) % 4 == 1 || (I - First) % 4 == 2 ? 1.f : 0.f, 0.f, 0.f);
+	};
+	Band(BoundaryRadius + BoardRadiusOffset, 0.f, 0.95f, 0.15f);
+	// The rope: a padded white cushion, triangular in section.
+	Ring(M, C, BoundaryRadius - 0.22f, 0.f, BoundaryRadius, 0.2f, 240, 1.f, 1.f, [](float) { return FLinearColor(0.85f, 0.85f, 0.87f); });
+	Ring(M, C, BoundaryRadius, 0.2f, BoundaryRadius + 0.22f, 0.f, 240, -1.f, 1.f, [](float) { return FLinearColor(0.7f, 0.7f, 0.72f); });
 
 	// Stands: eight blocks of coloured seats, each tier a flight of steps; a pitch-side wall and a facade.
-	const FLinearColor SeatCols[] = { { 0.1f, 0.14f, 0.3f }, { 0.28f, 0.06f, 0.06f }, { 0.34f, 0.28f, 0.05f }, { 0.2f, 0.2f, 0.22f } };
+	const FLinearColor SeatCols[] = { { 0.03f, 0.06f, 0.22f }, { 0.22f, 0.025f, 0.03f }, { 0.02f, 0.15f, 0.17f }, { 0.1f, 0.1f, 0.11f } };
 	auto SeatCol = [&](float A, int32 Row)
 	{
 		if (FromPitchLine(A) < SightscreenGapDeg) return FLinearColor(0.03f, 0.03f, 0.035f);
 		return SeatCols[int32((A + 22.5f) / 45.f) % 4] * (Row % 2 ? 1.f : 0.85f);
 	};
-	const FLinearColor Concrete(0.3f, 0.3f, 0.3f), Facade(0.08f, 0.09f, 0.12f);
+	const FLinearColor Concrete(0.2f, 0.2f, 0.21f), Facade(0.08f, 0.09f, 0.12f);
 	for (int32 T = 0; T < 2; ++T)
 	{
 		const FTier Ti = Tiers(T);
 		const int32 Segs = FMath::CeilToInt(2.f * PI * Ti.R0 / 3.f);
 		Ring(M, C, Ti.R0, T == 0 ? 0.f : Tiers(0).Z0 + Tiers(0).Rows * Tiers(0).Rise, Ti.R0, Ti.Z0, Segs, 1.f, 0.f, [&](float) { return T == 0 ? Concrete : Facade; });
+		if (T == 1) Band(Ti.R0 - 0.05f, Ti.Z0 - 1.6f, Ti.Z0 - 0.3f, 0.f);
 		for (int32 Row = 0; Row < Ti.Rows; ++Row)
 		{
 			const float R = Ti.R0 + Row * Ti.RowDepth, Z = Ti.Z0 + Row * Ti.Rise;
 			Ring(M, C, R, Z, R, Z + Ti.Rise, Segs, 1.f, 0.f, [&](float A) { return SeatCol(A, Row) * 0.7f; });                 // riser
 			Ring(M, C, R, Z + Ti.Rise, R + Ti.RowDepth, Z + Ti.Rise, Segs, 0.f, 1.f, [&](float A) { return SeatCol(A, Row); }); // tread
+			// The row of seat backs at the back of each tread, and a concrete step up every aisle.
+			Ring(M, C, R + Ti.RowDepth - 0.18f, Z + Ti.Rise, R + Ti.RowDepth - 0.12f, Z + Ti.Rise + 0.42f, Segs, 1.f, 0.2f, [&](float A) { return SeatCol(A, Row) * 0.9f; });
+			for (int32 K = 0; K < NumSections; ++K)
+			{
+				const FVector D = Radial(360.f * K / NumSections);
+				M.AddBox(C + D * (R + Ti.RowDepth / 2.f - 0.02f) + FVector(0, 0, Z + Ti.Rise / 2.f + 0.02f), D, FVector(Ti.RowDepth / 2.f, AisleHalfWidth, Ti.Rise / 2.f),
+					Row % 2 ? Concrete : Concrete * 1.12f, false);
+			}
+		}
+		// A railing along the tier's front edge: a top rail on posts.
+		const float RailR = Ti.R0 - 0.06f, RailZ = Ti.Z0 + 1.f;
+		Ring(M, C, RailR, RailZ - 0.06f, RailR, RailZ, Segs, 1.f, 0.f, [](float) { return FLinearColor(0.5f, 0.5f, 0.52f); });
+		Ring(M, C, RailR, RailZ - 0.45f, RailR, RailZ - 0.42f, Segs, 1.f, 0.f, [](float) { return FLinearColor(0.4f, 0.4f, 0.42f); });
+		for (int32 I = 0; I < Segs; ++I)
+		{
+			const FVector D = Radial(360.f * I / Segs);
+			M.AddBox(C + D * RailR + FVector(0, 0, (Ti.Z0 + RailZ) / 2.f), D, FVector(0.03f, 0.03f, (RailZ - Ti.Z0) / 2.f), FLinearColor(0.45f, 0.45f, 0.47f), false);
 		}
 	}
 	// Back wall and roof: a canopy over the upper tier, dark underneath so the stands read as shade.
@@ -128,6 +175,21 @@ FStadium Build(const FStadiumSpec& Spec)
 	Ring(M, C, Back, Top, Back, Top + 6.f, 160, 1.f, 0.f, [&](float) { return Facade; });
 	Ring(M, C, Back, Top + 6.f, Up.R0 + 2.f, Top + 7.5f, 160, 0.3f, -1.f, [](float) { return FLinearColor(0.05f, 0.05f, 0.06f); });
 	Ring(M, C, Up.R0 + 2.f, Top + 7.5f, Up.R0 + 2.f, Top + 6.8f, 160, 1.f, 0.f, [](float) { return FLinearColor(0.6f, 0.6f, 0.62f); }); // roof edge
+	// Steel trusses under the canopy, light against its shade: a bottom chord below the roof and diagonals up to it.
+	const FLinearColor Steel(0.42f, 0.43f, 0.45f);
+	for (int32 K = 0; K < 64; ++K)
+	{
+		const FVector D = Radial(360.f * (K + 0.5f) / 64.f);
+		auto Roof = [&](float R) { return C + D * R + FVector(0, 0, Top + 6.f + 1.5f * (Back - R) / (Back - Up.R0 - 2.f) - 0.1f); };
+		const int32 Bays = 6;
+		Beam(M, Roof(Back) - FVector(0, 0, 1.2f), Roof(Up.R0 + 2.f) - FVector(0, 0, 0.2f), 0.25f, 0.3f, Steel);
+		for (int32 B = 0; B < Bays; ++B)
+		{
+			const float R0 = FMath::Lerp(Back, Up.R0 + 2.f, float(B) / Bays), R1 = FMath::Lerp(Back, Up.R0 + 2.f, float(B + 1) / Bays);
+			const float Drop0 = FMath::Lerp(1.2f, 0.2f, float(B) / Bays);
+			Beam(M, Roof(R0) - FVector(0, 0, Drop0), Roof(R1), 0.12f, 0.12f, Steel * 0.9f);
+		}
+	}
 	// Floodlight towers behind the four corners, their lamp banks tilted toward the square.
 	for (const float A : { 45.f, 135.f, 225.f, 315.f })
 	{
@@ -135,7 +197,11 @@ FStadium Build(const FStadiumSpec& Spec)
 		const FVector Base = C + D * (Back + 4.f);
 		M.AddBox(Base + FVector(0, 0, 24.f), D, FVector(0.8f, 0.8f, 24.f), FLinearColor(0.35f, 0.35f, 0.37f));
 		M.AddBox(Base + FVector(0, 0, 50.f) - D * 1.5f, D, FVector(0.8f, 5.f, 3.2f), FLinearColor(0.2f, 0.2f, 0.22f));
-		M.AddBox(Base + FVector(0, 0, 50.f) - D * 2.4f, D, FVector(0.1f, 4.6f, 2.8f), FLinearColor(1.f, 0.98f, 0.9f), false); // lamps
+		// A grid of lamps on the bank.
+		const FVector Side = Radial(A + 90.f);
+		for (int32 I = 0; I < 5; ++I)
+			for (int32 J = 0; J < 4; ++J)
+				M.AddBox(Base + FVector(0, 0, 50.f + (J - 1.5f) * 1.5f) - D * 2.4f + Side * ((I - 2) * 1.9f), D, FVector(0.15f, 0.8f, 0.6f), FLinearColor(1.f, 0.98f, 0.9f), false);
 	}
 
 	// Crowd: seated along every row, shirts in the home colour, the away colour or anything else.
@@ -156,15 +222,22 @@ FStadium Build(const FStadiumSpec& Spec)
 				const float Take = Rng.FRand(), Pick = Rng.FRand();
 				const int32 SkinI = Rng.RandRange(0, 3), NeutralI = Rng.RandRange(0, 6);
 				const float Tone = Rng.FRandRange(0.8f, 1.15f), Size = Rng.FRandRange(0.92f, 1.08f);
-				if (FromPitchLine(A) < SightscreenGapDeg || Take > Spec.CrowdDensity) continue;
+				const float SkinTone = Rng.FRand(), Phase = Rng.FRand();
+				if (FromPitchLine(A) < SightscreenGapDeg || Take > Spec.CrowdDensity || InAisle(A, R)) continue;
 				const FLinearColor Shirt = (Pick < Spec.HomeShare ? Spec.Home : Pick < Spec.HomeShare + Spec.AwayShare ? Spec.Away : Neutral[NeutralI]) * Tone;
 				const FVector D = Radial(A);
+				++S.Spectators;
+				if (Spec.bFanCrowd)
+				{
+					// Sat towards the back of the row, feet forward on the step.
+					S.Fans.Add({ C + D * (R + 0.1f) + FVector(0, 0, Z), A + 180.f, Shirt, SkinTone, Phase, Size });
+					continue;
+				}
 				const int32 Section = FMath::Min(int32(A / 360.f * NumSections), NumSections - 1);
 				FColouredMesh& Out = S.Crowd[Section * NumGroups + Seat % NumGroups];
 				const FVector At = C + D * R + FVector(0, 0, Z);
 				Out.AddBox(At + FVector(0, 0, 0.3f * Size), D, FVector(0.14f, 0.21f, 0.3f) * Size, Shirt);
 				Out.AddBox(At + FVector(0, 0, 0.72f * Size), D, FVector(0.1f, 0.09f, 0.11f) * Size, Skin[SkinI], false);
-				++S.Spectators;
 			}
 		}
 	}

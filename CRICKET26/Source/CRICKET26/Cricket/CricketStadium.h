@@ -1,6 +1,6 @@
 // The ground around the playing area, generated rather than authored: a two-tier bowl of seating with a
-// roof and four floodlight towers, advertising-free boundary boards, a mown outfield and a seated crowd in
-// the two teams' colours. Everything is flat-shaded boxes and quads in vertex colours, merged into a few
+// roof and four floodlight towers, LED boards round the rope and on the upper tier, a padded rope, a mown
+// outfield and a seated crowd in the two teams' colours. Everything is flat-shaded boxes and quads in vertex colours, merged into a few
 // meshes so the whole stadium costs a handful of draw calls; the crowd is split into sections that can
 // jump independently when the ground erupts. Geometry is in the simulation frame (metres, pitch centre at
 // PitchCentre()).
@@ -38,6 +38,22 @@ namespace CricketStadium
 		float CrowdDensity = 0.7f; // share of seats taken (the mobile tiers thin the crowd)
 		FLinearColor Home = FLinearColor::Blue, Away = FLinearColor::Red;
 		float HomeShare = 0.45f, AwayShare = 0.25f;
+		/** The LED boards carry their height within the band (0 at the bottom, 1 at the top) in vertex red, for the
+		 *  LED material to place its ads; otherwise they are plain panels in the teams' colours. */
+		bool bLedBoards = false;
+		/** The crowd as Fans, for instanced spectators (Scripts/stadium/make_fan.py); the block meshes stay empty. */
+		bool bFanCrowd = false;
+	};
+
+	/** One spectator of the instanced crowd: the floor under their seat (metres), the way they face, and their look. */
+	struct FFan
+	{
+		FVector Pos;
+		float Yaw = 0.f;      // degrees
+		FLinearColor Shirt;
+		float Skin = 0.f;     // 0 darkest to 1 lightest
+		float Phase = 0.f;    // 0 to 1: their rhythm, cheering pose, hair and trousers
+		float Scale = 1.f;
 	};
 
 	/** Crowd sections by angle round the ground, and interleaved groups within each (for staggered jumps). */
@@ -46,14 +62,17 @@ namespace CricketStadium
 	constexpr float SightscreenGapDeg = 9.f;
 	constexpr float BoardRadiusOffset = 3.f;   // boundary boards, beyond the rope
 	constexpr float StandRadiusOffset = 9.f;   // the front of the lower tier, beyond the rope
+	constexpr float AisleHalfWidth = 0.6f;     // the aisles up the stands, one at every section boundary
 	/** The two shades of the mown outfield. */
 	const FLinearColor StripeColours[2] = { { 0.1f, 0.3f, 0.075f }, { 0.075f, 0.24f, 0.06f } };
 
 	struct FStadium
 	{
-		FColouredMesh Structure;   // stands, roof, towers, boards
+		FColouredMesh Structure;   // stands, roof, towers, rope cushion
+		FColouredMesh Boards;      // LED boards beyond the rope and the ribbon on the upper tier's front
 		FColouredMesh Outfield[2]; // mown stripes inside the rope, light and dark (drawn in the grass material)
 		TArray<FColouredMesh> Crowd; // [Section * NumGroups + Group]
+		TArray<FFan> Fans;           // with bFanCrowd
 		int32 Spectators = 0;
 	};
 

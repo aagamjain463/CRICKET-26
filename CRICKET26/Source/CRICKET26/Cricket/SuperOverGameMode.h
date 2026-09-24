@@ -17,7 +17,7 @@
 class AStaticMeshActor;
 class ACameraActor;
 class UStaticMesh;
-class UMaterialInterface;
+class UMaterialInterface; class UMaterialInstanceDynamic;
 class USkeletalMesh;
 class UAnimSequence;
 class UAudioComponent;
@@ -204,7 +204,11 @@ private:
 	UPROPERTY() TObjectPtr<UStaticMesh> CylinderMesh;
 	UPROPERTY() TObjectPtr<UMaterialInterface> ShapeMaterial;
 	UPROPERTY() TObjectPtr<UMaterialInterface> VertexColourMaterial;
+	UPROPERTY() TObjectPtr<UMaterialInterface> GrassMaterial;
+	/** A material built by Scripts/stadium/make_stadium.sh into /Game/Stadium, or null when it has not been run. */
+	static UMaterialInterface* LoadStadiumMaterial(const TCHAR* Name);
 	UPROPERTY() TArray<TObjectPtr<AStaticMeshActor>> CrowdSections; // CricketStadium::Build's crowd meshes, in order
+	UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> CrowdMaterial; // the 3D crowd's, when it is built
 	UPROPERTY() TObjectPtr<AStaticMeshActor> Ball;
 	UPROPERTY() TObjectPtr<AStaticMeshActor> Bat;
 	UPROPERTY() TObjectPtr<AStaticMeshActor> NonStrikerBat;
