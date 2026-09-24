@@ -756,8 +756,9 @@ void ASuperOverGameMode::BuildStadium()
 			LampMaterial = Lit;
 		}
 		const FVector Middle = CricketGeo::PitchCentre();
-		for (const FVector& Bank : Stadium.Floodlights)
+		for (int32 I = 0; I < Stadium.Floodlights.Num(); ++I)
 		{
+			const FVector& Bank = Stadium.Floodlights[I];
 			// Aimed a little short of the middle, so the near side of the field is as bright as the far side.
 			const FVector Aim = Middle + (Bank - Middle).GetSafeNormal2D() * 12.f;
 			ASpotLight* Flood = GetWorld()->SpawnActorDeferred<ASpotLight>(ASpotLight::StaticClass(), FTransform::Identity);
@@ -770,7 +771,8 @@ void ASuperOverGameMode::BuildStadium()
 			L->SetAttenuationRadius(30000.f);
 			L->SetOuterConeAngle(40.f);
 			L->SetInnerConeAngle(28.f);
-			L->SetCastShadows(Quality >= 2);
+			// Every tower's shadow on Epic; High keeps two opposite towers' (a shadowed light costs about 3 ms of GPU).
+			L->SetCastShadows(Quality >= 3 || (Quality == 2 && I % 2 == 0));
 			Flood->FinishSpawning(FTransform::Identity);
 			// Set after spawning, as with the sun: a spawn rotation is added to the light's own built-in tilt.
 			Flood->SetActorLocationAndRotation(ToWorld(Bank), (Aim - Bank).Rotation());

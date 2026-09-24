@@ -47,7 +47,7 @@ This note lets a new agent pick up the "make it like Cricket 26" work where it s
 | 2 | Broadcast HUD | Done, commit `5b5bf0c` (score bar, speed gun, this-over discs, player cards; checked in capture; 50/50 tests) |
 | 3 | Ball tracking | LBW tracking and its Hawk-Eye view done (master plan M8, 6.5); pitch map and wagon wheel on the scorecard done (6.4) |
 | 4 | Camera director | First cuts done: boundary, fielder and close-up shots (master plan M8, 6.1) |
-| 5 | Stadium | Not started (CC0 sources only) |
+| 5 | Stadium | Done for master plan M9 (5.1 to 5.7), see below; the big screens' live replay feed was left out |
 | 6 | T20 and ODI formats | Not started |
 | 7 | MetaHuman players | Done (master plan M2) |
 | 8 | Audio | Not started |
@@ -131,6 +131,35 @@ MetaHuman scripting notes (UE 5.8 Python):
   match ends, the dead ball flows into the reel. `PlayClip` restores each clip's delivery and replays it on both
   angles, tagged "HIGHLIGHTS n/m", then puts the live ball back (`LiveClip`) and shows the scorecard. Enter skips
   the whole reel. To see it: `Scripts/capture.sh 6 -CricketQuitAfter=6`.
+
+## Item 5: stadium, pitch and crowd (master plan M9)
+
+- Everything is generated, with no third-party art. `CricketStadium::Build` makes the bowl in code (stands, roof and
+  trusses, floodlight towers, big screens, LED boards, rope, dugouts, media box, crowd seats). `Scripts/stadium/make_stadium.sh`
+  builds the textures and materials into `Content/Stadium` (not committed, so a fresh clone must run it) and the
+  instanced spectator in Blender. Without those assets the game falls back to flat colours and a block crowd.
+- Venues (`CricketStadium::Venue`, `-CricketVenue=0..2`; random in play, 0 in capture runs): Harbourside Oval
+  (flat pitch, clear day), Greenhill Park (green top, overcast, volumetric cloud) and Sunfort Stadium (worn dusty
+  turner, at night under four floodlight towers). Each has its own seat colours and its name on the big screens.
+- The pitch feeds the ball's physics (`CricketBall::Conditions`): pitch type, wear, cloud and dew scale seam, swing,
+  turn and bounce, and the rough outside the stumps (`IsInRough`) keeps the ball lower and turns it more. Wear grows
+  by 0.02 a ball. `CRICKET26.Ball.PitchCharacterAndWear` checks it all.
+- Pitch marks: `DrawPitchMarks` stamps each ball's landing spot and the bowler's footholds into `MarksTarget`, a
+  render target the pitch material reads over the middle 23 m by 3.2 m. To see them: `Scripts/capture.sh 6
+  -CricketQuitAfter=6 -CricketVenue=2 -CricketDevCam=0.5,0.01,8,5,0,0,55`.
+- Crowd: one instanced mesh of about 18,000 fans at High, whose material moves them (`Excite`). About 680 flags in
+  the teams' colours ride on a second instanced mesh (`CricketStadium::Flag`, `M_Flag`). Both materials take a `Fill`
+  emissive of a few percent of the venue's light: without it a packed stand under the roof renders near black.
+- Perf, Apple Silicon Mac, 1280x720, three deliveries, GPU average ms (Low / Medium / High / Epic): night 6.8 / 9.3 /
+  17.7 / 36.5, overcast 6.2 / 8.7 / 15.4, clear day 14.2 at High. Each shadowed floodlight costs about 1 to 2 ms, so
+  High gives shadows to two opposite towers and Epic to all four (four at High was 20.0).
+
+Stadium scripting notes (UE 5.8):
+- In Custom material nodes sample with `Texture2DSample(Tex, TexSampler, uv)`. An input must not share a name with
+  an output (the pitch's `Rough` output forced the `RoughSpots` input); a clash fails the material only at run time,
+  so check `Saved/Capture.log` for "Failed to compile Material".
+- A light's spawn rotation is added to its component's built-in tilt. Spawn at identity and call
+  `SetActorLocationAndRotation` afterwards (`SpawnSun`, the floodlights).
 
 ## Blocked on the owner
 
