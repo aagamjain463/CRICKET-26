@@ -303,6 +303,36 @@ void ASuperOverHUD::DrawHUD()
 		Text(bSlow ? TEXT("SUPER SLOW-MO") : TEXT("REPLAY"), W - 20 * S - TW * 0.5f, 24 * S, FLinearColor::White, 1.1f * S, true);
 	}
 
+	// Edge detector under the super slow-motion replay of a ball that passed the bat: the sound trace drawn as the
+	// replay plays it, a sharp spike if the bat touched the ball, a dull thud if only the pad did.
+	const FDeliveryResult& Heard = GM->Result;
+	if (GM->IsReplaying() && GM->ReplayAngle() == 1 && (Heard.Contact.HasContact() || Heard.bPadImpact))
+	{
+		const float PW = 440 * S, PH = 110 * S, PX = 20 * S, PY = 20 * S;
+		DrawRect(FLinearColor(0.02f, 0.03f, 0.07f, 0.88f), PX, PY, PW, PH);
+		DrawRect(FLinearColor(0.1f, 0.4f, 0.95f, 0.9f), PX, PY, PW, 24 * S);
+		Text(TEXT("EDGE DETECTOR"), PX + PW * 0.5f, PY + 3 * S, FLinearColor::White, 0.9f * S, true);
+		const float From = FMath::Max(0.f, Heard.ContactTime - ASuperOverGameMode::SuperSlowLead);
+		const float Span = ASuperOverGameMode::ReplayAngleTime * ASuperOverGameMode::SuperSlowSpeed, Now = GM->ReplayBallTime();
+		const float Mid = PY + 24 * S + (PH - 24 * S) * 0.5f, Amp = (PH - 24 * S) * 0.45f;
+		constexpr int32 Bars = 200;
+		for (int32 I = 0; I < Bars; ++I)
+		{
+			const float At = From + Span * I / Bars;
+			if (At > Now) break;
+			const float Noise = 0.04f + 0.04f * FMath::Frac(FMath::Sin(I * 12.9898f) * 43758.5453f);
+			const float V = FMath::Max(Noise, CricketDelivery::EdgeSignal(Heard, At));
+			DrawRect(V > 0.2f ? FLinearColor(1.f, 0.9f, 0.3f) : FLinearColor(0.2f, 0.85f, 0.4f), PX + 10 * S + (PW - 20 * S) * I / Bars, Mid - V * Amp, 1.6f * S, 2.f * V * Amp);
+		}
+		if (Now > Heard.ContactTime + 0.05f)
+		{
+			const bool bBat = Heard.Contact.HasContact();
+			const FString Call = bBat ? TEXT("BAT") : TEXT("NO BAT");
+			DrawRect(bBat ? FLinearColor(0.75f, 0.08f, 0.08f, 0.9f) : FLinearColor(0.1f, 0.6f, 0.2f, 0.9f), PX + PW - 110 * S, PY + 30 * S, 100 * S, 26 * S);
+			Text(Call, PX + PW - 60 * S, PY + 33 * S, FLinearColor::White, 0.9f * S, true);
+		}
+	}
+
 	// Ball tracking: the three LBW calls, each as the trail reaches it, then the decision.
 	if (GM->IsReviewing())
 	{

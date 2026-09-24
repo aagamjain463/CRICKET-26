@@ -100,7 +100,9 @@ MetaHuman scripting notes (UE 5.8 Python):
 - `FinishDelivery` records every ball in `Marks` (`FBallMark`: where it pitched, where the stroke went, runs,
   wicket). The scorecard draws the innings just played as a wagon wheel on its left and a pitch map on its right.
   To see them: `Scripts/capture.sh 7 -CricketQuitAfter=7` (the innings break before ball 7).
-- Not started: the edge detector and player reviews.
+- The edge detector (`CricketDelivery::EdgeSignal`, `FBallTracking::ImpactTime`) draws over the super slow-motion
+  replay: `Scripts/capture.sh 4 -CricketQuitAfter=4` shows it on an edged catch.
+- Not started: player reviews.
 
 ## Item 4: camera director
 

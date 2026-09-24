@@ -259,6 +259,7 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 				FBallTracking& T = R.Tracking;
 				FBallState Track = S;
 				T.Impact = S.Pos;
+			T.ImpactTime = S.Time;
 				T.Projected.Add(S.Pos);
 				T.PitchLine = R.PitchPos.Y * Off;
 				T.ImpactLine = Lat;
@@ -496,4 +497,17 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 	if (R.bNoBall) Result += R.bBeamer ? TEXT("  (NO BALL - above waist)") : R.bBouncer && !Release.bNoBall ? TEXT("  (NO BALL - bouncer)") : TEXT("  (NO BALL)");
 	R.Summary = What + TEXT("  >  ") + Result;
 	return R;
+}
+
+float CricketDelivery::EdgeSignal(const FDeliveryResult& R, float Time)
+{
+	float Signal = 0.f;
+	if (R.Contact.HasContact())
+	{
+		// The bat: a click that rises within a couple of milliseconds and rings for a few more.
+		const float Dt = Time - R.ContactTime;
+		if (Dt > -0.002f) Signal = FMath::Exp(-FMath::Max(Dt, 0.f) / 0.012f);
+	}
+	if (R.bPadImpact) Signal = FMath::Max(Signal, 0.3f * FMath::Exp(-FMath::Abs(Time - R.Tracking.ImpactTime) / 0.03f));
+	return Signal;
 }

@@ -950,6 +950,7 @@ bool FSOBallTracking::RunTest(const FString&)
 			const FDeliveryResult R = CricketDelivery::Resolve(Release(EDeliveryType::Stock, Length, Line), FBatInput(), Ctx());
 			if (!R.bPadImpact) continue;
 			const FBallTracking& T = R.Tracking;
+		TestTrue(TEXT("impact timed after the release"), T.ImpactTime > 0.f && T.ImpactTime < R.DeadTime);
 			if (!TestTrue(*FString::Printf(TEXT("tracking starts at the impact (%s)"), *R.Summary), T.Projected.Num() > 1 && T.Projected[0] == T.Impact)) return false;
 			if (T.bWouldHit) TestTrue(TEXT("a ball hitting the stumps is tracked to them"), FMath::IsNearlyZero(T.Projected.Last().X, 0.01f));
 			TestEqual(*FString::Printf(TEXT("calls match the decision (%s)"), *R.Summary), R.Dismissal == EDismissal::LBW,
@@ -959,6 +960,25 @@ bool FSOBallTracking::RunTest(const FString&)
 		}
 	}
 	TestTrue(*FString::Printf(TEXT("both LBWs (%d) and not-outs (%d) checked"), Outs, NotOuts), Outs > 0 && NotOuts > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOEdgeDetector, "CRICKET26.Umpire.EdgeDetectorSpikesOnlyOnTheBat", CricketTestFlags)
+bool FSOEdgeDetector::RunTest(const FString&)
+{
+	FDeliveryResult Edge;
+	Edge.Contact.Zone = EContactZone::OutsideEdge;
+	Edge.ContactTime = 0.5f;
+	TestEqual(TEXT("full spike at the edge"), CricketDelivery::EdgeSignal(Edge, 0.5f), 1.f);
+	TestEqual(TEXT("silent before it"), CricketDelivery::EdgeSignal(Edge, 0.45f), 0.f);
+	TestTrue(TEXT("rung out soon after"), CricketDelivery::EdgeSignal(Edge, 0.6f) < 0.01f);
+
+	FDeliveryResult Pad;
+	Pad.ContactTime = 0.5f; // a miss: the time the ball passed the bat
+	Pad.bPadImpact = true;
+	Pad.Tracking.ImpactTime = 0.53f;
+	TestEqual(TEXT("no spike where the bat missed"), CricketDelivery::EdgeSignal(Pad, 0.5f) < 0.2f, true);
+	TestTrue(TEXT("a low thud at the pad"), FMath::IsNearlyEqual(CricketDelivery::EdgeSignal(Pad, 0.53f), 0.3f));
 	return true;
 }
 

@@ -44,6 +44,7 @@ struct FBallRead
 struct FBallTracking
 {
 	FVector Impact = FVector::ZeroVector;
+	float ImpactTime = 0.f;            // s after release
 	TArray<FVector> Projected;         // from the impact to the stumps plane (or where the ball stopped), every step
 	/** Half the width of the stumps plus the ball: a ball's centre closer than this to middle stump is in line. */
 	static constexpr float InLine = CricketGeo::StumpsHalfWidth + CricketGeo::BallRadius;
@@ -93,4 +94,9 @@ namespace CricketDelivery
 	/** The player's timing grade for a swing: within PerfectTiming of ideal, within GoodTiming, else early or late. */
 	constexpr float PerfectTiming = 0.015f, GoodTiming = 0.04f;
 	FString TimingName(float TimingError);
+	/**
+	 * The edge detector's sound envelope, 0 to 1, at a time after release: a sharp spike where the bat touched the
+	 * ball and a low, broad thud where the pad did. Silent otherwise; the HUD adds the background noise.
+	 */
+	float EdgeSignal(const FDeliveryResult& R, float Time);
 }
