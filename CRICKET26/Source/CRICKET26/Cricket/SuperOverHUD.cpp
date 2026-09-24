@@ -202,6 +202,26 @@ void ASuperOverHUD::DrawHUD()
 		if (In.Bowler.Balls == 0 && In.Deliveries == 0) Card(BX0 + BarW - 250 * S, BowlT.Colour, BowlT.Bowler.Name, CricketHUD::RoleName(BowlT.Bowler, false));
 	}
 
+	// Field radar before each ball: the ground as the main camera sees it (the striker at the top, the off side
+	// where the camera shows it), with the fielders where they are set and the inner ring.
+	if ((GM->DPhase == EDeliveryPhase::Waiting || GM->DPhase == EDeliveryPhase::RunUp) && M.Phase != EMatchPhase::InningsBreak && M.Phase != EMatchPhase::MatchComplete)
+	{
+		using namespace CricketGeo;
+		const float R = 80 * S, K = R / BoundaryRadius;
+		const FVector2D C(W - 20 * S - R, 20 * S + R);
+		// ponytail: the inner ring drawn as a circle about the pitch's middle; the real one is two arcs about the stumps.
+		constexpr float InnerRing = 27.4f;
+		auto Map = [&](float X, float Y) { return C + FVector2D(-Y, X - PitchCentre().X) * K; };
+		Canvas->K2_DrawPolygon(nullptr, C, FVector2D(R + 4 * S, R + 4 * S), 48, FLinearColor(0.02f, 0.03f, 0.07f, 0.88f));
+		Canvas->K2_DrawPolygon(nullptr, C, FVector2D(R, R), 48, FLinearColor(0.05f, 0.25f, 0.08f, 0.9f));
+		Canvas->K2_DrawPolygon(nullptr, C, FVector2D(InnerRing * K, InnerRing * K), 48, FLinearColor(0.1f, 0.35f, 0.12f, 0.8f));
+		const FVector2D Top = Map(0.f, 0.f);
+		DrawRect(FLinearColor(0.75f, 0.65f, 0.45f, 0.9f), Top.X - 1.5f * S, Top.Y, 3 * S, PitchLength * K);
+		for (const float X : { 0.9f, PitchLength - 1.3f })
+			Canvas->K2_DrawPolygon(nullptr, Map(X, 0.f), FVector2D(3.5f * S, 3.5f * S), 12, BatT.Colour);
+		for (const FFielder& F : GM->Ctx.Field)
+			Canvas->K2_DrawPolygon(nullptr, Map(F.Home.X, F.Home.Y), FVector2D(4 * S, 4 * S), 12, F.bKeeper || F.bBowler ? FLinearColor::White : BowlT.Colour);
+	}
 
 	// Prompts.
 	FString Prompt;
