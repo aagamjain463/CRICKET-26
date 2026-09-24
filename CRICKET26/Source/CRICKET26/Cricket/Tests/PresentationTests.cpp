@@ -4,6 +4,8 @@
 #include "CricketAudio.h"
 #include "CricketCommentary.h"
 #include "SuperOverGameMode.h"
+#include "Components/DirectionalLightComponent.h"
+#include "Engine/DirectionalLight.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -163,6 +165,24 @@ bool FBallReadability::RunTest(const FString&)
 	TestEqual(TEXT("capped far away"), Scale(500.f, 42.f), ASuperOverGameMode::MaxBallScale);
 	TestTrue(TEXT("never smaller when further"), Scale(40.f, 42.f) <= Scale(50.f, 42.f) && Scale(50.f, 42.f) <= Scale(80.f, 42.f));
 	TestEqual(TEXT("degenerate view"), Scale(0.f, 42.f), 1.f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSunLightsFaces, "CRICKET26.Presentation.SunLightsFaces", CricketPresentationTests::Flags)
+bool FSunLightsFaces::RunTest(const FString&)
+{
+	// The striker faces the bowler (+X) and the delivery camera looks back from behind the bowler, so the sun's
+	// light has to travel toward -X to fall on the faces the camera sees. It used to travel toward +X, which
+	// lit only the players' backs and left every face black.
+	// The spawned sun is checked, not the intended rotation: the light's component adds its own -46 degree
+	// pitch to a spawn rotation, which once put the sun straight overhead so nothing cast a visible shadow.
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
+	const FVector Light = ASuperOverGameMode::SpawnSun(World)->GetComponent()->GetDirection();
+	World->DestroyWorld(false);
+	AddInfo(FString::Printf(TEXT("sun light travels along %s"), *Light.ToString()));
+	TestTrue(TEXT("light falls on the striker's front"), FVector::DotProduct(Light, FVector::ForwardVector) < -0.5f);
+	TestTrue(TEXT("from one side, so faces keep some shape"), FMath::Abs(Light.Y) > 0.2f);
+	TestTrue(TEXT("low enough to cast shadows the camera sees"), FMath::IsNearlyEqual(-Light.Z, FMath::Sin(FMath::DegreesToRadians(42.f)), 0.02f));
 	return true;
 }
 

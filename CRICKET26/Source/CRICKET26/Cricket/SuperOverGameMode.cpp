@@ -345,19 +345,33 @@ float ASuperOverGameMode::RunUpX(float Time) const
 	return FMath::Max(PitchLength - 1.f + RunUpLength * (1.f - Time / Ideal), PitchLength - 2.2f);
 }
 
+ADirectionalLight* ASuperOverGameMode::SpawnSun(UWorld* W)
+{
+	// The sun shines from the bowler's end, over the delivery camera's shoulder, so the players it frames face
+	// the light (from the striker's end it lit only their backs and left every face black). It is made Movable
+	// before it registers, as there is no baked lighting.
+	ADirectionalLight* Sun = W->SpawnActorDeferred<ADirectionalLight>(ADirectionalLight::StaticClass(), FTransform::Identity);
+	Sun->GetComponent()->SetMobility(EComponentMobility::Movable);
+	Sun->GetComponent()->SetAtmosphereSunLight(true);
+	Sun->GetComponent()->SetIntensity(SunLux);
+	Sun->FinishSpawning(FTransform::Identity);
+	// Set after spawning: the light's component carries a -46 degree pitch of its own, which a spawn
+	// rotation is added to (it put the sun at -88 degrees, straight overhead, so nothing cast a visible shadow).
+	Sun->SetActorRotation(SunRotation);
+	return Sun;
+}
+
 void ASuperOverGameMode::BuildScene()
 {
 	using namespace CricketGeo;
 	UWorld* W = GetWorld();
 
-	ADirectionalLight* Sun = W->SpawnActor<ADirectionalLight>(FVector::ZeroVector, FRotator(-42.f, 35.f, 0.f));
-	Sun->GetComponent()->SetMobility(EComponentMobility::Movable);
-	Sun->GetComponent()->SetAtmosphereSunLight(true);
-	Sun->GetComponent()->SetIntensity(8.f);
-	ASkyLight* Sky = W->SpawnActor<ASkyLight>();
+	SpawnSun(W);
+	// The sky light is made Movable before it registers: there is no baked capture, and a real-time one needs it.
+	ASkyLight* Sky = W->SpawnActorDeferred<ASkyLight>(ASkyLight::StaticClass(), FTransform::Identity);
 	Sky->GetLightComponent()->SetMobility(EComponentMobility::Movable);
 	Sky->GetLightComponent()->bRealTimeCapture = true;
-	Sky->GetLightComponent()->RecaptureSky();
+	Sky->FinishSpawning(FTransform::Identity);
 	W->SpawnActor<ASkyAtmosphere>();
 	// The mobile renderer draws no sky from the atmosphere alone; give it Epic's sky dome (UE EULA).
 	if (W->GetFeatureLevel() < ERHIFeatureLevel::SM5)
@@ -375,14 +389,17 @@ void ASuperOverGameMode::BuildScene()
 			SkyDome->SetActorScale3D(FVector(400.f));
 		}
 	}
-	AExponentialHeightFog* Fog = W->SpawnActor<AExponentialHeightFog>();
-	Fog->GetComponent()->SetFogInscatteringColor(FLinearColor(0.45f, 0.6f, 0.85f));
-	Fog->GetComponent()->SetFogDensity(0.004f);
-	// The project disables auto exposure; darken the fixed exposure so placeholder colours read true.
+	// Daylight at real-world levels seen through a fixed sunny-day exposure, so the sky's fill, the atmosphere and
+	// Lumen's bounce keep their natural balance with the sun (an 8 lux sun under a dimmed exposure left every
+	// shadow black). The exposure is set as compensation, which phones honour too (they ignore the physical camera).
 	APostProcessVolume* PP = W->SpawnActor<APostProcessVolume>();
 	PP->bUnbound = true;
+	PP->Settings.bOverride_AutoExposureMethod = true;
+	PP->Settings.AutoExposureMethod = AEM_Manual;
+	PP->Settings.bOverride_AutoExposureApplyPhysicalCameraExposure = true;
+	PP->Settings.AutoExposureApplyPhysicalCameraExposure = false;
 	PP->Settings.bOverride_AutoExposureBias = true;
-	PP->Settings.AutoExposureBias = ExposureBias;
+	PP->Settings.AutoExposureBias = -ExposureEV100;
 
 	const FVector C = PitchCentre();
 	Spawn(CylinderMesh, FVector(C.X, 0.f, -0.06f), FVector(800.f, 800.f, 0.1f), Grass);
@@ -454,6 +471,8 @@ void ASuperOverGameMode::ApplyQuality()
 	const bool bLumen = Quality >= 2;
 	IConsoleManager::Get().FindConsoleVariable(TEXT("r.DynamicGlobalIlluminationMethod"))->Set(bLumen ? 1 : 0, ECVF_SetByCode);
 	IConsoleManager::Get().FindConsoleVariable(TEXT("r.ReflectionMethod"))->Set(bLumen ? 1 : 2, ECVF_SetByCode);
+	// TSR costs about 6 ms a frame at native resolution on an M-series Mac (60 fps missed); TAA costs about 2.
+	IConsoleManager::Get().FindConsoleVariable(TEXT("r.AntiAliasingMethod"))->Set(Quality >= 3 ? 4 : 2, ECVF_SetByCode);
 	UE_LOG(LogCRICKET26, Display, TEXT("Quality %d"), Quality);
 }
 

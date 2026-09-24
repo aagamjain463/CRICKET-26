@@ -46,7 +46,11 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Super Over") float RunUpSeconds = 1.8f;
 	static constexpr float IdealRelease = 0.f; // bowling meter value of a perfectly timed release
 	static constexpr float RunUpLength = 8.f;  // metres of approach shown before the crease
-	UPROPERTY(EditAnywhere, Category = "Super Over") float ExposureBias = -1.5f;
+	UPROPERTY(EditAnywhere, Category = "Super Over") float ExposureEV100 = 15.f; // fixed camera exposure: the sunny-16 rule for a 100000 lux sun
+	static constexpr float SunLux = 100000.f;
+	/** The sun's light travels from the bowler's end toward the striker, 42 degrees above the horizon. */
+	static inline const FRotator SunRotation = FRotator(-42.f, 215.f, 0.f);
+	static class ADirectionalLight* SpawnSun(UWorld* World);
 
 	/** Semantic match events for HUD, camera, audio and (later) commentary. */
 	FOnCricketEvent OnCricketEvent;
