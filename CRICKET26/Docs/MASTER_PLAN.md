@@ -405,7 +405,7 @@ Checks:
 | M1 | 1.1, 1.2, 1.3 lighting | No | 1.1 and 1.2 done (`3a610bd`); 1.3 waits for a reference frame to grade against |
 | M2 | 0.1 finish MetaHumans | No | Done (hand-IK root cause fixed; cooking not yet tried) |
 | M3 | 4.1 six rate, 4.3 timing feedback | No (playtest later) | 4.3 done (timing bar, F9). 4.1: the root cause (full pace kept on a mistime, fixed contact point) was fixed in `1157fad`. Sixes fell from 41% to 25-29% of balls. The final band waits for playtest data |
-| M4 | 0.2, 0.3, 0.4, 0.5 levels, rendering, UMG, capture tools | No | |
+| M4 | 0.2, 0.3, 0.4, 0.5 levels, rendering, UMG, capture tools | No | 0.5 done (`29bf74e`: `-CricketDevCam=face`/`kit`, `Scripts/compare.sh`). 0.3 mostly done. Tiers: Low/Medium use sky light, SSR and TAA; High adds Lumen GI and reflections; Epic adds TSR. VSM and Nanite are on at every tier, with light bloom and AO (no measurable cost: 6.5 ms GPU at Medium). Exposure stays fixed at EV15 for day play; auto exposure comes with the night preset (1.4). The PSO cache needs a packaged build. 0.2 and 0.4 not started |
 | M5 | 2.1 to 2.7 kit, gear, bat | Asset budget or Marvelous Designer | |
 | M6 | 3.1 locomotion by motion matching | No (free Epic sample) | |
 | M7 | 3.2 to 3.8 cricket mocap and simulation-driven animation | Performer and capture route | |

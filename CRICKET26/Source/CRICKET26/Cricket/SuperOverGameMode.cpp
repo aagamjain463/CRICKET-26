@@ -438,6 +438,12 @@ void ASuperOverGameMode::BuildScene()
 	PP->Settings.AutoExposureApplyPhysicalCameraExposure = false;
 	PP->Settings.bOverride_AutoExposureBias = true;
 	PP->Settings.AutoExposureBias = -ExposureEV100;
+	// A soft broadcast glow on sunlit whites (ball, kit, sightscreen) and contact shadow under the players where Lumen is
+	// off (below High), which otherwise leaves them floating on the grass.
+	PP->Settings.bOverride_BloomIntensity = true;
+	PP->Settings.BloomIntensity = 0.3f;
+	PP->Settings.bOverride_AmbientOcclusionIntensity = true;
+	PP->Settings.AmbientOcclusionIntensity = 0.5f;
 
 	const FVector C = PitchCentre();
 	Spawn(CylinderMesh, FVector(C.X, 0.f, -0.06f), FVector(800.f, 800.f, 0.1f), Grass);
