@@ -101,6 +101,18 @@ The captured-animation work (friend's batting takes, sprint, fielding dive and t
   (`Gear_Straps`, team colour). Both legs' grids face outwards (`outward`). The right leg is the left mirrored and
   would otherwise wind the other way, so solidify thickened it out through its own grooves. `both` checks that the
   two legs' pieces stand off their legs alike and stops the build if they don't.
+- Gloves: the batting gloves have sausage rolls, 1.4 cm long, down each finger and thumb. The glove is subdivided
+  once first, because the body's fingers are too coarse for rolls that short. The keeper's mitts stay smooth. Two
+  fixes found on the way. First, the toe bones are named for fingers (`ringtoe_01_l`), so prefix matching on "ring"
+  or "index" counted the toes as hand and capped them in glove. `part_of` now leaves out any bone with "toe" in its
+  name. Second, `finish` uses the Solidify modifier's plain normal offset. bmesh's solidify evens out thickness by
+  angle, and where the glove folds back between the fingers it threw vertices metres out, as rods through the scene.
+  The build stops if any glove vertex lands more than 35 cm from a hand.
+- Perf with outfits, scanned helmet and modelled gear (12 deliveries, Medium, 1280x720): frame 16.7/17.2 ms (vsync),
+  GPU 12.5/16.6 ms avg/p99, up from 9.9 ms GPU with the Blender kit.
+- Known: close up and in shade, the striker's shirt edge looks grainy. The keeper's identical shirt in sunlight
+  looks clean. Turning off the shirt material's fuzz, pilling and detail normal made no visible difference, so it
+  is probably lighting or TSR noise rather than the cloth. Still open.
 
 MetaHuman scripting notes (UE 5.8 Python):
 - It runs as a commandlet:

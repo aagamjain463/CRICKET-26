@@ -53,13 +53,20 @@ groups = {g.index: g.name for g in body.vertex_groups}
 ARM_PARTS = ("upperarm", "lowerarm", "hand", "wrist", "elbow", "thumb", "index", "middle", "ring", "pinky")
 
 
+def part_of(v, parts):
+    """The vertex's weight on bones named for any of parts. The toes are named for fingers (indextoe_01_l,
+    ringtoe_01_l), so they are left out."""
+    for g in v.groups:
+        n = groups.get(g.group, "")
+        if n.startswith(parts) and "toe" not in n:
+            yield n, g.weight
+
+
 def arm_weight(v):
     """How much of the vertex follows an arm: (weight, side)."""
     w = {"l": 0.0, "r": 0.0}
-    for g in v.groups:
-        n = groups.get(g.group, "")
-        if n.startswith(ARM_PARTS):
-            w[n[-1]] = w.get(n[-1], 0.0) + g.weight
+    for n, weight in part_of(v, ARM_PARTS):
+        w[n[-1]] = w.get(n[-1], 0.0) + weight
     side = max(w, key=w.get)
     return w[side], side
 
@@ -109,10 +116,15 @@ def piece(kind, keep, offset, smooth):
 
 
 def finish(o, bm, material, thickness=THICKNESS):
-    if thickness:
-        bmesh.ops.solidify(bm, geom=bm.faces[:], thickness=thickness)
     bm.to_mesh(o.data)
     bm.free()
+    if thickness:
+        # A plain offset along the vertex normals. bmesh's solidify evens the thickness out by the angle at each
+        # vertex, and where the surface folds back on itself (between the fingers) that throws vertices metres out.
+        m = o.modifiers.new("Solidify", 'SOLIDIFY')
+        m.thickness, m.offset, m.use_even_offset = thickness, -1.0, False
+        with bpy.context.temp_override(object=o, active_object=o):
+            bpy.ops.object.modifier_apply(modifier=m.name)
     o.data.materials.clear()
     # Reused by name: a second new one would come out as "Gear_Pads.001", a slot the game does not know.
     o.data.materials.append(bpy.data.materials.get(material) or bpy.data.materials.new(material))
@@ -367,7 +379,7 @@ hand = {s: joint(f"hand_{s}") for s in "lr"}
 
 
 def hand_weight(v):
-    return sum(g.weight for g in v.groups if groups.get(g.group, "").startswith(HAND_PARTS))
+    return sum(weight for _, weight in part_of(v, HAND_PARTS))
 
 
 def glove_keep(i):
@@ -376,12 +388,47 @@ def glove_keep(i):
     return w > 0.5 and (hand_weight(v) > 0.5 or (v.co - hand[side]).length < 8.0)
 
 
+# Sausage rolls down the back of each finger and thumb, ROLL cm long.
+ROLL = 1.4
+
+
+def finger(f, s):
+    """The finger's joints, knuckle to tip."""
+    b = [arm.data.bones[f"{f}_0{i}_{s}"] for i in (1, 2, 3)]
+    return [to_local @ x.head_local for x in b] + [to_local @ b[-1].tail_local]
+
+
+fingers = [finger(f, s) for f in ("thumb", "index", "middle", "ring", "pinky") for s in "lr"]
+
+
+def finger_roll(p):
+    """How far the finger rolls raise the glove at p: nothing more than 2.5 cm off a finger's bones."""
+    near, at = 2.5, None
+    for chain in fingers:
+        run = 0.0
+        for a, b in zip(chain, chain[1:]):
+            t = min(max((p - a).dot(b - a) / (b - a).length_squared, 0.0), 1.0)
+            d = (p - a.lerp(b, t)).length
+            if d < near:
+                near, at = d, run + t * (b - a).length
+            run += (b - a).length
+    return 0.0 if at is None else 0.35 * hump(at / ROLL)
+
+
 def glove_offset(p):
     side = "l" if (p - hand["l"]).length < (p - hand["r"]).length else "r"
     return 0.8 + (0.7 if along(p, hand[side], elbow[side]) > 0.02 else 0.0)
 
 
-gloves = finish(*piece("Gloves", glove_keep, glove_offset, 2), "Gear_Gloves", 0.5)
+o, bm = piece("Gloves", glove_keep, glove_offset, 2)
+# The body's fingers are too coarse for rolls this short, so the glove is split finer first.
+bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=1, use_grid_fill=True)
+bm.normal_update()
+for v in bm.verts:
+    v.co += v.normal * finger_roll(v.co)
+gloves = finish(o, bm, "Gear_Gloves", 0.5)
+far = max(min((v.co - hand[s]).length for s in "lr") for v in gloves.data.vertices)
+assert far < 35.0, f"Gloves reach {far:.0f} cm from the hands"
 # The keeper's: slimmer pads, and gloves twice as padded, smoothed into mitts that web the thumb to the fingers.
 keeper_pads = both(pad, "Gear_Pads", 1.0, 1.0)
 keeper_gloves = finish(*piece("KeeperGloves", glove_keep, lambda p: glove_offset(p) + 1.0, 8), "Gear_Gloves", 0.6)
