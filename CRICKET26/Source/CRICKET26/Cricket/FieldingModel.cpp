@@ -7,7 +7,7 @@ namespace
 	constexpr float BatReach = 1.2f;    // a runner grounds the bat this far ahead of their body
 	constexpr float LegLength = RunLength - BatReach;
 	constexpr float SetOff = 0.3f;      // leaving the crease after the stroke (s)
-	constexpr float Turn = 0.6f;        // ground the bat, stop, push back off (s)
+	constexpr float TurnTime = 0.6f;        // ground the bat, stop, push back off (s)
 	// ponytail: one misjudgement spread for every pair; per-batter running judgement belongs with the attribute curves.
 	constexpr float ArmsLength = 0.5f;  // taken without moving the feet
 	constexpr float LungeSpeed = 6.f;   // m/s the hands travel reaching or diving beyond arm's length
@@ -354,8 +354,8 @@ FRunningOutcome CricketField::SolveRunning(const FFieldingOutcome& Fd, const FCr
 
 	const float V = FMath::Max(3.f, FMath::Min(Striker.RunSpeed, NonStriker.RunSpeed));
 	// Set off after the stroke, then each turn: ground the bat, stop, push back off.
-	auto RunTime = [V](int32 N) { return N <= 0 ? 0.f : SetOff + TimeToCover(LegLength, V) + (N - 1) * (LegLength / V + Turn); };
-	auto Leave = [&RunTime](int32 N) { return N == 1 ? SetOff : RunTime(N - 1) + 0.5f * Turn; };
+	auto RunTime = [V](int32 N) { return N <= 0 ? 0.f : SetOff + TimeToCover(LegLength, V) + (N - 1) * (LegLength / V + TurnTime); };
+	auto Leave = [&RunTime](int32 N) { return N == 1 ? SetOff : RunTime(N - 1) + 0.5f * TurnTime; };
 
 	const FVector2D From(Fd.FieldPos.X, Fd.FieldPos.Y);
 	const float Throw = FMath::Clamp(Skill.Throwing, 0.f, 1.f);
@@ -459,7 +459,7 @@ FRunningOutcome CricketField::SolveRunning(const FFieldingOutcome& Fd, const FCr
 			R.bSentBack = true;
 			R.SentBackAt = FMath::Max(Fd.FieldTime, Leave(N));
 			R.SentBackFrom = FMath::Max(0.f, Along);
-			R.BackIn = R.SentBackAt + 0.5f * Turn + R.SentBackFrom * LegLength / V;
+			R.BackIn = R.SentBackAt + 0.5f * TurnTime + R.SentBackFrom * LegLength / V;
 			break;
 		}
 		R.RunTimes.Add(RunTime(N));

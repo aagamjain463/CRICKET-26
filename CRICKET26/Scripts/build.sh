@@ -1,8 +1,9 @@
 #!/bin/zsh
 # Builds the editor target and prints only errors and the result; exits non-zero on failure so a
-# following capture or test run does not launch against a stale module.
+# following capture or test run does not launch against a stale module. Adaptive unity is off: it compiles files
+# being edited on their own, which hides name clashes the unity blob hits once they are committed.
 ROOT="${0:A:h:h}"
-OUT=$("/Users/Shared/Epic Games/UE_5.8/Engine/Build/BatchFiles/Mac/Build.sh" CRICKET26Editor Mac Development -Project="$ROOT/CRICKET26.uproject" -WaitMutex 2>&1)
+OUT=$("/Users/Shared/Epic Games/UE_5.8/Engine/Build/BatchFiles/Mac/Build.sh" CRICKET26Editor Mac Development -Project="$ROOT/CRICKET26.uproject" -WaitMutex -DisableAdaptiveUnity 2>&1)
 print -r -- "$OUT" | grep -E " error|Result"
 [[ "$OUT" == *"Result: Succeeded"* ]] || exit 1
 # While an editor or the game is open, UBT writes a numbered copy of the module (hot reload) and can leave the
