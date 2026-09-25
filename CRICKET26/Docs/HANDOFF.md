@@ -82,8 +82,25 @@ The captured-animation work (friend's batting takes, sprint, fielding dive and t
   memory wrinkles from the MetaHuman plugin's clothing textures, and a fuzz sheen. `Paint` sets its `Fabric` (0 for
   the helmet's shell and grille, 0.3 for the shoes, 1 for cloth) and `Ribs` (1 on the pads) per slot. To rebuild only
   the material: `KIT_STEP=material KIT_DIR=Saved/Kit KIT_NAMES=x UnrealEditor-Cmd ... -script=Scripts/metahuman/kit_ue.py`.
-  Close up, the Blender-cut shirt still reads as a smooth shell. The planned replacement is Epic's free parametric
-  MetaHuman outfits from Fab (Tucked T Shirt Variants, Slim Jeans Variants, Running Shoes), which fit each body.
+- Outfits: `Scripts/metahuman/outfit_ue.py` dresses the players in Epic's free parametric MetaHuman outfits from Fab
+  (Standard License): the tucked long-sleeve T-shirt, slim trousers and running shoes (`WI_OA_TshirtTkLngSlv`,
+  `WI_OA_Jeans_slm`, `WI_OA_RunningShoes`). They resize to each body in MetaHuman Creator, so they have real folds,
+  seams and a collar. `OUTFIT_PKGS="a.mhpkg:b.mhpkg"` imports the packages into `/Game/MetaHumans/Outfits`, and
+  `OUTFIT_WEAR="MH_Home_Opener ..."` rebuilds each named character in them (no cloud step). All 10 are built this way.
+  `AddBody` sees a `WI_OA_` material and keeps the outfit on show instead of the Blender kit. The gear still comes
+  from `make_kit.sh`. `Paint` tints the outfit: shirt in the team colour, trousers darker, shoes white. The only free
+  trousers are jeans, so `Paint` swaps their faded-denim colour map for white, sets `div_fabric` to white and turns off
+  the twill overlay. That leaves plain team-coloured cloth, with the seams and folds still in the normal and AO maps.
+- Helmet: when `Saved/Kit/cricket_helmet.glb` is there (`HELMET_GLB` overrides the path), `make_kit.py` uses
+  "Cricket Helmet" by Helindu (Sketchfab, CC-BY 4.0; the credit must ship with the game). The script decimates it to
+  about 8000 faces and fits it where the modelled shell sat. The shell and ear guards get `Gear_Helmet` (dark team
+  shade), and the grille and chin strap get `Gear_Grille`. Without the file, the modelled shell and grille are used.
+  The .glb is not committed: download it from Sketchfab (free, sign-in needed) into `Saved/Kit/`.
+- Pads: modelled in `make_kit.py` on a smooth grid round each leg, measured from the body. They have a knee roll of
+  three bolsters, 7 canes down the shin and 5 up the thigh, flat side wings, and 3 straps round the back of the leg
+  (`Gear_Straps`, team colour). Both legs' grids face outwards (`outward`). The right leg is the left mirrored and
+  would otherwise wind the other way, so solidify thickened it out through its own grooves. `both` checks that the
+  two legs' pieces stand off their legs alike and stops the build if they don't.
 
 MetaHuman scripting notes (UE 5.8 Python):
 - It runs as a commandlet:

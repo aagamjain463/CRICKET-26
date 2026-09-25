@@ -3,6 +3,8 @@
 # cuts the kit from it (make_kit.py) and models the bat (make_bat.py), and Unreal imports them onto the player's
 # skeleton. Run after make_players.sh. Takes about a minute a player the first time (the bodies are built once more
 # without their garment), seconds after.
+# The batting helmet is "Cricket Helmet" by Helindu (Sketchfab, CC-BY 4.0) when its .glb is at $KIT_DIR/cricket_helmet.glb
+# (or HELMET_GLB), else one made from simple shapes.
 # Usage: Scripts/metahuman/make_kit.sh [Name,Name...]   (default: all ten)
 set -e
 ROOT="${0:A:h:h:h}"
@@ -10,6 +12,7 @@ ENGINE="/Users/Shared/Epic Games/UE_5.8/Engine"
 BLENDER="/Applications/Blender.app/Contents/MacOS/Blender"
 export KIT_DIR="$ROOT/Saved/Kit"
 export KIT_NAMES="${1:-MH_Home_Opener,MH_Home_Finisher,MH_Home_Allrounder,MH_Home_Quick,MH_Away_Hitter,MH_Away_Anchor,MH_Away_KeeperBat,MH_Away_WristSpinner,MH_Umpire_1,MH_Umpire_2}"
+export HELMET_GLB="${HELMET_GLB:-$KIT_DIR/cricket_helmet.glb}"
 mkdir -p "$KIT_DIR"
 unreal() {
   KIT_STEP=$1 "$ENGINE/Binaries/Mac/UnrealEditor-Cmd" "$ROOT/CRICKET26.uproject" -run=pythonscript -script="$ROOT/Scripts/metahuman/kit_ue.py" \

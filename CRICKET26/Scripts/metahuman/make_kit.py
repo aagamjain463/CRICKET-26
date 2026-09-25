@@ -9,9 +9,11 @@
 # helmet is rigid on the head bone. The keeper's gear is a third, with lighter pads and big webbed gloves, and the
 # umpire's wide-brimmed hat (Gear_Hat) a fourth.
 #
-# All of it is generated here from the MetaHuman body: an original design, no third-party asset.
+# All of it is generated here from the MetaHuman body, an original design, except the helmet when HELMET_GLB names
+# "Cricket Helmet" by Helindu (Sketchfab, CC-BY 4.0), which must then be credited.
 #
 # Run: Blender -b --python make_kit.py -- BODY.fbx KIT.fbx GEAR.fbx KEEPER.fbx HAT.fbx
+import os
 import sys
 import bmesh
 import bpy
@@ -174,37 +176,190 @@ def export(parts, name, path):
 
 export([shirt, trousers, shoes], "Kit", KIT)
 
-# Batting pads: the front two thirds of each shin from the shoe to above the knee, pushed well out, with raised canes.
+# Batting pads, modelled round each leg rather than cut from it: a grid over the front of the leg, from the top of the
+# shoe to the thigh, following the leg's measured width and depth. Seven rounded vertical canes run down the shin, a knee
+# roll of three horizontal bolsters crosses the knee, narrower canes run up the thigh, and flat wings wrap the sides,
+# with grooves between them all. Straps round the back of the leg hold it on. Below the knee the pad follows the calf
+# bone, above it the thigh bone, blended across the knee.
 FORWARD = Vector((0.0, -1.0, 0.0))
 thigh = {s: joint(f"thigh_{s}") for s in "lr"}
-pad_top = knee_z + 0.3 * (sum(t.z for t in thigh.values()) / 2 - knee_z)
+KNEE_ROLL = (-5.0, 6.0)          # the knee roll's span about the knee joint, cm
+PAD_TOP = 20.0                   # the pad's top above the knee joint, cm
+SHIN_SPAN, THIGH_SPAN = 118, 80  # the pad's half-width round the leg from straight ahead, degrees
+WING = 92                        # beyond this the shin section is a flat wing, degrees
+STRAPS = (-30.0, -15.0, 13.0)    # heights of the straps' centres about the knee joint, cm
+STRAP_WIDTH = 3.5
 
 
-def leg_side(p):
-    return "l" if (p.x - pelvis.x) * (foot["l"].x - pelvis.x) > 0 else "r"
+def leg_axis(s, z):
+    a, b = (foot[s], knee[s]) if z < knee[s].z else (knee[s], thigh[s])
+    return a.lerp(b, min(max((z - a.z) / (b.z - a.z), 0.0), 1.0))
 
 
-def round_leg(p):
-    """Horizontal direction from the leg's axis to p."""
-    s = leg_side(p)
-    a, b = (foot[s], knee[s]) if p.z < knee[s].z else (knee[s], thigh[s])
-    d = p - a.lerp(b, min(max((p.z - a.z) / (b.z - a.z), 0.0), 1.0))
-    d.z = 0.0
-    return d.normalized() if d.length else FORWARD
+def leg_shape(s):
+    """The leg's half-width across, and its front and back from the axis, per cm of height (smoothed), in cm."""
+    rows = {}
+    for v in body.data.vertices:
+        p = v.co
+        if arm_weight(v)[0] > 0.5 or (p.x - pelvis.x) * (foot[s].x - pelvis.x) <= 0:
+            continue
+        d = p - leg_axis(s, p.z)
+        r = rows.setdefault(round(p.z), [0.0, 0.0, 0.0])
+        r[0], r[1], r[2] = max(r[0], abs(d.x)), max(r[1], -d.y), max(r[2], d.y)
+    # From just above the ankle: lower down the heel and toes would drag the pad's edge out. Below it the pad keeps
+    # the lowest measured shape.
+    lo, hi = round(ankle_z + 3.0), round(knee[s].z + PAD_TOP + 2.0)
+    raw = [rows.get(z, [6.0, 6.0, 6.0]) for z in range(lo, hi + 1)]
+    return lo, [[sum(raw[j][k] for j in range(max(0, i - 5), min(len(raw), i + 6))) / len(raw[max(0, i - 5):i + 6])
+                 for k in range(3)] for i in range(len(raw))]
 
 
-def pad_keep(i):
-    v = body.data.vertices[i]
-    return (arm_weight(v)[0] < 0.5 and ankle_z + 2.0 < v.co.z < pad_top and round_leg(v.co).dot(FORWARD) > -0.35)
+def around(s, z, deg, out):
+    """The point `out` cm outside the leg at height z, `deg` degrees round from straight ahead."""
+    lo, shape = legs[s]
+    # Between the measured heights, blended, so the pad has no steps.
+    i = min(max(z - lo, 0.0), len(shape) - 1.001)
+    t = i - int(i)
+    w, front, back = (a + (b - a) * t for a, b in zip(shape[int(i)], shape[int(i) + 1]))
+    a = math.radians(deg) * (1 if s == "l" else -1)
+    depth = front if math.cos(a) > 0 else back
+    return leg_axis(s, z) + Vector(((w + out) * math.sin(a), -(depth + out) * math.cos(a), 0.0))
 
 
-def pad_offset(p):
-    d = round_leg(p)
-    angle = math.atan2(d.cross(FORWARD).z, d.dot(FORWARD))
-    return 3.2 + 0.6 * (0.5 + 0.5 * math.cos(angle * 10.0))
+def hump(t):
+    """0 at whole t, 1 halfway between: a round bolster with a narrow groove each side. The groove's walls are steep
+    but not vertical, so the pad's thickness does not fold through itself there."""
+    return 1.0 - (1.0 - abs(math.sin(t * math.pi))) ** 2
 
 
-pads = finish(*piece("Pads", pad_keep, pad_offset, 20), "Gear_Pads", 1.2)
+def bone_weights(bm, o, s):
+    layer = bm.verts.layers.deform.verify()
+    calf = (o.vertex_groups.get(f"calf_{s}") or o.vertex_groups.new(name=f"calf_{s}")).index
+    upper = (o.vertex_groups.get(f"thigh_{s}") or o.vertex_groups.new(name=f"thigh_{s}")).index
+    for v in bm.verts:
+        w = min(max((v.co.z - knee[s].z + 3.0) / 6.0, 0.0), 1.0)
+        v[layer].clear()
+        v[layer][calf], v[layer][upper] = 1.0 - w, w
+
+
+def outward(bm, s):
+    """Turns the faces out from the leg. The right leg's grid is the left's mirrored, so it winds the other way, and
+    solidify would thicken it outwards, through the pad's own grooves."""
+    bm.faces.ensure_lookup_table()
+    f = bm.faces[len(bm.faces) // 2]
+    c = f.calc_center_median()
+    if f.normal.dot(c - leg_axis(s, c.z)) < 0.0:
+        bmesh.ops.reverse_faces(bm, faces=bm.faces[:])
+
+
+def grid(bm, rows, cols, point, keep):
+    """A quad grid of point(i, j) over rows x cols, with faces only where keep(i, j) holds at all four corners."""
+    vs = [[bm.verts.new(point(i, j)) for j in range(cols)] for i in range(rows)]
+    uv = bm.loops.layers.uv.verify()
+    for i in range(rows - 1):
+        for j in range(cols - 1):
+            if all(keep(i + a, j + b) for a, b in ((0, 0), (0, 1), (1, 1), (1, 0))):
+                f = bm.faces.new((vs[i][j], vs[i][j + 1], vs[i + 1][j + 1], vs[i + 1][j]))
+                f.smooth = True
+                for loop, (a, b) in zip(f.loops, ((0, 0), (0, 1), (1, 1), (1, 0))):
+                    loop[uv].uv = ((j + b) / (cols - 1), (i + a) / (rows - 1) * 2.0)
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
+    bm.normal_update()
+
+
+legs = {s: leg_shape(s) for s in "lr"}
+
+
+def span(s, z):
+    """The pad's half-width round the leg at height z, in degrees: the shin's to the knee roll's top, in to the thigh's
+    over 3 cm, then tapering to the top."""
+    above = z - knee[s].z - KNEE_ROLL[1]
+    if above <= 0.0:
+        return SHIN_SPAN
+    if above < 3.0:
+        return SHIN_SPAN + (THIGH_SPAN - SHIN_SPAN) * above / 3.0
+    return THIGH_SPAN * (1.0 - 0.25 * (above - 3.0) / (PAD_TOP - KNEE_ROLL[1] - 3.0))
+
+
+def pad(name, s, slim):
+    o = body.copy()
+    o.data = bpy.data.meshes.new(name)
+    o.name = name
+    bpy.context.scene.collection.objects.link(o)
+    bm = bmesh.new()
+    k = knee[s].z
+    bottom, top = ankle_z - 1.0, k + PAD_TOP
+    rows, cols = int(top - bottom) * 2 + 1, 73
+
+    def offset(z, u):
+        above = z - k
+        d = SHIN_SPAN * u
+        if KNEE_ROLL[0] < above < KNEE_ROLL[1]:
+            # The roll flattens into the wings' edge over the last 20 degrees, so it does not stand off the side.
+            side = min(1.0, (SHIN_SPAN - abs(d)) / 20.0)
+            return 2.2 + (0.8 + 1.0 * hump((above - KNEE_ROLL[0]) / (KNEE_ROLL[1] - KNEE_ROLL[0]) * 3)) * side
+        # A groove where the canes meet the knee roll.
+        edge = min(1.0, min(abs(above - KNEE_ROLL[0]), abs(above - KNEE_ROLL[1])) / 1.5)
+        if above > 0:
+            return 2.6 + 1.1 * hump((u + 1.0) / 2.0 * 5) * edge
+        if abs(d) > WING:
+            return 2.2
+        return 2.6 + 1.1 * hump((d + WING) / (2 * WING) * 7) * edge
+
+    def point(i, j):
+        # Each column runs from the bottom edge, which curves up at the sides off the shoe, to the top, and each row
+        # spans the pad's width at its height, so the outline is smooth rather than cut from the grid in steps.
+        u = 2.0 * j / (cols - 1) - 1.0
+        low = bottom + 4.0 * u * u
+        z = low + (top - low) * i / (rows - 1)
+        d = span(s, z) * u
+        return around(s, z, d, offset(z, u) - slim)
+
+    keep = lambda i, j: True
+    grid(bm, rows, cols, point, keep)
+    outward(bm, s)
+    bone_weights(bm, o, s)
+    return o, bm
+
+
+def strap(name, s):
+    o = body.copy()
+    o.data = bpy.data.meshes.new(name)
+    o.name = name
+    bpy.context.scene.collection.objects.link(o)
+    bm = bmesh.new()
+    for h in STRAPS:
+        z0 = knee[s].z + h - STRAP_WIDTH / 2
+        # Round the back of the leg from one edge of the pad to the other, level with it there and standing off the
+        # calf behind.
+        a = span(s, z0 + STRAP_WIDTH / 2)
+        grid(bm, 4, 41, lambda i, j: around(s, z0 + STRAP_WIDTH * i / 3, a + (360 - 2 * a) * j / 40,
+                                            TROUSERS + 0.8 + 0.6 * math.sin(math.pi * j / 40)),
+             lambda i, j: True)
+    outward(bm, s)
+    bone_weights(bm, o, s)
+    return o, bm
+
+
+def spread(o, s):
+    """The mean distance of o's vertices from the leg's axis, in cm."""
+    return sum((v.co - leg_axis(s, v.co.z)).xy.length for v in o.data.vertices) / len(o.data.vertices)
+
+
+def both(make, material, thickness, *args):
+    parts = [finish(*make(f"{material}_{s}", s, *args), material, thickness) for s in "lr"]
+    # The legs' pieces are mirror images, so they stand off their legs alike. A gap means one was thickened the
+    # wrong way (see outward).
+    l, r = (spread(p, s) for p, s in zip(parts, "lr"))
+    print(f"KIT {material}: {l:.2f} cm off the left leg, {r:.2f} off the right")
+    assert abs(l - r) < 0.5, f"{material} thickened unevenly"
+    with bpy.context.temp_override(active_object=parts[0], selected_editable_objects=parts):
+        bpy.ops.object.join()
+    return parts[0]
+
+
+pads = both(pad, "Gear_Pads", 1.2, 0.0)
+straps = both(strap, "Gear_Straps", 0.4)
 
 # Batting gloves: the hands padded out, with a gauntlet over the wrist.
 HAND_PARTS = ("hand", "wrist", "thumb", "index", "middle", "ring", "pinky")
@@ -228,7 +383,7 @@ def glove_offset(p):
 
 gloves = finish(*piece("Gloves", glove_keep, glove_offset, 2), "Gear_Gloves", 0.5)
 # The keeper's: slimmer pads, and gloves twice as padded, smoothed into mitts that web the thumb to the fingers.
-keeper_pads = finish(*piece("KeeperPads", pad_keep, lambda p: pad_offset(p) - 1.2, 20), "Gear_Pads", 1.0)
+keeper_pads = both(pad, "Gear_Pads", 1.0, 1.0)
 keeper_gloves = finish(*piece("KeeperGloves", glove_keep, lambda p: glove_offset(p) + 1.0, 8), "Gear_Gloves", 0.6)
 
 
@@ -296,10 +451,56 @@ def hat(bm):
     bm.normal_update()
 
 
-helmet = finish(*rigid("Helmet", shell), "Gear_Helmet", 1.0)
+# The helmet: "Cricket Helmet" by Helindu (Sketchfab, CC-BY 4.0) when HELMET_GLB names its .glb, thinned to game
+# detail and fitted where the shell above sits; else that shell and grille.
+HELMET_GLB = os.environ.get("HELMET_GLB", "")
+SCAN_FACES = 8000  # most faces kept per part: the model's grille bars are 100k-face tubes
+
+
+def scanned():
+    """The helmet model's shell (with its ear guards) and its grille (with the straps), as bmesh builders."""
+    old = set(bpy.data.objects)
+    bpy.ops.import_scene.gltf(filepath=HELMET_GLB)
+    new = [o for o in bpy.data.objects if o not in old]
+    parts = [o for o in new if o.type == 'MESH']
+    is_shell = lambda o: o.data.materials[0].name != "Material.001"  # the grey steel of the grille and straps
+    # The model faces +x, in metres. Its shell scales to the made shell's width with a little room, its back and top
+    # against the made shell's, turned to face -y as the body does.
+    corners = [o.matrix_world @ Vector(c) for o in parts if o.data.materials[0].name == "Material" for c in o.bound_box]
+    lo = Vector(tuple(min(c[i] for c in corners) for i in range(3)))
+    hi = Vector(tuple(max(c[i] for c in corners) for i in range(3)))
+    back_top = CENTRE + Vector((0.0, RADII.y + 1.0, RADII.z + 1.0))
+    fit = (Matrix.Translation(back_top) @ Matrix.Rotation(-math.pi / 2, 4, 'Z')
+           @ Matrix.Scale(2 * (RADII.x + 1.5) / (hi.y - lo.y), 4) @ Matrix.Translation(-Vector((lo.x, (lo.y + hi.y) / 2, hi.z))))
+    for o in parts:
+        o.modifiers.new("thin", 'DECIMATE').ratio = min(1.0, SCAN_FACES / len(o.data.polygons))
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+
+    def build(shell):
+        def fill(bm):
+            for o in parts:
+                if is_shell(o) == shell:
+                    e = o.evaluated_get(depsgraph)
+                    me = e.to_mesh()
+                    me.transform(fit @ o.matrix_world)
+                    bm.from_mesh(me)
+                    e.to_mesh_clear()
+            bm.normal_update()
+        return fill
+    shell_bm, grille_bm = rigid("Helmet", build(True)), rigid("Grille", build(False))
+    for o in new:
+        bpy.data.objects.remove(o)
+    return shell_bm, grille_bm
+
+
+if os.path.isfile(HELMET_GLB):
+    made_shell, made_grille = scanned()
+    helmet, bars = finish(*made_shell, "Gear_Helmet", 0.0), finish(*made_grille, "Gear_Grille", 0.0)
+else:
+    helmet = finish(*rigid("Helmet", shell), "Gear_Helmet", 1.0)
+    bars = finish(*rigid("Grille", grille), "Gear_Grille", 0.0)
 sunhat = finish(*rigid("Hat", hat), "Gear_Hat", 0.4)
-bars = finish(*rigid("Grille", grille), "Gear_Grille", 0.0)
 bpy.data.objects.remove(body)
-export([pads, gloves, helmet, bars], "Gear", GEAR)
+export([pads, straps, gloves, helmet, bars], "Gear", GEAR)
 export([keeper_pads, keeper_gloves], "Keeper", KEEPER)
 export([sunhat], "Hat", HAT)

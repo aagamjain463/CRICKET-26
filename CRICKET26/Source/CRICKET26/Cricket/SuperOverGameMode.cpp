@@ -310,8 +310,21 @@ void ASuperOverGameMode::Paint(AStaticMeshActor* A, const FLinearColor& Colour)
 					Cloth->SetScalarParameterValue(TEXT("Ribs"), Slot == TEXT("Gear_Pads") ? 1.f : 0.f);
 					continue;
 				}
+				// The parametric outfit (outfit_ue.py): trousers darker, shoes white, like the Blender kit.
+				const FString Source = Cloth->Parent ? Cloth->Parent->GetName() : FString();
+				const bool bTrousers = Source.Contains(TEXT("jeans"));
+				const FLinearColor Shade = bTrousers ? Colour * 0.45f : Source.Contains(TEXT("shoe")) ? FLinearColor(0.75f, 0.75f, 0.75f) : Colour;
+				// The only free trousers are jeans: the tint multiplies a faded-denim colour map (divided by its average,
+				// div_fabric) and a denim twill overlay. Plain white under the tint, divided by one, and no overlay leave
+				// smooth cloth, its seams and folds still in the normal and AO maps.
+				if (bTrousers)
+				{
+					Cloth->SetTextureParameterValue(TEXT("Diffuse"), LoadObject<UTexture>(nullptr, TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture")));
+					Cloth->SetVectorParameterValue(TEXT("div_fabric"), FLinearColor::White);
+					Cloth->SetScalarParameterValue(TEXT("detail_diffuse_strength"), 0.f);
+				}
 				for (const TCHAR* Name : { TEXT("Paint Tint"), TEXT("LogoTint"), TEXT("diffuse_color_1"), TEXT("diffuse_color_2"), TEXT("B_diffuse_color_1") })
-					Cloth->SetVectorParameterValue(Name, Colour);
+					Cloth->SetVectorParameterValue(Name, Shade);
 			}
 		}
 	}
@@ -361,9 +374,13 @@ void ASuperOverGameMode::AddBody(AStaticMeshActor* Marker, const TCHAR* MetaHuma
 		};
 		TArray<USkinnedMeshComponent*> Garment;
 		Player->GetComponents(Garment);
-		if (Wear(TEXT("Kit")))
+		// A player built in Epic's parametric outfit (Scripts/metahuman/outfit_ue.py) wears it; the rest wear the Blender
+		// kit over the preset garment.
+		const bool bOutfit = Garment.ContainsByPredicate([](USkinnedMeshComponent* Part) {
+			return Part->GetMaterials().ContainsByPredicate([](UMaterialInterface* M) { return M && M->GetName().Contains(TEXT("WI_OA_")); }); });
+		if (bOutfit || Wear(TEXT("Kit")))
 		{
-			for (USkinnedMeshComponent* Part : Garment) if (Part != Body && Part->GetFName() != TEXT("Face")) Part->SetVisibility(false);
+			if (!bOutfit) for (USkinnedMeshComponent* Part : Garment) if (Part != Body && Part->GetFName() != TEXT("Face")) Part->SetVisibility(false);
 			if (Marker == Striker || Marker == NonStriker) Wear(TEXT("Gear"));
 			// Every field preset puts the keeper first (CricketField::Make).
 			if (!Fielders.IsEmpty() && Marker == Fielders[0]) Wear(TEXT("Keeper"));
