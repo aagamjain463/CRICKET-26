@@ -91,6 +91,17 @@ The captured-animation work (friend's batting takes, sprint, fielding dive and t
   from `make_kit.sh`. `Paint` tints the outfit: shirt in the team colour, trousers darker, shoes white. The only free
   trousers are jeans, so `Paint` swaps their faded-denim colour map for white, sets `div_fabric` to white and turns off
   the twill overlay. That leaves plain team-coloured cloth, with the seams and folds still in the normal and AO maps.
+- Shirt print: the shirt material's print graphic (`MF_PrintGraphic`) carries the team sponsor across the chest in
+  gold and the player's name and number on the back in white. `bDoPrintGraphic` is a static switch, so
+  `OUTFIT_PRINT="MH_Home_Opener ..."` in `outfit_ue.py` turns it on in the editor; it is on for the 8 players, not the
+  umpires. The texture is drawn at run time (`SuperOverGameMode::ShirtPrint`): a render target per name, number and
+  sponsor, with red text for colour A (white) and green for colour B (gold), laid out on the shirt's first UVs. It
+  is 1024 square with mips for named players and 512 for the unnamed fielders. Numbers come from a hash of the
+  player's name; fielders are numbered 10 and up. `FCricketTeam::Sponsor` holds the sponsor. Two canvas gotchas: text only
+  writes alpha (how much of the print shows) after `SetWriteDestinationAlpha(true)`, and a canvas draw fills only the
+  top mip, so `UpdateResourceImmediate(false)` rebuilds the rest; without it the print fades out at a distance. The
+  automation tests run without a renderer, so check a change with `Scripts/capture.sh 1 -CricketDevCam=face`. In
+  shade the white reads cream, lit by the sunlit grass; a green test colour came through green, so the mapping is right.
 - Helmet: when `Saved/Kit/cricket_helmet.glb` is there (`HELMET_GLB` overrides the path), `make_kit.py` uses
   "Cricket Helmet" by Helindu (Sketchfab, CC-BY 4.0; the credit must ship with the game). The script decimates it to
   about 8000 faces and fits it where the modelled shell sat. The shell and ear guards get `Gear_Helmet` (dark team
@@ -112,7 +123,10 @@ The captured-animation work (friend's batting takes, sprint, fielding dive and t
   GPU 12.5/16.6 ms avg/p99, up from 9.9 ms GPU with the Blender kit.
 - Known: close up and in shade, the striker's shirt edge looks grainy. The keeper's identical shirt in sunlight
   looks clean. Turning off the shirt material's fuzz, pilling and detail normal made no visible difference, so it
-  is probably lighting or TSR noise rather than the cloth. Still open.
+  is not the cloth. It is not virtual shadow map ray noise either: with the SMRT ray counts at 0 the same frame
+  looks the same. Stills and the follow-through are clean; the grain shows only on frames mid-swing, so it is
+  TAA (quality 0 to 2) failing to rebuild history behind fast limbs. TSR at quality 3 or motion blur would hide
+  it; both cost GPU time, so it is left as it is.
 
 MetaHuman scripting notes (UE 5.8 Python):
 - It runs as a commandlet:

@@ -102,6 +102,7 @@ TArray<FCricketTeam> ASuperOverGameMode::DefaultSquads()
 	Home.Name = TEXT("Home XI");
 	Home.Short = TEXT("HOM");
 	Home.Colour = FLinearColor(0.05f, 0.2f, 0.75f);
+	Home.Sponsor = TEXT("SAFFRON BANK");
 	Home.Batters = { MakePlayer(TEXT("Opener"), ECricketHand::Right, 0.7f, 0.6f),
 		MakePlayer(TEXT("Finisher"), ECricketHand::Left, 0.65f, 0.8f), MakePlayer(TEXT("Allrounder"), ECricketHand::Right, 0.55f, 0.65f) };
 	Home.Bowler = MakePlayer(TEXT("Quick"), ECricketHand::Right, 0.3f, 0.3f);
@@ -113,6 +114,7 @@ TArray<FCricketTeam> ASuperOverGameMode::DefaultSquads()
 	Away.Name = TEXT("Away XI");
 	Away.Short = TEXT("AWY");
 	Away.Colour = FLinearColor(0.6f, 0.08f, 0.1f);
+	Away.Sponsor = TEXT("ZEPHYRA");
 	Away.Batters = { MakePlayer(TEXT("Hitter"), ECricketHand::Left, 0.6f, 0.8f),
 		MakePlayer(TEXT("Anchor"), ECricketHand::Right, 0.75f, 0.5f), MakePlayer(TEXT("Keeper-bat"), ECricketHand::Right, 0.6f, 0.65f) };
 	Away.Bowler = MakePlayer(TEXT("Wrist spinner"), ECricketHand::Right, 0.3f, 0.3f);
@@ -278,7 +280,7 @@ float ASuperOverGameMode::BallDisplayScale(float DistanceM, float HorizontalFovD
 	return FMath::Clamp(MinBallScreen * ViewHeight / (2.f * CricketGeo::BallRadius), 1.f, MaxBallScale);
 }
 
-void ASuperOverGameMode::Paint(AStaticMeshActor* A, const FLinearColor& Colour)
+void ASuperOverGameMode::Paint(AStaticMeshActor* A, const FLinearColor& Colour, const FCricketTeam* Team, const FString& Name, int32 Number)
 {
 	UMaterialInstanceDynamic* M = UMaterialInstanceDynamic::Create(ShapeMaterial, A);
 	M->SetVectorParameterValue(TEXT("Color"), Colour);
@@ -323,11 +325,56 @@ void ASuperOverGameMode::Paint(AStaticMeshActor* A, const FLinearColor& Colour)
 					Cloth->SetVectorParameterValue(TEXT("div_fabric"), FLinearColor::White);
 					Cloth->SetScalarParameterValue(TEXT("detail_diffuse_strength"), 0.f);
 				}
-				for (const TCHAR* Name : { TEXT("Paint Tint"), TEXT("LogoTint"), TEXT("diffuse_color_1"), TEXT("diffuse_color_2"), TEXT("B_diffuse_color_1") })
-					Cloth->SetVectorParameterValue(Name, Shade);
+				for (const TCHAR* Param : { TEXT("Paint Tint"), TEXT("LogoTint"), TEXT("diffuse_color_1"), TEXT("diffuse_color_2"), TEXT("B_diffuse_color_1") })
+					Cloth->SetVectorParameterValue(Param, Shade);
+				// The shirt's print, switched on by outfit_ue.py: white name and number, a gold sponsor.
+				if (Team && Source.Contains(TEXT("Tshirt")))
+				{
+					Cloth->SetTextureParameterValue(TEXT("PrintGraphicMap"), ShirtPrint(Name, Number, Team->Sponsor));
+					Cloth->SetVectorParameterValue(TEXT("PrintGraphicColorA"), FLinearColor(0.8f, 0.8f, 0.8f));
+					Cloth->SetVectorParameterValue(TEXT("PrintGraphicColorB"), FLinearColor(1.f, 0.55f, 0.05f));
+					Cloth->SetScalarParameterValue(TEXT("PrintGraphicStrength"), 1.f);
+				}
 			}
 		}
 	}
+}
+
+UTexture* ASuperOverGameMode::ShirtPrint(const FString& Name, int32 Number, const FString& Sponsor)
+{
+	const FString Key = FString::Printf(TEXT("%s|%d|%s"), *Name, Number, *Sponsor);
+	if (const TObjectPtr<UTextureRenderTarget2D>* Drawn = ShirtPrints.Find(Key)) return *Drawn;
+	// Mipmapped, or the letters shimmer on distant fielders; those, unnamed and never close, get a smaller one.
+	const int32 Res = Name.IsEmpty() ? 512 : 1024;
+	UTextureRenderTarget2D* Target = UKismetRenderingLibrary::CreateRenderTarget2D(this, Res, Res, RTF_RGBA8, FLinearColor::Transparent, true);
+	UCanvas* Canvas = nullptr;
+	FVector2D Size;
+	FDrawToRenderTargetContext Context;
+	UKismetRenderingLibrary::BeginDrawCanvasToRenderTarget(this, Target, Canvas, Size, Context);
+	UFont* Font = GEngine->GetLargeFont();
+	// Laid out on the shirt's first UVs, measured on the outfit exported to Blender: the back panel is centred on
+	// u 0.218 and the front on u 0.661, and v climbs about 0.64 a metre up the body to the neckline near 0.5. Text is
+	// Height tall (in v) from Top down, but no wider than Width (in u). The letters write their coverage into the alpha
+	// channel, which is how much of the print shows; text drawn the usual way leaves the alpha alone.
+	Canvas->Canvas->SetWriteDestinationAlpha(true);
+	auto Text = [&](const FString& S, float U, float Top, float Height, float Width, const FLinearColor& Channel)
+	{
+		float W, H;
+		Canvas->TextSize(Font, S, W, H);
+		const float Scale = FMath::Min(Height * Size.Y / H, Width * Size.X / W);
+		FCanvasTextItem Item(FVector2D(U * Size.X - W * Scale / 2.f, (1.f - Top) * Size.Y), FText::FromString(S), Font, Channel);
+		Item.Scale = FVector2D(Scale, Scale);
+		Canvas->DrawItem(Item);
+	};
+	if (!Name.IsEmpty()) Text(Name.ToUpper(), 0.218f, 0.455f, 0.035f, 0.2f, FLinearColor::Red);
+	Text(FString::FromInt(Number), 0.218f, 0.415f, 0.14f, 0.18f, FLinearColor::Red);
+	Text(Sponsor, 0.661f, 0.42f, 0.05f, 0.17f, FLinearColor::Green);
+	UKismetRenderingLibrary::EndDrawCanvasToRenderTarget(this, Context);
+	// The canvas draws only the top mip; this builds the rest from it (without it they stay clear, and the print
+	// fades out as the shirt gets smaller on screen).
+	Target->UpdateResourceImmediate(false);
+	ShirtPrints.Add(Key, Target);
+	return Target;
 }
 
 void ASuperOverGameMode::AddBody(AStaticMeshActor* Marker, const TCHAR* MetaHuman)
@@ -1048,9 +1095,11 @@ void ASuperOverGameMode::PlaceForDelivery()
 	Umpires[0]->SetActorLocation(ToWorld(FVector(CricketGeo::PitchLength + 1.8f, -0.9f * Arm, 0.9f)));
 	Umpires[1]->SetActorLocation(ToWorld(FVector(0.5f, -26.f * Off, 0.9f)));
 	for (AStaticMeshActor* U : Umpires) Paint(U, FLinearColor(0.05f, 0.05f, 0.06f)); // umpires in black: white picked up the grass green
-	Paint(Striker, BatCol);
-	Paint(NonStriker, BatCol);
-	Paint(Bowler, FieldCol);
+	// ponytail: shirt numbers come from the names' hashes; give players a Number field if a squad needs real ones.
+	auto Shirt = [](const FCricketPlayer& P) { return 1 + static_cast<int32>(GetTypeHash(P.Name) % 99); };
+	Paint(Striker, BatCol, &Teams[Match.BattingTeam()], Batter.Name, Shirt(Batter));
+	Paint(NonStriker, BatCol, &Teams[Match.BattingTeam()], Ctx.NonStriker.Name, Shirt(Ctx.NonStriker));
+	Paint(Bowler, FieldCol, &Teams[Match.BowlingTeam()], Bwl.Name, Shirt(Bwl));
 	for (int32 I = 0; I < Fielders.Num(); ++I)
 	{
 		const bool bUsed = Ctx.Field.IsValidIndex(I) && !Ctx.Field[I].bBowler;
@@ -1058,7 +1107,7 @@ void ASuperOverGameMode::PlaceForDelivery()
 		if (USkeletalMeshComponent* Body = BodyOf(Fielders[I]); Body && Body->GetOwner() != Fielders[I]) Body->GetOwner()->SetActorHiddenInGame(!bUsed);
 		if (!bUsed) continue;
 		Fielders[I]->SetActorLocation(ToWorld(FVector(Ctx.Field[I].Home.X, Ctx.Field[I].Home.Y, 0.9f)));
-		Paint(Fielders[I], Ctx.Field[I].bKeeper ? FieldCol * 0.5f : FieldCol);
+		Paint(Fielders[I], Ctx.Field[I].bKeeper ? FieldCol * 0.5f : FieldCol, &Teams[Match.BowlingTeam()], FString(), 10 + I);
 	}
 	Ball->SetActorLocation(ToWorld(FVector(RunUpX(0.f), 0.5f * Arm, 1.2f)));
 	BatInput = FBatInput();

@@ -114,4 +114,5 @@ struct FCricketTeam
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FCricketPlayer> Batters; // Super Over batting order (3)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) FCricketPlayer Bowler;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) FLinearColor Colour = FLinearColor::Blue;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) FString Sponsor; // printed across the shirt's chest
 };

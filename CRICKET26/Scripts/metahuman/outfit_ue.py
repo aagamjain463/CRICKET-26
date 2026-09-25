@@ -6,6 +6,8 @@
 #   OUTFIT_PKGS="a.mhpkg:b.mhpkg"   imports the packages into /Game/MetaHumans/Outfits (their WI_* wardrobe items).
 #   OUTFIT_WEAR="MH_Home_Opener ..."  swaps each named character's outfit for OUTFIT_ITEMS and rebuilds it in place.
 #     The character's rig and textures are already saved in /Game/MetaHumans/Source, so no cloud step runs.
+#   OUTFIT_PRINT="MH_Home_Opener ..."  turns on the shirt's print (the name, number and sponsor the game draws into it,
+#     SuperOverGameMode::ShirtPrint). A static switch, so it can only be set in the editor.
 #
 # Run: OUTFIT_WEAR=MH_Home_Opener UnrealEditor-Cmd CRICKET26.uproject -run=pythonscript -script=Scripts/metahuman/outfit_ue.py \
 #        -AllowCommandletRendering -dpcvars=TextureGraph.AllowCommandlets=1
@@ -64,3 +66,15 @@ def wear(name):
 
 for name in os.environ.get("OUTFIT_WEAR", "").split():
     wear(name)
+
+
+for name in os.environ.get("OUTFIT_PRINT", "").split():
+    for path in lib.list_assets(f"{BUILD}/{name}/Clothing", recursive=False):
+        if "Tshirt" in path and "/MI_" in path:
+            mi = unreal.load_asset(path)
+            # Returns False even when it sets the switch, so the value is read back instead.
+            mel = unreal.MaterialEditingLibrary
+            mel.set_material_instance_static_switch_parameter_value(mi, "bDoPrintGraphic", True)
+            lib.save_loaded_asset(mi)
+            on = mel.get_material_instance_static_switch_parameter_value(mi, "bDoPrintGraphic")
+            unreal.log(f"OUTFIT {name}: print on {mi.get_name()} {on}")

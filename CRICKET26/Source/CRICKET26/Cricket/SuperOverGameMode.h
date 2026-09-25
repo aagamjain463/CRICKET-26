@@ -278,7 +278,11 @@ private:
 	int32 LastShot = -1; // the camera director's shot last frame: a change of shot is a cut
 
 	AStaticMeshActor* Spawn(UStaticMesh* Mesh, const FVector& PosM, const FVector& SizeM, const FLinearColor& Colour);
-	void Paint(AStaticMeshActor* Actor, const FLinearColor& Colour);
+	/** Colours a figure's kit. With a team, its shirt also gets the team's sponsor and the name and number on the back. */
+	void Paint(AStaticMeshActor* Actor, const FLinearColor& Colour, const FCricketTeam* Team = nullptr, const FString& Name = FString(), int32 Number = 0);
+	/** The print for a shirt, drawn once and kept: red marks take the print's first colour, green its second. */
+	class UTexture* ShirtPrint(const FString& Name, int32 Number, const FString& Sponsor);
+	UPROPERTY() TMap<FString, TObjectPtr<class UTextureRenderTarget2D>> ShirtPrints;
 	void BuildScene();
 	void HandleInput(class APlayerController* PC, float Dt);
 	void BeginRunUp();
