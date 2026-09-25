@@ -64,6 +64,48 @@ namespace CricketPose
 	constexpr float FollowSeconds = 0.35f;
 
 	/**
+	 * A stroke captured from a real right-handed batter (Scripts/anim: /Game/Anims/Mocap/<Name>), and how far into
+	 * it the bat meets the ball. The clip moves the legs and body; the hands stay on the simulated bat by IK.
+	 */
+	struct FStrokeClip
+	{
+		const TCHAR* Name = nullptr; // none: a leave
+		float Contact = 0.f;         // s
+	};
+
+	/** The captured clip for a stroke; DirectionDeg is + to the off side, as for the shot. */
+	FStrokeClip StrokeClip(EShotType Shot, EFootwork Foot, float DirectionDeg);
+
+	/**
+	 * Time into a stroke clip at game time T: its downswing (the last ClipDownswing seconds before its contact)
+	 * squeezed into the press-to-impact time, so its bat meets the ball when the simulation's does, then real time.
+	 */
+	float StrokeClipTime(const FStrokeClip& Clip, float T, float PressTime, float ImpactTime);
+	constexpr float ClipDownswing = 0.45f;
+
+	/** Where to play a clip, and how much of it over what is under it. */
+	struct FClipPlay
+	{
+		float Time = 0.f;   // s into the clip
+		float Weight = 0.f; // 0 to 1
+	};
+
+	/**
+	 * The captured throw (Mixamo "Baseball Pitching", released ThrowClipRelease s in) for a fielder with the ball in
+	 * hand from Ready who lets go at Release, times after contact: its release lands on the simulation's. A short gap
+	 * joins the wind-up part way through rather than squeezing it.
+	 */
+	FClipPlay ThrowClip(float Post, float Ready, float Release);
+	constexpr float ThrowClipRelease = 1.6f;
+
+	/**
+	 * The captured dive (Mixamo "Goalkeeper Diving Save", hands at full stretch DiveClipStretch s in) for a take at
+	 * FieldTime: the hands reach out on the take, then the fielder lies and gets up.
+	 */
+	FClipPlay DiveClip(float Post, float FieldTime);
+	constexpr float DiveClipStretch = 1.25f, DiveClipLanded = 1.6f, DiveClipUp = 3.2f;
+
+	/**
 	 * A hand windmilling about the shoulder for a bowling or throwing action: 0 straight up, positive
 	 * angles over the top toward Forward, -180 straight down.
 	 */

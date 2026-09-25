@@ -113,6 +113,14 @@ FVector FDeliveryResult::BallAt(float Time) const
 	return FMath::Lerp(BallPath[I], BallPath[I + 1], F - I);
 }
 
+int32 FDeliveryResult::HolderAt(float Post) const
+{
+	const FRunningOutcome& Run = Running;
+	if (Fielding.Fielder < 0 || Fielding.Boundary || Post < Fielding.FieldTime) return -1;
+	if (Run.RelayMove.Fielder >= 0 && Run.RelayRelease > 0.f && Post >= Run.RelayCatch && Post < Run.RelayRelease) return Run.RelayMove.Fielder;
+	return Run.ThrowRelease <= Fielding.FieldTime || Post < Run.ThrowRelease ? Fielding.Fielder : -1;
+}
+
 FDeliveryOutcome FDeliveryResult::ToOutcome() const
 {
 	FDeliveryOutcome O;

@@ -4,6 +4,9 @@ This note lets a new agent pick up the "make it like Cricket 26" work where it s
 `Docs/MASTER_PLAN.md` first: it is the plan this work now follows (it absorbs the 8 items of
 `Docs/CRICKET26_PARITY_PLAN.md`).
 
+The captured-animation work (friend's batting takes, sprint, fielding dive and throw) is done and committed; see
+"Captured animations" below and `Docs/ANIM_HANDOFF.md` for the detail.
+
 ## Project basics
 
 - Unreal Engine 5.8 project at `/Users/aagamjain/Desktop/CRICKET-26/CRICKET26`. The git root is the parent
@@ -13,7 +16,7 @@ This note lets a new agent pick up the "make it like Cricket 26" work where it s
 - Scripts:
   - `Scripts/build.sh`: builds the game (compiled with `-Werror -Wshadow`, so shadowed locals fail the build).
   - `Scripts/run_tests.sh [Filter]`: runs the automation tests and writes `Saved/TestRun.log`. The full suite is
-    57 tests and takes about 80 s. Count passes with `grep -c "Result={Success}" Saved/TestRun.log`.
+    61 tests and takes about 80 s. Count passes with `grep -c "Result={Success}" Saved/TestRun.log`.
   - `Scripts/capture.sh N [args]`: plays AI vs AI and saves game-view frames of delivery N (including the wait
     before it) to `Saved/Screenshots/MacEditor/BallN_*.png`, with a log in `Saved/Capture.log`. Never use the
     desktop `screencapture`.
@@ -160,6 +163,21 @@ Stadium scripting notes (UE 5.8):
   so check `Saved/Capture.log` for "Failed to compile Material".
 - A light's spawn rotation is added to its component's built-in tilt. Spawn at identity and call
   `SetActorLocationAndRotation` afterwards (`SpawnSun`, the floodlights).
+
+## Captured animations
+
+- Pipeline: `Scripts/anim/cut_clips.sh` cuts a batting video into one clip per shot; DeepMotion Animate 3D (free
+  tier, web) turns each into an FBX; Mixamo (web) supplies the sprint, throw and dives. `Scripts/anim/import_anims.sh`
+  imports both folders under `~/Downloads/mocap` headless and retargets them through IK Rigs onto the mannequin skeleton
+  as `/Game/Anims/Mocap/<Name>` (not committed, so a fresh clone must run it with the FBX files in place).
+- In game: strokes (`CricketPose::StrokeClip`, right-handers only), sprint over jog, the throw
+  (`CricketPose::ThrowClip`) and the dives (`CricketPose::DiveClip`) blend over the procedural bodies, with IK kept for
+  the bat. Every clip is loaded quietly, so the game still runs on the procedural poses without them.
+- Sources and licences:
+  - DeepMotion free tier: **no commercial licence**. Fine for a prototype; shipping needs a paid plan or a re-capture.
+  - The batting takes are of the owner's friend: get their OK before any public release.
+  - Mixamo clips: royalty-free for games.
+- Tests: `CRICKET26.Animation.StrokeClips`, `FieldingClips`, `BallInHand`. Capture recipes are in `ANIM_HANDOFF.md`.
 
 ## Blocked on the owner
 

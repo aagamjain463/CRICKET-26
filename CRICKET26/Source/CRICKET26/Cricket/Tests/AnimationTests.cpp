@@ -3,6 +3,7 @@
 #include "Misc/AutomationTest.h"
 #include "BattingModel.h"
 #include "CricketPose.h"
+#include "DeliveryResolver.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -95,6 +96,86 @@ bool FAnimContactBatPos::RunTest(const FString&)
 	TestTrue(TEXT("missed: bat above the ball"), !Missed.HasContact() && Missed.BatPos.Z > Ball.Pos.Z + 0.2f);
 	const FContactResult Left = CricketBatting::ResolveContact(Ball, Ball.Pos, CricketBatting::Profile(EShotType::Leave), 0.f, 0.f, Batter, false);
 	TestTrue(TEXT("leave: no bat position"), Left.BatPos.IsZero());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAnimStrokeClips, "CRICKET26.Animation.StrokeClips", CricketAnimationTests::Flags)
+bool FAnimStrokeClips::RunTest(const FString&)
+{
+	using namespace CricketPose;
+	// Every stroke has a captured take, chosen by footwork and direction, and a leave has none.
+	TestTrue(TEXT("leave: no clip"), StrokeClip(EShotType::Leave, EFootwork::Front, 0.f).Name == nullptr);
+	for (int32 S = int32(EShotType::Defend); S <= int32(EShotType::Scoop); ++S)
+		TestTrue(*FString::Printf(TEXT("shot %d has a clip"), S), StrokeClip(EShotType(S), EFootwork::Front, 0.f).Name != nullptr);
+	TestEqual(TEXT("back-foot defence"), FString(StrokeClip(EShotType::Defend, EFootwork::Back, 0.f).Name), FString(TEXT("Bat_Defend_Back")));
+	TestEqual(TEXT("cover drive"), FString(StrokeClip(EShotType::Drive, EFootwork::Front, 45.f).Name), FString(TEXT("Bat_Drive_Cover")));
+	TestEqual(TEXT("straight drive"), FString(StrokeClip(EShotType::Drive, EFootwork::Front, 0.f).Name), FString(TEXT("Bat_Drive")));
+
+	// The clip's bat meets the ball exactly when the simulation's does, however quick the swing, and the clip
+	// never runs backwards.
+	const FStrokeClip Drive = StrokeClip(EShotType::Drive, EFootwork::Front, 0.f);
+	for (const float Swing : { 0.15f, 0.25f, 0.6f })
+	{
+		const float Press = 3.f, Impact = Press + Swing;
+		TestEqual(TEXT("downswing starts at the press"), StrokeClipTime(Drive, Press, Press, Impact), Drive.Contact - ClipDownswing);
+		TestEqual(TEXT("contact on the impact"), StrokeClipTime(Drive, Impact, Press, Impact), Drive.Contact);
+		TestEqual(TEXT("real time after it"), StrokeClipTime(Drive, Impact + 0.3f, Press, Impact), Drive.Contact + 0.3f, 1e-4f);
+		float Last = -1.f;
+		bool bForward = true;
+		for (float T = Press - 0.5f; T < Impact + 1.f; T += 0.01f)
+		{
+			const float C = StrokeClipTime(Drive, T, Press, Impact);
+			bForward &= C >= Last;
+			Last = C;
+		}
+		TestTrue(TEXT("never backwards"), bForward);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAnimFieldingClips, "CRICKET26.Animation.FieldingClips", CricketAnimationTests::Flags)
+bool FAnimFieldingClips::RunTest(const FString&)
+{
+	using namespace CricketPose;
+	// The throw's release lands on the simulation's, fully blended in, whether the fielder had a long or a short
+	// time with the ball; it is gone before the ball is in hand and after the follow-through.
+	for (const float Gap : { 0.25f, 0.6f, 1.5f })
+	{
+		const float Ready = 2.f, Release = Ready + Gap;
+		TestEqual(TEXT("release on release"), ThrowClip(Release, Ready, Release).Time, ThrowClipRelease);
+		TestEqual(TEXT("in by the release"), ThrowClip(Release, Ready, Release).Weight, 1.f);
+		TestEqual(TEXT("not before the ball is in hand"), ThrowClip(Ready - 0.2f, Ready, Release).Weight, 0.f);
+		TestEqual(TEXT("out after the follow-through"), ThrowClip(Release + 1.5f, Ready, Release).Weight, 0.f);
+	}
+	// The dive's hands are at full stretch on the take, and it is out once the fielder is up.
+	TestEqual(TEXT("full stretch on the take"), DiveClip(4.f, 4.f).Time, DiveClipStretch);
+	TestEqual(TEXT("in on the take"), DiveClip(4.f, 4.f).Weight, 1.f);
+	TestEqual(TEXT("not before the dive"), DiveClip(4.f - DiveClipStretch - 0.1f, 4.f).Weight, 0.f);
+	TestEqual(TEXT("out once up"), DiveClip(4.f - DiveClipStretch + DiveClipUp, 4.f).Weight, 0.f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAnimBallInHand, "CRICKET26.Animation.BallInHand", CricketAnimationTests::Flags)
+bool FAnimBallInHand::RunTest(const FString&)
+{
+	// The ball is drawn in whoever has it (a captured dive or throw carries the body away from where it was taken):
+	// the fielder from the take to the throw, the relay fielder from their catch to theirs, and after a catch to the end.
+	FDeliveryResult R;
+	R.Fielding.Fielder = 3;
+	R.Fielding.FieldTime = 2.f;
+	TestEqual(TEXT("nobody before the take"), R.HolderAt(1.9f), -1);
+	TestEqual(TEXT("caught: kept"), R.HolderAt(9.f), 3);
+	R.Running.ThrowRelease = 2.6f;
+	TestEqual(TEXT("taken"), R.HolderAt(2.3f), 3);
+	TestEqual(TEXT("thrown"), R.HolderAt(2.7f), -1);
+	R.Running.RelayMove.Fielder = 5;
+	R.Running.RelayCatch = 3.5f;
+	R.Running.RelayRelease = 3.9f;
+	TestEqual(TEXT("in the air to the relay"), R.HolderAt(3.f), -1);
+	TestEqual(TEXT("with the relay"), R.HolderAt(3.6f), 5);
+	TestEqual(TEXT("relayed on"), R.HolderAt(4.f), -1);
+	R.Fielding.Boundary = 4;
+	TestEqual(TEXT("a boundary is nobody's"), R.HolderAt(2.3f), -1);
 	return true;
 }
 

@@ -88,6 +88,8 @@ struct FDeliveryResult
 
 	FDeliveryOutcome ToOutcome() const;
 	FVector BallAt(float Time) const;
+	/** Who has the ball in hand Post seconds after contact (from the take until it is thrown; to the end after a catch), or -1. */
+	int32 HolderAt(float Post) const;
 };
 
 namespace CricketDelivery

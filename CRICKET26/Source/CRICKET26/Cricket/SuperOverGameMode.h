@@ -12,6 +12,7 @@
 #include "CricketAI.h"
 #include "CricketAudio.h"
 #include "CricketControls.h"
+#include "CricketPose.h"
 #include "SuperOverGameMode.generated.h"
 
 class AStaticMeshActor;
@@ -238,8 +239,16 @@ private:
 	UPROPERTY() TMap<TObjectPtr<AActor>, TObjectPtr<USkeletalMeshComponent>> Bodies; // each figure's posed body
 	UPROPERTY() TObjectPtr<UAnimSequence> IdleAnim;
 	UPROPERTY() TObjectPtr<UAnimSequence> JogAnim;
+	UPROPERTY() TObjectPtr<UAnimSequence> SprintAnim;
+	static constexpr float SprintSpeed = 6.3f; // m/s the sprint clip's stride covers at its own rate (import log)
+	UPROPERTY() TMap<FName, TObjectPtr<UAnimSequence>> StrokeAnims; // the captured strokes that were imported, by clip name
+	UPROPERTY() TObjectPtr<UAnimSequence> ThrowAnim;    // optional, as are the dives
+	UPROPERTY() TObjectPtr<UAnimSequence> DiveAnims[2]; // to the fielder's right, left
+	UAnimSequence* Diving = nullptr;                    // this frame's dive for the fielder who took the ball, if any
+	/** The captured throw for fielder I this ball: the thrower's (unless underarm) or the relay fielder's. */
+	CricketPose::FClipPlay ThrowPlay(int32 I, float Post) const;
 	UPROPERTY() TArray<TObjectPtr<AStaticMeshActor>> Figures; // everyone who stands on the field
-	struct FFigureState { FVector Last = FVector::ZeroVector; float Speed = 0.f; };
+	struct FFigureState { FVector Last = FVector::ZeroVector; float Speed = 0.f; bool bHeld = false; }; // held: a clip sets this frame's facing
 	TMap<TObjectPtr<AStaticMeshActor>, FFigureState> FigureStates;
 	// Sound: one channel for the ball's cues (bat, edge, pitching, stumps) and a looping crowd bed whose
 	// level swells on boundaries and wickets.

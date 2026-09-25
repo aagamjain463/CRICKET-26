@@ -189,7 +189,10 @@ Checks:
    - **Match moments.** Celebrations, huddles, walk-ins and walk-offs, and idle fidgets between balls.
    - That is roughly 300 clips. The owner supplies the performer and the capture route (decision 3).
 
-3.3 **Retarget pipeline.**
+3.3 **Retarget pipeline.** First version done (2026-09-25): `Scripts/anim/import_anims.sh` imports DeepMotion
+   takes (10 batting shots filmed by the owner's friend) and Mixamo clips (sprint, throw, both dives), retargets them by
+   IK Rig onto the mannequin and fixes facing and root drift. DeepMotion's free tier carries no commercial licence and
+   the friend must agree before release; Mixamo clips are royalty-free. The steps below remain for MetaHuman quality.
    - An IK Retargeter asset from the capture skeleton to MetaHuman.
    - Clean-up in Cascadeur or Blender.
    - A naming convention (`A_Bat_<Shot>_<Foot>_<Dir>_<Var>`) and a scripted import.

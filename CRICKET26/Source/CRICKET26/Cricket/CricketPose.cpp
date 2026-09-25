@@ -75,6 +75,50 @@ float StrokeAngle(const FSwing& S, float T, float PressTime, float ImpactTime)
 	return S.Follow * (1.f - (1.f - V) * (1.f - V)); // and runs out of it
 }
 
+FStrokeClip StrokeClip(EShotType Shot, EFootwork Foot, float DirectionDeg)
+{
+	// Contact times read off the filmed takes, 0.1 s apart.
+	switch (Shot)
+	{
+	case EShotType::Defend: return Foot == EFootwork::Back ? FStrokeClip{ TEXT("Bat_Defend_Back"), 1.65f } : FStrokeClip{ TEXT("Bat_Defend_Front"), 1.5f };
+	case EShotType::Drive: return DirectionDeg > 20.f ? FStrokeClip{ TEXT("Bat_Drive_Cover"), 1.35f } : FStrokeClip{ TEXT("Bat_Drive"), 1.15f };
+	case EShotType::Loft: return { TEXT("Bat_Loft"), 0.9f };
+	case EShotType::Punch: return { TEXT("Bat_Punch"), 1.45f };
+	case EShotType::Cut: return { TEXT("Bat_Cut"), 1.05f };
+	case EShotType::Pull:
+	case EShotType::Hook: return { TEXT("Bat_Pull"), 1.1f };
+	case EShotType::Flick: return { TEXT("Bat_Flick"), 0.9f };
+	case EShotType::Sweep:
+	case EShotType::SlogSweep:
+	case EShotType::ReverseSweep:
+	case EShotType::Scoop: return { TEXT("Bat_Sweep"), 0.85f }; // all played down on one knee
+	default: return {};
+	}
+}
+
+float StrokeClipTime(const FStrokeClip& Clip, float T, float PressTime, float ImpactTime)
+{
+	if (T >= ImpactTime) return Clip.Contact + (T - ImpactTime);
+	const float U = FMath::Clamp((T - PressTime) / FMath::Max(ImpactTime - PressTime, 0.05f), 0.f, 1.f);
+	return Clip.Contact - ClipDownswing * (1.f - U);
+}
+
+FClipPlay ThrowClip(float Post, float Ready, float Release)
+{
+	// In over up to 0.4 s from a second before the release (or once the ball is in hand, if later); out as the
+	// follow-through settles.
+	const float From = FMath::Max(Release - 1.f, Ready - 0.1f), In = FMath::Min(0.4f, Release - From);
+	return { FMath::Max(0.f, ThrowClipRelease + Post - Release),
+		FMath::SmoothStep(From, From + In, Post) * (1.f - FMath::SmoothStep(Release + 0.8f, Release + 1.4f, Post)) };
+}
+
+FClipPlay DiveClip(float Post, float FieldTime)
+{
+	const float Time = DiveClipStretch + Post - FieldTime;
+	// In through the shuffle before the launch; out once back on the feet.
+	return { FMath::Max(0.f, Time), FMath::SmoothStep(0.f, 0.3f, Time) * (1.f - FMath::SmoothStep(DiveClipUp - 0.3f, DiveClipUp, Time)) };
+}
+
 FVector ArmCircle(const FVector& Shoulder, const FVector& Forward, float AngleDeg, float Reach)
 {
 	const float R = FMath::DegreesToRadians(AngleDeg);

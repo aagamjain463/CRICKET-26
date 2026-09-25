@@ -59,6 +59,20 @@ namespace
 	}
 
 	const FLinearColor Grass(0.09f, 0.28f, 0.07f), Strip(0.55f, 0.47f, 0.3f), White(0.9f, 0.9f, 0.9f), Wood(0.8f, 0.65f, 0.4f);
+
+	/** A bone's component-space location (cm) in a clip at a time, composed up its parents. */
+	FVector ClipBoneAt(const UAnimSequence* Seq, FName Bone, float Time)
+	{
+		const FReferenceSkeleton& Ref = Seq->GetSkeleton()->GetReferenceSkeleton();
+		FTransform T = FTransform::Identity;
+		for (int32 B = Ref.FindBoneIndex(Bone); B != INDEX_NONE; B = Ref.GetParentIndex(B))
+		{
+			FTransform Local;
+			Seq->GetBoneTransform(Local, FSkeletonPoseBoneIndex(B), FAnimExtractContext(double(Time)), false);
+			T = T * Local;
+		}
+		return T.GetLocation();
+	}
 }
 
 ASuperOverGameMode::ASuperOverGameMode()
@@ -119,7 +133,7 @@ void ASuperOverGameMode::StartPlay()
 	QuitAfter = ShotBall;
 	FParse::Value(FCommandLine::Get(), TEXT("CricketShotEvery="), ShotEvery);
 	// -CricketDevCam=X,Y,Z,LookX,LookY,LookZ,Fov (simulation metres): a fixed camera for inspecting bodies;
-	// -CricketDevCam=fielder: 7 m from whoever fields the ball, on the pitch side; or a named review shot of the
+	// -CricketDevCam=fielder: 7 m from whoever fields the ball (their body), on the pitch side; or a named review shot of the
 	// striker: face (head and shoulders) or kit (head to toe).
 	FString Cam;
 	if (FParse::Value(FCommandLine::Get(), TEXT("CricketDevCam="), Cam, false))
@@ -376,6 +390,7 @@ void ASuperOverGameMode::AddBody(AStaticMeshActor* Marker, const TCHAR* MetaHuma
 	{
 		Anim->Idle = IdleAnim;
 		Anim->Jog = JogAnim;
+		Anim->Sprint = SprintAnim;
 	}
 	Marker->GetStaticMeshComponent()->SetVisibility(false);
 }
@@ -415,7 +430,8 @@ void ASuperOverGameMode::PlayCue(CricketAudio::ECue Cue, float Volume)
 void ASuperOverGameMode::UpdateFigures(float Dt)
 {
 	// Everyone faces the ball when standing and their direction of travel when moving, and plays idle or a
-	// jog paced to their speed. A player tipped over for a dive keeps the dive.
+	// jog paced to their speed. A player tipped over for a dive keeps the dive, and one in a captured dive or
+	// throw the facing it set.
 	const FVector BallAt = Ball->GetActorLocation();
 	const float Off = OffSideSign(StrikerPlayer().BatHand);
 	for (AStaticMeshActor* A : Figures)
@@ -426,6 +442,8 @@ void ASuperOverGameMode::UpdateFigures(float Dt)
 		const bool bJumped = Vel.Size() > 1500.f; // faster than anyone runs: a reset or replay jump
 		if (bJumped) { Vel = FVector::ZeroVector; S.Speed = 0.f; }
 		S.Last = Pos;
+		const bool bHeld = S.bHeld; // facing already set this frame by a dive or throw
+		S.bHeld = false;
 		S.Speed = FMath::Lerp(S.Speed, FVector2D(Vel).Size() / 100.f, FMath::Clamp(Dt * 8.f, 0.f, 1.f));
 		if (A->IsHidden()) continue;
 		UCricketAnimInstance* Anim = AnimOf(A);
@@ -438,7 +456,7 @@ void ASuperOverGameMode::UpdateFigures(float Dt)
 			HandMiss.Add(Miss);
 			if (Miss > 15.f) UE_LOG(LogTemp, Display, TEXT("Hand miss %.0f cm: hand %d phase %d time %.2f dt %.3f"), Miss, H, int32(DPhase), PhaseTime, Dt);
 		}
-		if (A->GetActorUpVector().Z > 0.95f)
+		if (A->GetActorUpVector().Z > 0.95f && !bHeld)
 		{
 			// The striker holds a side-on stance, chest to the off side, through the footwork of a stroke
 			// until they set off for a run. Everyone turns at a human rate rather than snapping.
@@ -447,9 +465,12 @@ void ASuperOverGameMode::UpdateFigures(float Dt)
 				A->SetActorRotation(FMath::RInterpConstantTo(A->GetActorRotation(), FRotator(0.f, Look.Rotation().Yaw, 0.f), Dt, 540.f));
 		}
 		if (!Anim) continue;
-		// ponytail: one jog cycle time-scaled to speed (template jog ~4 m/s); a run/sprint blend when real locomotion lands.
+		// ponytail: two cycles time-scaled to speed (template jog ~4 m/s, sprint ~SprintSpeed) and cross-faded, feet
+		// not phase-matched through the short fade; a synced blend space if the fade shows.
 		Anim->Pose.JogWeight = FMath::Clamp((S.Speed - 0.4f) / 0.6f, 0.f, 1.f);
 		Anim->Pose.JogRate = FMath::Clamp(S.Speed / 4.f, 0.6f, 2.f);
+		Anim->Pose.SprintWeight = FMath::Clamp((S.Speed - 4.5f) / 1.5f, 0.f, 1.f);
+		Anim->Pose.SprintRate = FMath::Clamp(S.Speed / SprintSpeed, 0.6f, 1.5f);
 		// Actions are set afresh each frame by UpdatePoses; everyone watches the ball.
 		Anim->Pose.ClearActions();
 		Anim->Pose.LookWeight = 1.f;
@@ -675,6 +696,19 @@ void ASuperOverGameMode::BuildScene()
 	BodyMesh = LoadObject<USkeletalMesh>(nullptr, TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple"));
 	IdleAnim = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle.MM_Idle"));
 	JogAnim = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd.MF_Unarmed_Jog_Fwd"));
+	// A sprint from the Mixamo library (Scripts/anim), when imported; the jog is sped up otherwise.
+	SprintAnim = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Anims/Mocap/Run_Sprint.Run_Sprint"), nullptr, LOAD_Quiet | LOAD_NoWarn);
+	// The fielders' overarm throw and dives, from the same library; the IK throw and a tilt play otherwise.
+	ThrowAnim = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Anims/Mocap/Field_Throw.Field_Throw"), nullptr, LOAD_Quiet | LOAD_NoWarn);
+	DiveAnims[0] = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Anims/Mocap/Field_Dive.Field_Dive"), nullptr, LOAD_Quiet | LOAD_NoWarn);
+	DiveAnims[1] = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Anims/Mocap/Field_Dive_Left.Field_Dive_Left"), nullptr, LOAD_Quiet | LOAD_NoWarn);
+	// Strokes captured from a real batter (Scripts/anim), when imported; the procedural stroke plays otherwise.
+	for (int32 Shot = 0; Shot <= int32(EShotType::Scoop); ++Shot)
+		for (const float Dir : { 0.f, 45.f })
+			for (const EFootwork Foot : { EFootwork::Front, EFootwork::Back })
+				if (const TCHAR* Name = CricketPose::StrokeClip(EShotType(Shot), Foot, Dir).Name; Name && !StrokeAnims.Contains(Name))
+					if (UAnimSequence* Seq = LoadObject<UAnimSequence>(nullptr, *FString::Printf(TEXT("/Game/Anims/Mocap/%s.%s"), Name, Name), nullptr, LOAD_Quiet | LOAD_NoWarn))
+						StrokeAnims.Add(Name, Seq);
 	Striker = Spawn(CylinderMesh, FVector::ZeroVector, FVector(0.45f, 0.45f, 1.8f), FLinearColor::White);
 	NonStriker = Spawn(CylinderMesh, FVector::ZeroVector, FVector(0.45f, 0.45f, 1.8f), FLinearColor::White);
 	Bowler = Spawn(CylinderMesh, FVector::ZeroVector, FVector(0.45f, 0.45f, 1.85f), FLinearColor::White);
@@ -1528,6 +1562,18 @@ void ASuperOverGameMode::Emit(const TArray<ECricketEvent>& Events)
 	}
 }
 
+CricketPose::FClipPlay ASuperOverGameMode::ThrowPlay(int32 I, float Post) const
+{
+	const FRunningOutcome& Run = Result.Running;
+	const FFieldingOutcome& Fd = Result.Fielding;
+	if (!ThrowAnim) return {};
+	if (I == Run.RelayMove.Fielder && Run.RelayRelease > 0.f) return CricketPose::ThrowClip(Post, Run.RelayCatch, Run.RelayRelease);
+	if (I != Fd.Fielder || Run.ThrowRelease <= 0.f || Run.ThrowType == EThrowType::Underarm) return {};
+	// A diver has the ball once down, and throws on the way up.
+	const bool bDived = (Fd.bDive || Fd.Action == EFieldAction::CatchDiving) && DiveAnims[0] && DiveAnims[1];
+	return CricketPose::ThrowClip(Post, Fd.FieldTime + (bDived ? CricketPose::DiveClipLanded - CricketPose::DiveClipStretch : 0.f), Run.ThrowRelease);
+}
+
 void ASuperOverGameMode::UpdatePoses(float T, bool bLive, float Post, float Off, float Arm)
 {
 	using namespace CricketGeo;
@@ -1591,6 +1637,8 @@ void ASuperOverGameMode::UpdatePoses(float T, bool bLive, float Post, float Off,
 		FBat B = BatAt(Stance, -60.f * Lift);
 		FVector Lean = Stance.Lean;
 		float Open = 0.f, Into = 0.f;
+		UAnimSequence* ClipAnim = nullptr;
+		float ClipTime = 0.f, ClipW = 0.f;
 		if (bPlayed && !bStroke) B = BatAt(Stance, -FMath::Max(60.f * Lift, 125.f * Ramp(T, Press, Press + 0.25f) * Back)); // leave: bat up
 		if (bStroke)
 		{
@@ -1604,6 +1652,15 @@ void ASuperOverGameMode::UpdatePoses(float T, bool bLive, float Post, float Off,
 			B = Blend(B, BatAt(Stroke, StrokeAngle(Stroke, T, Press, Impact)), Into);
 			Lean = FMath::Lerp(Stance.Lean, Stroke.Lean, Into);
 			Open = Into * Ramp(T, Impact - 0.15f, Impact + FollowSeconds);
+			// The captured stroke moves the legs and body from the press; the hands stay on the planned bat.
+			// ponytail: right-handers only (the takes are a right-hander's); mirror them for left-handers.
+			const FStrokeClip Take = StrokeClip(Shot, Result.Shot.Foot, BatInput.DirectionDeg);
+			if (const TObjectPtr<UAnimSequence>* Seq = Take.Name && Off > 0.f ? StrokeAnims.Find(Take.Name) : nullptr)
+			{
+				ClipAnim = *Seq;
+				ClipTime = StrokeClipTime(Take, T, Press, Impact);
+				ClipW = Into * (1.f - RunW);
+			}
 		}
 		B = Blend(B, Carry(Striker, Off), RunW);
 		PlaceBat(Bat, B);
@@ -1611,12 +1668,20 @@ void ASuperOverGameMode::UpdatePoses(float T, bool bLive, float Post, float Off,
 		{
 			FCricketBodyPose& P = Anim->Pose;
 			Hold(P, B, Pivot + Lean, TopHand, 1.f - RunW, 1.f);
-			P.PelvisOffset = ToWorld(Lean * 0.8f - FVector(0.f, 0.f, Crouch)) * (1.f - RunW);
+			// A captured stroke already carries its own lean, crouch, turn and gaze, so those give way to it.
+			P.PelvisOffset = ToWorld(Lean * 0.8f - FVector(0.f, 0.f, Crouch)) * (1.f - RunW) * (1.f - ClipW);
 			// Side-on in the stance (a little open to watch the bowler), the chest opening toward the ball's
 			// direction through the stroke.
 			const FVector Stand(0.35f, Off, 0.f), Through(1.f, 0.3f * Off, 0.f);
-			P.ChestFacing = FMath::Lerp(FMath::Lerp(Stand, Through, Open), Striker->GetActorForwardVector(), RunW);
-			P.ChestBend = (12.f + 18.f * Into) * (1.f - RunW);
+			P.ChestFacing = FMath::Lerp(FMath::Lerp(Stand, Through, Open), Striker->GetActorForwardVector(), FMath::Max(RunW, ClipW));
+			P.ChestBend = (12.f + 18.f * Into) * (1.f - RunW) * (1.f - ClipW);
+			P.LookWeight *= 1.f - ClipW;
+			P.Clip[0] = ClipAnim;
+			P.ClipTime[0] = ClipTime;
+			P.ClipWeight[0] = ClipW;
+			// The swing is planned about Pivot: carry the clip's shoulders there so the arms reach the bat.
+			P.ShouldersAt = ToWorld(Pivot + Lean);
+			P.ShouldersWeight = ClipW;
 		}
 	}
 
@@ -1695,10 +1760,27 @@ void ASuperOverGameMode::UpdatePoses(float T, bool bLive, float Post, float Off,
 		P.PelvisOffset = FVector(0.f, 0.f, -100.f * Drop);
 		P.ChestBend = 45.f * Drop;
 
+		// A captured dive or throw moves the whole body, so the reach, crouch and gaze give way to it.
+		const FClipPlay Dive = bLive && Diving && I == Result.Fielding.Fielder ? DiveClip(Post, Result.Fielding.FieldTime) : FClipPlay();
+		const FClipPlay Throw = bLive ? ThrowPlay(I, Post) : FClipPlay();
+		P.Clip[0] = Diving;
+		P.ClipTime[0] = Dive.Time;
+		P.ClipWeight[0] = Dive.Weight;
+		P.Clip[1] = ThrowAnim;
+		P.ClipTime[1] = Throw.Time;
+		P.ClipWeight[1] = Throw.Weight;
+		const float Own = (1.f - Dive.Weight) * (1.f - Throw.Weight);
+		for (int32 H = 0; H < 2; ++H) P.HandWeight[H] *= Own;
+		P.PelvisOffset *= Own;
+		P.ChestBend *= Own;
+		P.LookWeight *= Own;
+
+		// Otherwise (no captured throw, or an underarm flick) the arm windmills over by IK.
 		const bool bThrower = I == Result.Fielding.Fielder && Run.ThrowRelease > 0.f;
 		const bool bRelay = I == Run.RelayMove.Fielder && Run.RelayRelease > 0.f;
+		const bool bClipThrow = ThrowAnim && (bRelay || Run.ThrowType != EThrowType::Underarm);
 		const float Tt = Post - (bRelay ? Run.RelayRelease : Run.ThrowRelease);
-		const float ThrowW = bLive && (bThrower || bRelay) ? BowlingArmWeight(Tt) : 0.f;
+		const float ThrowW = bLive && (bThrower || bRelay) && !bClipThrow ? BowlingArmWeight(Tt) : 0.f;
 		if (ThrowW > 0.f)
 		{
 			const FVector Stumps(Run.bThrowToStrikerEnd ? 0.f : PitchLength, 0.f, 0.f);
@@ -1769,6 +1851,14 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	const FName BowlingHand = Arm > 0.f ? FName(TEXT("hand_r")) : FName(TEXT("hand_l"));
 	FVector BallPos = BowlerBody ? BowlerBody->GetSocketLocation(BowlingHand) + FVector(0.f, 0.f, -8.f) : ToWorld(FVector(BowlerPos.X - 0.3f, 0.4f * Arm, 1.1f));
 	if (bLive) BallPos = ToWorld(Result.BallAt(T));
+	// In a fielder's hands from the take until they let it go. The simulation holds it where it was taken, but a
+	// captured dive or throw carries the body up to a metre from there. In the right hand: the midpoint of two hands
+	// floats in the air whenever they part.
+	// ponytail: the thrown path starts from the take, so the ball jumps from the hand on the release frame; start the
+	// throw at the hand if it shows.
+	const int32 HolderIndex = bLive ? Result.HolderAt(Post) : -1;
+	const AActor* Holder = !Ctx.Field.IsValidIndex(HolderIndex) ? nullptr : Ctx.Field[HolderIndex].bBowler ? Bowler.Get() : Fielders.IsValidIndex(HolderIndex) ? Fielders[HolderIndex].Get() : nullptr;
+	if (const USkeletalMeshComponent* Hands = Holder ? BodyOf(Holder) : nullptr) BallPos = Hands->GetSocketLocation(TEXT("hand_r"));
 	Ball->SetActorLocation(BallPos);
 	// Drawn stretched along its path by the distance it covers in a 1/60 s shutter, as a broadcast camera
 	// blurs it, so a fast ball reads as a streak rather than strobing dots. A jump (new ball, replay) is not motion.
@@ -1781,6 +1871,7 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 
 	// Fielders run where the coordinator sends them (chase, back up, cover the stumps) at the speed the
 	// solver assumed, so nobody arrives sooner than they physically could.
+	Diving = nullptr;
 	if (bLive)
 	{
 		for (const FFielderMove& Move : Result.Fielding.Moves)
@@ -1797,18 +1888,75 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 			const FVector2D P = CricketField::PositionOf(Relay, Ctx.Field[Relay.Fielder], Post, Ctx.Fielding.RunSpeed);
 			Fielders[Relay.Fielder]->SetActorLocation(ToWorld(FVector(P.X, P.Y, 0.9f)));
 		}
-		// Going to ground for a dive or a slide: the primary lies toward the ball from just before the take
-		// until they are back up (the same time the solver charges before the throw).
 		const FFieldingOutcome& Fd = Result.Fielding;
 		const EFieldAction A = Fd.Action;
-		const bool bGround = Fd.bDive || A == EFieldAction::SlideStop || A == EFieldAction::CatchDiving;
-		if (Fielders.IsValidIndex(Fd.Fielder) && !Ctx.Field[Fd.Fielder].bBowler)
+		const bool bDiving = Fd.bDive || A == EFieldAction::CatchDiving;
+		const bool bGround = bDiving || A == EFieldAction::SlideStop;
+		const FFielderMove* Chase = Fd.Moves.FindByPredicate([&Fd](const FFielderMove& M) { return M.Fielder == Fd.Fielder; });
+		USkeletalMeshComponent* DiverBody = Fielders.IsValidIndex(Fd.Fielder) ? BodyOf(Fielders[Fd.Fielder]) : nullptr;
+		const CricketPose::FClipPlay Dive = CricketPose::DiveClip(Post, Fd.FieldTime);
+		if (bDiving && DiveAnims[0] && DiveAnims[1] && DiverBody && Chase && !Ctx.Field[Fd.Fielder].bBowler && Post >= Fd.FieldTime - CricketPose::DiveClipStretch)
 		{
+			// The captured dive carries the body across on its own. Stand the fielder where it launches so its hands
+			// reach the take on time, turned so it dives from where they were running, to whichever side leaves them
+			// facing where the ball came from. After it they stay where they got up.
+			AActor* Who = Fielders[Fd.Fielder];
+			const FVector2D Take(Fd.FieldPos), Launch = CricketField::PositionOf(*Chase, Ctx.Field[Fd.Fielder], Fd.FieldTime - CricketPose::DiveClipStretch, Ctx.Fielding.RunSpeed);
+			const FVector2D Out = Launch.Equals(Take, 0.01f) ? FVector2D(-1.f, 0.f) : (Launch - Take).GetSafeNormal(); // from the take back to the launch
+			const FVector2D Came = -FVector2D(Result.BallAt(Fd.FieldTime) - Result.BallAt(Fd.FieldTime - 0.1f)).GetSafeNormal();
+			const FQuat BodyTurn = DiverBody->GetRelativeRotation().Quaternion();
+			auto Flat = [&BodyTurn](const FVector& C) { const FVector V = BodyTurn.RotateVector(C) / 100.f; return FVector2D(V.X, V.Y); }; // clip cm to actor m
+			float Yaw = 0.f, Best = -2.f;
+			FVector2D Reach;
+			for (int32 Side = 0; Side < 2; ++Side)
+			{
+				const UAnimSequence* Seq = DiveAnims[Side];
+				const FVector2D Hands = Flat(0.5f * (ClipBoneAt(Seq, TEXT("hand_l"), CricketPose::DiveClipStretch) + ClipBoneAt(Seq, TEXT("hand_r"), CricketPose::DiveClipStretch)) - ClipBoneAt(Seq, TEXT("pelvis"), 0.f));
+				const float Y = FMath::RadiansToDegrees(FMath::Atan2(-Out.Y, -Out.X) - FMath::Atan2(Hands.Y, Hands.X));
+				const float Facing = FVector2D::DotProduct(FVector2D(FMath::Cos(FMath::DegreesToRadians(Y)), FMath::Sin(FMath::DegreesToRadians(Y))), Came);
+				if (Facing > Best) { Best = Facing; Yaw = Y; Reach = Hands; Diving = DiveAnims[Side]; }
+			}
+			// ponytail: the clip's full-length dive (~3.6 m to the hands) is longer than the solver's DiveReach (2.3 m),
+			// so the fielder slides that difference as the clip blends in; scale the take's reach if it shows.
+			const FVector2D From = Take + Out * Reach.Size();
+			const FRotator Turn(0.f, Yaw, 0.f);
+			const FVector Travel = Turn.RotateVector(FVector(Flat(ClipBoneAt(Diving, TEXT("pelvis"), FMath::Min(Dive.Time, CricketPose::DiveClipUp)) - ClipBoneAt(Diving, TEXT("pelvis"), 0.f)), 0.f));
+			// The actor carries whatever share of the travel the clip no longer does (fading out, or under the throw).
+			const float Held = Dive.Weight * (1.f - ThrowPlay(Fd.Fielder, Post).Weight);
+			const float In = FMath::SmoothStep(0.f, 0.3f, Dive.Time);
+			const FVector There = FVector(From.X, From.Y, 0.9f) + (1.f - Held) * FVector(Travel.X, Travel.Y, 0.f);
+			Who->SetActorLocation(ToWorld(FMath::Lerp(Who->GetActorLocation() / 100.f, There, In)));
+			if (Dive.Weight > 0.f)
+			{
+				Who->SetActorRotation(FMath::Lerp(FRotator(0.f, Who->GetActorRotation().Yaw, 0.f), Turn, In));
+				FigureStates.FindOrAdd(Fielders[Fd.Fielder]).bHeld = true;
+			}
+		}
+		else if (Fielders.IsValidIndex(Fd.Fielder) && !Ctx.Field[Fd.Fielder].bBowler)
+		{
+			// Going to ground for a slide (or a dive with no captured clip): the primary lies toward the ball from
+			// just before the take until they are back up (the same time the solver charges before the throw).
 			const float Down = FMath::Clamp((Post - Fd.FieldTime + 0.2f) / 0.2f, 0.f, 1.f) * FMath::Clamp((Fd.FieldTime + 0.8f - Post) / 0.3f, 0.f, 1.f);
 			AActor* Who = Fielders[Fd.Fielder];
 			const FVector2D Lean = (FVector2D(Fd.FieldPos) - FVector2D(Who->GetActorLocation() / 100.f)).GetSafeNormal();
 			const FVector Up = FMath::Lerp(FVector::UpVector, FVector(Lean.X, Lean.Y, 0.25f).GetSafeNormal(), bGround ? 0.85f * Down : 0.f);
 			Who->SetActorRotation(FRotationMatrix::MakeFromZ(Up).Rotator());
+		}
+
+		// A captured throw is thrown along the thrower's forward: turn them to the target through the wind-up.
+		for (const int32 I : { Fd.Fielder, Result.Running.RelayMove.Fielder })
+		{
+			const float W = Ctx.Field.IsValidIndex(I) ? ThrowPlay(I, Post).Weight : 0.f;
+			AStaticMeshActor* Who = W <= 0.f ? nullptr : Ctx.Field[I].bBowler ? Bowler.Get() : Fielders.IsValidIndex(I) ? Fielders[I].Get() : nullptr;
+			if (!Who) continue;
+			const bool bRelay = I == Result.Running.RelayMove.Fielder;
+			const FVector2D To = !bRelay && Fielders.IsValidIndex(Result.Running.RelayMove.Fielder) && Result.Running.RelayRelease > 0.f
+				? FVector2D(Fielders[Result.Running.RelayMove.Fielder]->GetActorLocation() / 100.f)
+				: FVector2D(Result.Running.bThrowToStrikerEnd ? 0.f : PitchLength, 0.f);
+			const FVector2D Aim = To - FVector2D(Who->GetActorLocation() / 100.f);
+			if (Aim.IsNearlyZero()) continue;
+			Who->SetActorRotation(FMath::Lerp(FRotator(0.f, Who->GetActorRotation().Yaw, 0.f), FRotator(0.f, FMath::RadiansToDegrees(FMath::Atan2(Aim.Y, Aim.X)), 0.f), W));
+			FigureStates.FindOrAdd(Who).bHeld = true;
 		}
 	}
 
@@ -1946,7 +2094,10 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	}
 	if (bDevCamFielder && bLive && Fielders.IsValidIndex(Result.Fielding.Fielder) && !Ctx.Field[Result.Fielding.Fielder].bBowler)
 	{
-		const FVector At = Fielders[Result.Fielding.Fielder]->GetActorLocation();
+		// On the body's pelvis rather than the actor: a captured dive carries the body metres from its actor.
+		const USkeletalMeshComponent* Body = BodyOf(Fielders[Result.Fielding.Fielder]);
+		const FVector Pelvis = Body ? Body->GetBoneLocation(TEXT("pelvis")) : FVector::ZeroVector;
+		const FVector At = Body && !Pelvis.IsZero() ? FVector(Pelvis.X, Pelvis.Y, Fielders[Result.Fielding.Fielder]->GetActorLocation().Z) : Fielders[Result.Fielding.Fielder]->GetActorLocation();
 		const FVector In = FVector(FVector2D(PitchCentre() * 100.f - At), 0.f).GetSafeNormal();
 		WantLoc = At + In * 700.f + FVector(0.f, 0.f, 80.f);
 		LookAt = At;

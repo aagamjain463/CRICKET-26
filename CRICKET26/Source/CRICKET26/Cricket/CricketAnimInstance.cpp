@@ -10,14 +10,17 @@ void FCricketAnimProxy::PreUpdate(UAnimInstance* Instance, float DeltaSeconds)
 	const UCricketAnimInstance* I = CastChecked<UCricketAnimInstance>(Instance);
 	Idle = I->Idle;
 	Jog = I->Jog;
+	Sprint = I->Sprint;
 	Pose = I->Pose;
 	if (Idle) IdleTime = FMath::Fmod(IdleTime + DeltaSeconds, double(FMath::Max(Idle->GetPlayLength(), 0.01f)));
 	if (Jog) JogTime = FMath::Fmod(JogTime + DeltaSeconds * Pose.JogRate, double(FMath::Max(Jog->GetPlayLength(), 0.01f)));
+	if (Sprint) SprintTime = FMath::Fmod(SprintTime + DeltaSeconds * Pose.SprintRate, double(FMath::Max(Sprint->GetPlayLength(), 0.01f)));
 	// World to component space, here on the game thread where the component's transform is current.
 	const FTransform C = GetComponentTransform();
 	Pose.PelvisOffset = C.InverseTransformVector(Pose.PelvisOffset);
 	Pose.ChestFacing = C.InverseTransformVectorNoScale(Pose.ChestFacing);
 	Pose.LookAt = C.InverseTransformPosition(Pose.LookAt);
+	Pose.ShouldersAt = C.InverseTransformPosition(Pose.ShouldersAt);
 	for (int32 S = 0; S < 2; ++S)
 	{
 		Pose.Hand[S] = C.InverseTransformPosition(Pose.Hand[S]);
@@ -40,6 +43,21 @@ bool FCricketAnimProxy::Evaluate(FPoseContext& Output)
 		FAnimationPoseData JogData(JogPose);
 		Jog->GetAnimationPose(JogData, FAnimExtractContext(JogTime, false));
 		FAnimationRuntime::BlendTwoPosesTogetherInPlace(Out, JogData, 1.f - Pose.JogWeight);
+	}
+	if (Sprint && Pose.JogWeight * Pose.SprintWeight > 0.01f)
+	{
+		FPoseContext SprintPose(this);
+		FAnimationPoseData SprintData(SprintPose);
+		Sprint->GetAnimationPose(SprintData, FAnimExtractContext(SprintTime, false));
+		FAnimationRuntime::BlendTwoPosesTogetherInPlace(Out, SprintData, 1.f - Pose.JogWeight * Pose.SprintWeight);
+	}
+	for (int32 L = 0; L < 2; ++L)
+	{
+		if (!Pose.Clip[L] || Pose.ClipWeight[L] <= 0.01f) continue;
+		FPoseContext ClipPose(this);
+		FAnimationPoseData ClipData(ClipPose);
+		Pose.Clip[L]->GetAnimationPose(ClipData, FAnimExtractContext(FMath::Clamp(double(Pose.ClipTime[L]), 0.0, double(Pose.Clip[L]->GetPlayLength())), false));
+		FAnimationRuntime::BlendTwoPosesTogetherInPlace(Out, ClipData, 1.f - FMath::Min(Pose.ClipWeight[L], 1.f));
 	}
 	ApplyActions(Output);
 	return true;
@@ -77,7 +95,7 @@ namespace CricketIK
 void FCricketAnimProxy::ApplyActions(FPoseContext& Output) const
 {
 	using namespace CricketIK;
-	const bool bPelvis = !Pose.PelvisOffset.IsNearlyZero(0.5f);
+	const bool bPelvis = !Pose.PelvisOffset.IsNearlyZero(0.5f) || Pose.ShouldersWeight > 0.f;
 	const bool bChest = !Pose.ChestFacing.IsNearlyZero() || Pose.ChestBend != 0.f;
 	const bool bHands = Pose.HandWeight[0] > 0.f || Pose.HandWeight[1] > 0.f;
 	if (!bPelvis && !bChest && !bHands && Pose.LookWeight <= 0.f) return;
@@ -107,8 +125,14 @@ void FCricketAnimProxy::ApplyActions(FPoseContext& Output) const
 	{
 		FVector FootAt[2];
 		for (int32 S = 0; S < 2; ++S) FootAt[S] = Foot[S] != INDEX_NONE ? CS.GetComponentSpaceTransform(Foot[S]).GetLocation() : FVector::ZeroVector;
+		FVector Offset = Pose.PelvisOffset;
+		if (Pose.ShouldersWeight > 0.f && Upper[0] != INDEX_NONE && Upper[1] != INDEX_NONE)
+		{
+			const FVector Shoulders = 0.5f * (CS.GetComponentSpaceTransform(Upper[0]).GetLocation() + CS.GetComponentSpaceTransform(Upper[1]).GetLocation());
+			Offset += (Pose.ShouldersAt - Shoulders) * FMath::Min(Pose.ShouldersWeight, 1.f);
+		}
 		FTransform P = CS.GetComponentSpaceTransform(Pelvis);
-		P.AddToTranslation(Pose.PelvisOffset);
+		P.AddToTranslation(Offset);
 		SetCS(CS, Pelvis, P);
 		for (int32 S = 0; S < 2; ++S)
 		{
