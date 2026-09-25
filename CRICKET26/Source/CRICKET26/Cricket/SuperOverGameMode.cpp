@@ -305,6 +305,9 @@ void ASuperOverGameMode::Paint(AStaticMeshActor* A, const FLinearColor& Colour)
 					Cloth->SetVectorParameterValue(TEXT("Color"), Slot == TEXT("Kit_Shoes") || Slot == TEXT("Gear_Pads") || Slot == TEXT("Gear_Gloves") || Slot == TEXT("Gear_Hat") ? Pale
 						: Slot == TEXT("Kit_Trousers") ? Colour * 0.45f : Slot == TEXT("Gear_Helmet") ? Colour * 0.3f
 						: Slot == TEXT("Gear_Grille") ? FLinearColor(0.1f, 0.1f, 0.1f) : Colour);
+					// M_Kit: woven cloth but for the helmet's shell and grille, smooth leather shoes, ribbed pads.
+					Cloth->SetScalarParameterValue(TEXT("Fabric"), Slot == TEXT("Gear_Helmet") || Slot == TEXT("Gear_Grille") ? 0.f : Slot == TEXT("Kit_Shoes") ? 0.3f : 1.f);
+					Cloth->SetScalarParameterValue(TEXT("Ribs"), Slot == TEXT("Gear_Pads") ? 1.f : 0.f);
 					continue;
 				}
 				for (const TCHAR* Name : { TEXT("Paint Tint"), TEXT("LogoTint"), TEXT("diffuse_color_1"), TEXT("diffuse_color_2"), TEXT("B_diffuse_color_1") })
@@ -1396,10 +1399,19 @@ void ASuperOverGameMode::DoRelease(float Timing)
 	BatInput = FBatInput();
 	// -CricketAiLeaves: the AI batter lets every ball go (to inspect pad impacts and their ball tracking).
 	static const bool bAiLeaves = FParse::Param(FCommandLine::Get(), TEXT("CricketAiLeaves"));
+	// -CricketAiShot=Intent,Dir: the AI batter plays that intent (1 defend, 2 ground, 3 loft) toward Dir (degrees, + off
+	// side) to every ball, timed as it would, to show each stroke. The ball's length still picks the stroke.
+	static FString AiShot;
+	static const bool bAiShot = FParse::Value(FCommandLine::Get(), TEXT("CricketAiShot="), AiShot, false);
 	if (!HumanBats() && !bAiLeaves)
 	{
 		FRandomStream AiRng(Ctx.Seed + 1);
-		BatInput = CricketAI::ChooseShot(Release, Batter, BowlerPlayer().BowlerType, CricketAI::Aggression(Match), Ctx.Field, Ctx.Conditions, AiRng, AiSkill());
+		FString ShotIntent, ShotDir;
+		if (bAiShot && AiShot.Split(TEXT(","), &ShotIntent, &ShotDir))
+			BatInput = CricketAI::PlayIntent(EBatIntent(FCString::Atoi(*ShotIntent)), Release, Batter, BowlerPlayer().BowlerType, Ctx.Field,
+				Ctx.Conditions, AiRng, AiSkill(), FCString::Atof(*ShotDir));
+		else
+			BatInput = CricketAI::ChooseShot(Release, Batter, BowlerPlayer().BowlerType, CricketAI::Aggression(Match), Ctx.Field, Ctx.Conditions, AiRng, AiSkill());
 	}
 	Result = CricketDelivery::Resolve(Release, BatInput, Ctx);
 	DPhase = EDeliveryPhase::BallInPlay;

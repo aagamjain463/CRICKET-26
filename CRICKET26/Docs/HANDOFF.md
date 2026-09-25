@@ -78,6 +78,12 @@ The captured-animation work (friend's batting takes, sprint, fielding dive and t
   two batters wear, `SKM_<Name>_Keeper` (white pads and gloves for the keeper, who is always `Fielders[0]`) and
   `SKM_<Name>_Hat` (the umpires' white hat). `make_bat.py` models the bat (`/Game/MetaHumans/Kit/SM_Bat`, willow grain from `M_Bat`), which
   replaces the box blade and cylinder handle when it is there. Needs Blender at `/Applications/Blender.app`.
+- Kit material: `M_Kit` is a cloth-shaded material built by `kit_ue.py`. It uses a knit micro-normal and soft
+  memory wrinkles from the MetaHuman plugin's clothing textures, and a fuzz sheen. `Paint` sets its `Fabric` (0 for
+  the helmet's shell and grille, 0.3 for the shoes, 1 for cloth) and `Ribs` (1 on the pads) per slot. To rebuild only
+  the material: `KIT_STEP=material KIT_DIR=Saved/Kit KIT_NAMES=x UnrealEditor-Cmd ... -script=Scripts/metahuman/kit_ue.py`.
+  Close up, the Blender-cut shirt still reads as a smooth shell. The planned replacement is Epic's free parametric
+  MetaHuman outfits from Fab (Tucked T Shirt Variants, Slim Jeans Variants, Running Shoes), which fit each body.
 
 MetaHuman scripting notes (UE 5.8 Python):
 - It runs as a commandlet:
@@ -177,6 +183,9 @@ Stadium scripting notes (UE 5.8):
   - DeepMotion free tier: **no commercial licence**. Fine for a prototype; shipping needs a paid plan or a re-capture.
   - The batting takes are of the owner's friend: get their OK before any public release.
   - Mixamo clips: royalty-free for games.
+- `-CricketAiShot=Intent,Dir` makes the AI batter play one intent (1 defend, 2 ground, 3 loft) toward Dir degrees
+  (+ off side) to every ball, timed as it would. The ball's length still picks the stroke, so a scan shows each clip:
+  `Scripts/capture.sh 1 -CricketAiShot=2,-55` gives flicks and pulls, `2,0` drives and punches, `1,0` defences.
 - Tests: `CRICKET26.Animation.StrokeClips`, `FieldingClips`, `BallInHand`. Capture recipes are in `ANIM_HANDOFF.md`.
 
 ## Blocked on the owner

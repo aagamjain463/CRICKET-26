@@ -166,7 +166,7 @@ namespace
 	/** Plays a chosen intent to the ball as read at DecideAt: picks the gap and times the swing. */
 	FBatInput Play(EBatIntent Intent, bool bCharge, const FBallRead& First, float DecideAt, const FBallRead& Seen,
 		const FDeliveryRelease& Rel, const FCricketPlayer& Batter, EBowlerType BowlerType, const TArray<FFielder>& Field,
-		const FPitchConditions& C, FRandomStream& Rng, float Skill)
+		const FPitchConditions& C, FRandomStream& Rng, float Skill, TOptional<float> Direction = {})
 	{
 		FBatInput In;
 		In.Intent = Intent;
@@ -195,7 +195,7 @@ namespace
 			Gap += FMath::Lerp(16.f, 0.f, Skill) * Rng.GetFraction(); // a weaker batter picks a gap less precisely
 			if (Gap > BestGap) { BestGap = Gap; BestDir = D; }
 		}
-		In.DirectionDeg = In.Intent == EBatIntent::Defend ? 0.f : BestDir;
+		In.DirectionDeg = In.Intent == EBatIntent::Defend ? 0.f : Direction.Get(BestDir);
 
 		const FShotProfile Shot = CricketBatting::ChooseShot(In.Intent, In.DirectionDeg, Seen.PitchX, Seen.HeightAtBat, BowlerType,
 			bCharge ? ChargeLead : 0.f);
@@ -210,11 +210,11 @@ namespace
 }
 
 FBatInput CricketAI::PlayIntent(EBatIntent Intent, const FDeliveryRelease& Rel, const FCricketPlayer& Batter, EBowlerType BowlerType,
-	const TArray<FFielder>& Field, const FPitchConditions& C, FRandomStream& Rng, float Skill)
+	const TArray<FFielder>& Field, const FPitchConditions& C, FRandomStream& Rng, float Skill, TOptional<float> Direction)
 {
 	const FBallRead First = CricketDelivery::Read(Rel.Ball, 0.f, C);
 	const float DecideAt = FMath::Max(0.05f, First.ArrivalTime - 0.35f);
-	return Play(Intent, false, First, DecideAt, CricketDelivery::Read(Rel.Ball, DecideAt, C), Rel, Batter, BowlerType, Field, C, Rng, Skill);
+	return Play(Intent, false, First, DecideAt, CricketDelivery::Read(Rel.Ball, DecideAt, C), Rel, Batter, BowlerType, Field, C, Rng, Skill, Direction);
 }
 
 FBatInput CricketAI::ChooseShot(const FDeliveryRelease& Rel, const FCricketPlayer& Batter, EBowlerType BowlerType,

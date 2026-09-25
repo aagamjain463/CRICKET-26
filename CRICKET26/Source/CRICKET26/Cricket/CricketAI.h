@@ -43,9 +43,10 @@ namespace CricketAI
 	void ShotValue(EBallClass Class, bool bSpin, EBatIntent Intent, float& Runs, float& Out);
 	/** Runs a wicket is worth at this aggression. */
 	float WicketCost(float Aggression);
-	/** Plays a given intent to the delivery the way the AI would (gap, timing), without choosing it. */
+	/** Plays a given intent to the delivery the way the AI would (gap, timing), without choosing it; aimed at Direction if set. */
 	FBatInput PlayIntent(EBatIntent Intent, const FDeliveryRelease& Release, const FCricketPlayer& Batter, EBowlerType BowlerType,
-		const TArray<FFielder>& Field, const FPitchConditions& Conditions, FRandomStream& Rng, float Skill = DefaultSkill);
+		const TArray<FFielder>& Field, const FPitchConditions& Conditions, FRandomStream& Rng, float Skill = DefaultSkill,
+		TOptional<float> Direction = {});
 
 	FBatInput ChooseShot(const FDeliveryRelease& Release, const FCricketPlayer& Batter, EBowlerType BowlerType,
 		float Aggression, const TArray<FFielder>& Field, const FPitchConditions& Conditions, FRandomStream& Rng,
