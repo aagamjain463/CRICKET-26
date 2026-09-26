@@ -245,6 +245,10 @@ private:
 	UPROPERTY() TObjectPtr<UAnimSequence> ThrowAnim;    // optional, as are the dives
 	UPROPERTY() TObjectPtr<UAnimSequence> DiveAnims[2]; // to the fielder's right, left
 	UAnimSequence* Diving = nullptr;                    // this frame's dive for the fielder who took the ball, if any
+	UPROPERTY() TObjectPtr<UAnimSequence> BowlAnims[6]; // the authored actions by EBowlerType, right arm then left; the IK arm otherwise
+	UAnimSequence* BowlAnim() const;
+	/** The bowler's action at the presented time: in from setting off on the run-up, out after the follow-through. */
+	CricketPose::FClipPlay BowlPlay(float T, bool bLive) const;
 	/** The captured throw for fielder I this ball: the thrower's (unless underarm) or the relay fielder's. */
 	CricketPose::FClipPlay ThrowPlay(int32 I, float Post) const;
 	UPROPERTY() TArray<TObjectPtr<AStaticMeshActor>> Figures; // everyone who stands on the field

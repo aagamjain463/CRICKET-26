@@ -1,8 +1,8 @@
 #!/bin/zsh
 # Imports the strokes author_stroke.py baked (Bat_<Stroke>.fbx in the given directory) into Unreal (stroke_ue.py).
-# Usage: Scripts/anim/import_stroke.sh [dir]   (default: Saved/AnimQA/drive)
+# Usage: Scripts/anim/import_stroke.sh [dir] [prefix]   (default: Saved/AnimQA/drive Bat_; Bowl_ for author_bowl.py's)
 ROOT="${0:A:h:h:h}"
-export STROKE_DIR="${1:-$ROOT/Saved/AnimQA/drive}"
+export STROKE_DIR="${${1:-$ROOT/Saved/AnimQA/drive}:A}" STROKE_PREFIX="${2:-Bat_}"
 LOG="$ROOT/Saved/Anim/stroke.log"
 mkdir -p "${LOG:h}"
 "/Users/Shared/Epic Games/UE_5.8/Engine/Binaries/Mac/UnrealEditor-Cmd" "$ROOT/CRICKET26.uproject" -run=pythonscript \

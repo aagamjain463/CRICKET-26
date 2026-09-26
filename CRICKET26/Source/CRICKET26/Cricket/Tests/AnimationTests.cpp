@@ -170,6 +170,17 @@ bool FAnimFieldingClips::RunTest(const FString&)
 	TestEqual(TEXT("in on the take"), DiveClip(4.f, 4.f).Weight, 1.f);
 	TestEqual(TEXT("not before the dive"), DiveClip(4.f - DiveClipStretch - 0.1f, 4.f).Weight, 0.f);
 	TestEqual(TEXT("out once up"), DiveClip(4.f - DiveClipStretch + DiveClipUp, 4.f).Weight, 0.f);
+
+	// The bowling action lets go on the simulation's release, whenever the run-up set off. Waiting at the mark (the
+	// game's time to release is -100 then) it shows the stride the run-up starts on, so setting off never jumps.
+	for (const float Start : { -0.7f, -0.9f, -1.1f })
+	{
+		TestEqual(TEXT("release on release"), BowlClip(0.f, Start).Time, BowlClipRelease);
+		TestEqual(TEXT("in by release"), BowlClip(0.f, Start).Weight, 1.f);
+		TestEqual(TEXT("not while waiting"), BowlClip(-100.f, Start).Weight, 0.f);
+		TestEqual(TEXT("waits on the first stride"), BowlClip(-100.f, Start).Time, BowlClip(Start, Start).Time);
+		TestEqual(TEXT("out after follow-through"), BowlClip(BowlClipEnd - BowlClipRelease, Start).Weight, 0.f);
+	}
 	return true;
 }
 

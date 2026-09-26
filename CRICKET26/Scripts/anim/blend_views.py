@@ -18,6 +18,7 @@ first = int(argv[3]) if len(argv) > 4 else int(act.frame_range[0])
 last = int(argv[4]) if len(argv) > 4 else int(act.frame_range[1])
 views = [float(v) for v in argv[5].split(',')] if len(argv) > 5 else [0, 90, 180, 270, 45]
 
+FOLLOW = bool(os.environ.get('FOLLOW'))
 hips = next(b for b in arm.pose.bones if b.name.split(':')[-1].lower() in ('hips', 'pelvis'))
 centre = Vector()
 for f in range(first, last + 1):
@@ -34,7 +35,8 @@ sc.render.film_transparent = False
 sc.world = sc.world or bpy.data.worlds.new('W')
 # A ground grid for judging foot slide: 10 cm squares.
 if 'Floor' not in bpy.data.objects:
-    bpy.ops.mesh.primitive_grid_add(x_subdivisions=40, y_subdivisions=40, size=4, location=(centre.x, centre.y, 0))
+    n = 12 if FOLLOW else 4
+    bpy.ops.mesh.primitive_grid_add(x_subdivisions=10 * n, y_subdivisions=10 * n, size=n, location=(centre.x, centre.y, 0))
     fl = bpy.context.object
     fl.name = 'Floor'
     fl.display_type = 'WIRE'
@@ -54,6 +56,9 @@ for az in views:
     frames = '%s_az%03d_f%%03d.png' % (out, int(az))
     for f in range(first, last + 1, step):
         sc.frame_set(f)
+        if FOLLOW:  # a travelling clip (a bowler's run): the camera keeps pace with the hips, at their mean height
+            at = arm.matrix_world @ hips.head
+            cam.location = Vector((at.x, at.y, centre.z)) - d * 4.2 + Vector((0, 0, 0.35))
         sc.render.filepath = frames % f
         bpy.ops.render.render(write_still=True)
     subprocess.run(['/usr/bin/env', 'python3', sheet, '%s_az%03d.png' % (out, int(az)), str(first), str(last), str(step),

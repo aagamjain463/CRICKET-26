@@ -28,6 +28,14 @@ FClipPlay DiveClip(float Post, float FieldTime)
 	return { FMath::Max(0.f, Time), FMath::SmoothStep(0.f, 0.3f, Time) * (1.f - FMath::SmoothStep(DiveClipUp - 0.3f, DiveClipUp, Time)) };
 }
 
+FClipPlay BowlClip(float TimeToRelease, float Start)
+{
+	// ponytail: a release more than BowlClipRelease after setting off holds the clip's first frame until it catches up;
+	// author a longer run-in if the AI's late releases show it.
+	const float Time = FMath::Clamp(BowlClipRelease + FMath::Max(TimeToRelease, Start), 0.f, BowlClipEnd);
+	return { Time, FMath::SmoothStep(Start, Start + 0.15f, TimeToRelease) * (1.f - FMath::SmoothStep(BowlClipEnd - 0.3f, BowlClipEnd, Time)) };
+}
+
 FVector ArmCircle(const FVector& Shoulder, const FVector& Forward, float AngleDeg, float Reach)
 {
 	const float R = FMath::DegreesToRadians(AngleDeg);

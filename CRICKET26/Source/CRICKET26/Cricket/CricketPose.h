@@ -49,6 +49,15 @@ namespace CricketPose
 	constexpr float DiveClipStretch = 1.25f, DiveClipLanded = 1.6f, DiveClipUp = 3.2f;
 
 	/**
+	 * The authored bowling action (Scripts/anim/author_bowl.py: the last strides of the run-in, the bound, the delivery
+	 * stride and the follow-through, released BowlClipRelease s in) at TimeToRelease (negative before) for a run-up
+	 * that set off at Start: it holds the first stride's pose until then, comes in over the first stride and goes out
+	 * as the follow-through ends.
+	 */
+	FClipPlay BowlClip(float TimeToRelease, float Start);
+	constexpr float BowlClipRelease = 1.f, BowlClipEnd = 2.f;
+
+	/**
 	 * A hand windmilling about the shoulder for a bowling or throwing action: 0 straight up, positive
 	 * angles over the top toward Forward, -180 straight down.
 	 */
