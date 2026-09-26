@@ -19,7 +19,8 @@
 # The baked action is checked (validate_stroke.py) and written as FBX for Unreal (import_stroke.sh).
 # Regression checks: test_author_stroke.py.
 #
-# Usage: Blender -b -P author_stroke.py -- <stroke> <rig Body.fbx> <out dir> [--mirror]
+# Usage: Blender -b -P author_stroke.py -- <stroke> <rig Body.fbx> <out dir>
+# Strokes are authored right-handed; a left-hander plays the clip mirrored in Unreal (a mirror data table).
 import bpy, sys, os, math, importlib
 import numpy as np
 from mathutils import Vector, Matrix, Quaternion
@@ -270,10 +271,9 @@ def twist_angle(q, axis):
 
 
 class Stroke:
-    def __init__(self, arm, keys, mirror=False):
+    def __init__(self, arm, keys):
         self.rig = Rig(arm)
         self.keys = keys
-        self.mirror = mirror
         r = self.rig
         # Hands: the grip frame measured off each hand's rest bones (as CricketAnimInstance's BuildRig does).
         self.hand = {}

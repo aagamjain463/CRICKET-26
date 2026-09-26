@@ -169,4 +169,5 @@ Still open:
   - the unreachable ball must become a miss or a mistime.
 - Blocked: the editor module does not build right now. The untracked `Source/CRICKET26/Frontend/` work includes `Widgets/FrontendRoot.h`, which does not exist.
 - Then acceptance of the golden drive at 0.25x, by your eye.
+- Left-handers: the clip is authored right-handed, and a left-hander plays it mirrored through an Unreal mirror data table. The mirror is anatomically identical, so the validator's result carries over. The bone mapping still has to be checked in game. (author_stroke.py had a `--mirror` flag that was never read and silently produced a right-hander; it is removed.)
 - The other eleven shots are not started, by design: the library does not grow until the drive passes.
