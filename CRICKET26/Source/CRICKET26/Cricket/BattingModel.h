@@ -25,7 +25,12 @@ struct FShotProfile
 	float DirMin = -180.f, DirMax = 180.f;   // allowed shot directions (deg, 0 = straight, + = off side)
 	float SwingTime = 0.25f;                 // input-to-contact time (s)
 	float AdvanceX = 3.0f;                   // down the track: where the batter meets the ball (m from the stumps)
-	float ContactX() const { return Foot == EFootwork::Advance ? AdvanceX : Foot == EFootwork::Front ? 2.0f : 1.0f; }
+	// Where the ball is met (m from the stumps). A forward defence meets it later than a drive, under the eyes
+	// beside the front pad, with the handle ahead of the blade.
+	float ContactX() const
+	{
+		return Foot == EFootwork::Advance ? AdvanceX : Foot == EFootwork::Back ? 1.0f : Shot == EShotType::Defend ? 1.8f : 2.0f;
+	}
 };
 
 struct FContactResult

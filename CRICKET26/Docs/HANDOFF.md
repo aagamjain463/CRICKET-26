@@ -4,8 +4,9 @@ This note lets a new agent pick up the "make it like Cricket 26" work where it s
 `Docs/MASTER_PLAN.md` first: it is the plan this work now follows (it absorbs the 8 items of
 `Docs/CRICKET26_PARITY_PLAN.md`).
 
-The captured-animation work (friend's batting takes, sprint, fielding dive and throw) is done and committed; see
-"Captured animations" below and `Docs/ANIM_HANDOFF.md` for the detail.
+The captured-animation work (sprint, fielding dive and throw) is done and committed; see "Captured animations" below
+and `Docs/ANIM_HANDOFF.md` for the detail. The striker no longer plays the friend's batting takes: batting was rebuilt
+as a planned, solved motion (2026-09-25); see "Batting" below and `Docs/BATTING_ANIMATION_QA.md`.
 
 ## Project basics
 
@@ -219,17 +220,33 @@ Stadium scripting notes (UE 5.8):
   tier, web) turns each into an FBX; Mixamo (web) supplies the sprint, throw and dives. `Scripts/anim/import_anims.sh`
   imports both folders under `~/Downloads/mocap` headless and retargets them through IK Rigs onto the mannequin skeleton
   as `/Game/Anims/Mocap/<Name>` (not committed, so a fresh clone must run it with the FBX files in place).
-- In game: strokes (`CricketPose::StrokeClip`, right-handers only), sprint over jog, the throw
+- In game: sprint over jog, the throw
   (`CricketPose::ThrowClip`) and the dives (`CricketPose::DiveClip`) blend over the procedural bodies, with IK kept for
   the bat. Every clip is loaded quietly, so the game still runs on the procedural poses without them.
 - Sources and licences:
-  - DeepMotion free tier: **no commercial licence**. Fine for a prototype; shipping needs a paid plan or a re-capture.
-  - The batting takes are of the owner's friend: get their OK before any public release.
+  - DeepMotion free tier: **no commercial licence**. The batting takes are no longer loaded by the game.
   - Mixamo clips: royalty-free for games.
 - `-CricketAiShot=Intent,Dir` makes the AI batter play one intent (1 defend, 2 ground, 3 loft) toward Dir degrees
-  (+ off side) to every ball, timed as it would. The ball's length still picks the stroke, so a scan shows each clip:
-  `Scripts/capture.sh 1 -CricketAiShot=2,-55` gives flicks and pulls, `2,0` drives and punches, `1,0` defences.
-- Tests: `CRICKET26.Animation.StrokeClips`, `FieldingClips`, `BallInHand`. Capture recipes are in `ANIM_HANDOFF.md`.
+  (+ off side) to every ball, timed as it would. The ball's length still picks the stroke: `2,-55` gives flicks,
+  `2,0` drives, `1,0` defences; add `-CricketLength=8.5` (metres from the striker's stumps) for the short ball
+  that cuts (`2,70`) and pulls (`2,-70`) need. `-CricketLeftHanded` makes every striker bat left-handed.
+- Tests: `CRICKET26.Animation.FieldingClips`, `BallInHand`. Capture recipes are in `ANIM_HANDOFF.md`.
+
+## Batting
+
+- `CricketBatter::Plan` (`Source/CRICKET26/Cricket/CricketBatter.h/.cpp`) is the striker's whole body through a
+  delivery as geometry: stance, backlift, trigger, the stroke's footwork, weight transfer, the kinetic chain (hips,
+  chest, arms, bat), follow-through and recovery. The bat is built backwards from the simulation's contact, and every
+  key of its path is kept within the arms' reach. It is authored for a right-hander and mirrored for a left-hander.
+- `FCricketAnimProxy::SolveBatter` (`CricketAnimInstance.cpp`) solves the MetaHuman skeleton to it: the pelvis,
+  the spine sharing the chest's turn, the legs to the planted feet, the head to the ball, and each arm by a search
+  over elbow swivel and grip roll that keeps the elbows out of the torso.
+- The game logs three checks at the end of every run (`Pose:` lines in the log): hands from the grip, arm inside
+  the torso, and planted-foot slide.
+- `Scripts/anim/stroke_qa.sh <label> <view> [args]` captures one stroke at 0.25x from point, front, leg, rear
+  or lpoint and tiles a contact sheet into `Saved/AnimQA/`.
+- Test: `CRICKET26.Animation.BatterPlan`. The QA table and what still needs checking are in
+  `Docs/BATTING_ANIMATION_QA.md`.
 
 ## Blocked on the owner
 

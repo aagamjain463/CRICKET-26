@@ -2,6 +2,7 @@
 
 #include "Misc/AutomationTest.h"
 #include "BattingModel.h"
+#include "CricketBatter.h"
 #include "CricketPose.h"
 #include "DeliveryResolver.h"
 
@@ -12,48 +13,98 @@ namespace CricketAnimationTests
 	constexpr EAutomationTestFlags Flags = EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAnimStrokeMeetsBall, "CRICKET26.Animation.StrokeMeetsBall", CricketAnimationTests::Flags)
-bool FAnimStrokeMeetsBall::RunTest(const FString&)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAnimBatterPlan, "CRICKET26.Animation.BatterPlan", CricketAnimationTests::Flags)
+bool FAnimBatterPlan::RunTest(const FString&)
 {
-	using namespace CricketPose;
-	// A right-hander (off side +Y) and a left-hander (mirrored) playing the same strokes: at angle 0 the
-	// sweet spot is on the contact, the grip is within the arms' reach all the way through the swing, and
-	// the downswing only ever moves toward the ball.
-	for (const float Off : { 1.f, -1.f })
+	// Every stroke, right- and left-handed, sampled at 120 Hz from the backlift to past the recovery: the sweet
+	// spot on the ball at the contact, a true bat frame, the handle within the arms' reach and off the chest, no
+	// planted foot moving, no jumps, and a left-hander the exact mirror of a right-hander.
+	struct FCase { EShotType Shot; FVector Contact; float Dir; };
+	const FCase Cases[] = {
+		{ EShotType::Defend, FVector(1.8f, 0.1f, 0.45f), 0.f },
+		{ EShotType::Drive, FVector(2.f, 0.1f, 0.4f), 0.f },
+		{ EShotType::Drive, FVector(2.f, 0.3f, 0.4f), 45.f },
+		{ EShotType::Loft, FVector(2.f, 0.05f, 0.5f), 0.f },
+		{ EShotType::Flick, FVector(2.f, -0.2f, 0.4f), -55.f },
+		{ EShotType::Sweep, FVector(2.f, 0.f, 0.3f), -80.f },
+		{ EShotType::Punch, FVector(1.f, 0.3f, 0.8f), 20.f },
+		{ EShotType::Cut, FVector(1.f, 0.5f, 0.65f), 70.f },
+		{ EShotType::Pull, FVector(1.f, 0.f, 1.f), -70.f },
+		{ EShotType::Hook, FVector(1.f, -0.1f, 1.3f), -80.f },
+	};
+	constexpr float Dt = 1.f / 120.f;
+	// Reach is the planner's comfortable, elbows-bent limit for the stroke. At rest in the stance the arms hang
+	// nearly straight, which the nominal body allows up to its straight arm (the solve also lets the clavicles
+	// reach forward a little).
+	constexpr float StraightArm = 0.67f;
+	for (const FCase& C : Cases)
 	{
-		const FVector Pivot(-0.2f, -0.35f * Off, 1.35f);
-		struct FCase { EShotType Shot; FVector Contact; FVector Dir; };
-		const FCase Cases[] = {
-			{ EShotType::Drive, FVector(0.5f, 0.1f * Off, 0.35f), FVector(1.f, 0.3f * Off, 0.f) },
-			{ EShotType::Defend, FVector(0.4f, 0.f, 0.3f), FVector(1.f, 0.f, 0.f) },
-			{ EShotType::Pull, FVector(0.3f, -0.1f * Off, 1.1f), FVector(0.f, -1.f * Off, 0.1f) },
-			{ EShotType::Cut, FVector(0.2f, 0.7f * Off, 0.8f), FVector(0.f, 1.f * Off, 0.f) },
-			{ EShotType::Loft, FVector(0.6f, 0.1f * Off, 0.15f), FVector(1.f, 0.f, 0.6f) },   // beyond the arms: leans in
-			{ EShotType::Hook, FVector(0.1f, -0.2f * Off, 1.3f), FVector(-0.3f, -1.f * Off, 0.3f) }, // cramped: sways away
-		};
-		for (const FCase& C : Cases)
+		auto Input = [&](ECricketHand Hand)
 		{
-			const FString Name = FString::Printf(TEXT("shot %d off %+.0f"), int32(C.Shot), Off);
-			const FSwing S = PlanSwing(C.Shot, Pivot, C.Contact, C.Dir);
-			TestTrue(Name + TEXT(": sweet spot on the ball"), BatAt(S, 0.f).SweetSpot().Equals(C.Contact, 0.02f));
-			TestTrue(Name + TEXT(": lean bounded"), S.Lean.Size() <= MaxLean + 1e-3f);
-			float Prev = StrokeAngle(S, 0.f, 0.1f, 0.4f);
-			TestEqual(Name + TEXT(": held at the backlift"), Prev, -S.Backlift);
-			TestEqual(Name + TEXT(": meets the ball on time"), StrokeAngle(S, 0.4f, 0.1f, 0.4f), 0.f, 1e-3f);
-			for (float T = 0.f; T <= 1.f; T += 0.01f)
+			const float Off = OffSideSign(Hand);
+			CricketBatter::FInput In;
+			In.Off = Off;
+			In.Home = FVector(0.9f, -0.35f * Off, 0.f);
+			In.bStroke = true;
+			In.Shot = C.Shot;
+			In.Foot = CricketBatting::Profile(C.Shot).Foot;
+			In.DirectionDeg = C.Dir;
+			In.Press = 0.35f;
+			In.Impact = 0.6f;
+			In.Contact = FVector(C.Contact.X, C.Contact.Y * Off, C.Contact.Z);
+			In.ShotDir = CricketBatting::DirectionToWorld(C.Dir, Hand).GetSafeNormal();
+			In.Settle = In.Impact + 0.9f;
+			return In;
+		};
+		const FString Name = FString::Printf(TEXT("shot %d dir %.0f"), int32(C.Shot), C.Dir);
+		CricketBatter::FInput In = Input(ECricketHand::Right), Lh = Input(ECricketHand::Left);
+		bool bFinite = true, bFrame = true, bMirror = true, bPlanted = true;
+		float Cramped = 1.f, CrampAt = 0.f, JumpAt = 0.f, Closest = 1.f, WorstReach = -1.f, WorstArm = -1.f, WorstSpeed = 0.f, WorstAt = 0.f, ArmAt = 0.f, CloseAt = 0.f;
+		CricketBatter::FBody Prev;
+		for (float T = -1.f; T < In.Settle + CricketBatter::RecoverSeconds + 0.3f; T += Dt)
+		{
+			In.Time = Lh.Time = T;
+			const CricketBatter::FBody B = CricketBatter::Plan(In), M = CricketBatter::Plan(Lh);
+			const CricketPose::FBat& Bat = B.Bat;
+			bFinite &= !Bat.Grip.ContainsNaN() && !Bat.Axis.ContainsNaN() && !Bat.Face.ContainsNaN() && !B.Pelvis.ContainsNaN() && FMath::IsFinite(B.Drop);
+			bFrame &= FMath::IsNearlyEqual(Bat.Axis.Size(), 1.f, 1e-3f) && FMath::IsNearlyEqual(Bat.Face.Size(), 1.f, 1e-3f) && FMath::Abs(Bat.Axis | Bat.Face) < 1e-3f;
+			// The hands 4.5 cm either side of the grip, the top hand's from the front shoulder.
+			const FVector Top = Bat.Grip - Bat.Axis * 0.045f, Bottom = Bat.Grip + Bat.Axis * 0.045f;
+			const float Arm = FMath::Max(FVector::Dist(Top, B.Shoulder[B.TopHand]), FVector::Dist(Bottom, B.Shoulder[1 - B.TopHand]));
+			if (T >= In.Press && T <= In.Settle && Arm > WorstReach) { WorstReach = Arm; WorstAt = T; }
+			if (Arm > WorstArm) { WorstArm = Arm; ArmAt = T; }
+			const float Fold = FMath::Min(FVector::Dist(Top, B.Shoulder[B.TopHand]), FVector::Dist(Bottom, B.Shoulder[1 - B.TopHand]));
+			if (Fold < Cramped) { Cramped = Fold; CrampAt = T; }
+			// Off the spine at the grip's height (the spine leans forward of the pelvis as the chest bends).
+			const float Along = FMath::Clamp((Bat.Grip.Z - (0.97f - B.Drop)) / FMath::Max(B.ChestUp.Z, 0.3f), 0.f, 0.49f);
+			const float Clear = FVector2D::Distance(FVector2D(Bat.Grip), FVector2D(B.Pelvis + B.ChestUp * Along));
+			if (Clear < Closest) { Closest = Clear; CloseAt = T; }
+			auto Flip = [](const FVector& V) { return FVector(V.X, -V.Y, V.Z); };
+			bMirror &= M.TopHand == 1 - B.TopHand && M.Bat.Grip.Equals(Flip(Bat.Grip), 1e-3f) && M.Bat.Axis.Equals(Flip(Bat.Axis), 1e-3f)
+				&& M.Foot[1 - B.TopHand].Ball.Equals(Flip(B.Foot[B.TopHand].Ball), 1e-3f);
+			if (T > -1.f)
 			{
-				const float A = StrokeAngle(S, T, 0.1f, 0.4f);
-				if (A < Prev - 1e-3f) { AddError(FString::Printf(TEXT("%s: swing reverses at %.2f s"), *Name, T)); break; }
-				Prev = A;
-				const FBat B = BatAt(S, A);
-				if ((B.Grip - S.Pivot).Size() > MaxGripReach + 1e-3f) { AddError(FString::Printf(TEXT("%s: grip out of reach at %.0f deg"), *Name, A)); break; }
-				if (!FMath::IsNearlyEqual(B.Axis.Size(), 1.f, 1e-3f) || FMath::Abs(FVector::DotProduct(B.Axis, B.Face)) > 0.05f)
-				{
-					AddError(FString::Printf(TEXT("%s: bat frame skewed at %.0f deg"), *Name, A));
-					break;
-				}
+				const float Speed = FVector::Dist(Bat.Grip, Prev.Bat.Grip) / Dt;
+				if (Speed > WorstSpeed) { WorstSpeed = Speed; JumpAt = T; }
+				for (int32 F = 0; F < 2; ++F)
+					if (B.Foot[F].Lift <= 0.f && Prev.Foot[F].Lift <= 0.f) bPlanted &= B.Foot[F].Ball.Equals(Prev.Foot[F].Ball, 1e-3f);
 			}
+			Prev = B;
 		}
+		In.Time = In.Impact;
+		const CricketBatter::FBody AtImpact = CricketBatter::Plan(In);
+		TestTrue(Name + TEXT(": finite"), bFinite);
+		TestTrue(*FString::Printf(TEXT("%s: sweet spot on the ball at contact (%.1f cm off)"), *Name, 100.f * FVector::Dist(AtImpact.Bat.SweetSpot(), In.Contact)),
+			AtImpact.Bat.SweetSpot().Equals(In.Contact, 0.02f));
+		TestTrue(Name + TEXT(": orthonormal bat"), bFrame);
+		TestTrue(*FString::Printf(TEXT("%s: hands within reach through the stroke (worst %.2f m of %.2f at %.2f s)"), *Name, WorstReach, CricketBatter::Reach, WorstAt),
+			WorstReach <= CricketBatter::Reach + 0.02f);
+		TestTrue(*FString::Printf(TEXT("%s: hands within a straight arm throughout (worst %.2f m of %.2f at %.2f s)"), *Name, WorstArm, StraightArm, ArmAt), WorstArm <= StraightArm);
+		TestTrue(*FString::Printf(TEXT("%s: handle off the chest (closest %.2f m at %.2f s)"), *Name, Closest, CloseAt), Closest > 0.15f);
+		TestTrue(*FString::Printf(TEXT("%s: arms not cramped (closest %.2f m at %.2f s)"), *Name, Cramped, CrampAt), Cramped >= CricketBatter::MinReach - 0.02f);
+		TestTrue(Name + TEXT(": planted feet stay put"), bPlanted);
+		TestTrue(*FString::Printf(TEXT("%s: no jumps (grip at most %.1f m/s, at %.2f s)"), *Name, WorstSpeed, JumpAt), WorstSpeed < 15.f);
+		TestTrue(Name + TEXT(": left-hander mirrors right-hander"), bMirror);
 	}
 	return true;
 }
@@ -99,39 +150,6 @@ bool FAnimContactBatPos::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAnimStrokeClips, "CRICKET26.Animation.StrokeClips", CricketAnimationTests::Flags)
-bool FAnimStrokeClips::RunTest(const FString&)
-{
-	using namespace CricketPose;
-	// Every stroke has a captured take, chosen by footwork and direction, and a leave has none.
-	TestTrue(TEXT("leave: no clip"), StrokeClip(EShotType::Leave, EFootwork::Front, 0.f).Name == nullptr);
-	for (int32 S = int32(EShotType::Defend); S <= int32(EShotType::Scoop); ++S)
-		TestTrue(*FString::Printf(TEXT("shot %d has a clip"), S), StrokeClip(EShotType(S), EFootwork::Front, 0.f).Name != nullptr);
-	TestEqual(TEXT("back-foot defence"), FString(StrokeClip(EShotType::Defend, EFootwork::Back, 0.f).Name), FString(TEXT("Bat_Defend_Back")));
-	TestEqual(TEXT("cover drive"), FString(StrokeClip(EShotType::Drive, EFootwork::Front, 45.f).Name), FString(TEXT("Bat_Drive_Cover")));
-	TestEqual(TEXT("straight drive"), FString(StrokeClip(EShotType::Drive, EFootwork::Front, 0.f).Name), FString(TEXT("Bat_Drive")));
-
-	// The clip's bat meets the ball exactly when the simulation's does, however quick the swing, and the clip
-	// never runs backwards.
-	const FStrokeClip Drive = StrokeClip(EShotType::Drive, EFootwork::Front, 0.f);
-	for (const float Swing : { 0.15f, 0.25f, 0.6f })
-	{
-		const float Press = 3.f, Impact = Press + Swing;
-		TestEqual(TEXT("downswing starts at the press"), StrokeClipTime(Drive, Press, Press, Impact), Drive.Contact - ClipDownswing);
-		TestEqual(TEXT("contact on the impact"), StrokeClipTime(Drive, Impact, Press, Impact), Drive.Contact);
-		TestEqual(TEXT("real time after it"), StrokeClipTime(Drive, Impact + 0.3f, Press, Impact), Drive.Contact + 0.3f, 1e-4f);
-		float Last = -1.f;
-		bool bForward = true;
-		for (float T = Press - 0.5f; T < Impact + 1.f; T += 0.01f)
-		{
-			const float C = StrokeClipTime(Drive, T, Press, Impact);
-			bForward &= C >= Last;
-			Last = C;
-		}
-		TestTrue(TEXT("never backwards"), bForward);
-	}
-	return true;
-}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAnimFieldingClips, "CRICKET26.Animation.FieldingClips", CricketAnimationTests::Flags)
 bool FAnimFieldingClips::RunTest(const FString&)

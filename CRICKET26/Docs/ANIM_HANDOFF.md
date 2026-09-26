@@ -14,6 +14,10 @@ capture, commit rules) read `Docs/HANDOFF.md` first. This note covers only the a
 Use only free tools. Ask the user to sign in if a site asks for it. Never type passwords, create accounts,
 solve CAPTCHAs or accept terms for the user. Use they/them for the friend.
 
+**Superseded for batting (2026-09-25, later).** The striker no longer plays the DeepMotion batting takes.
+Batting is now a planned, solved motion; see "Batting" in `Docs/HANDOFF.md` and `Docs/BATTING_ANIMATION_QA.md`.
+The sprint, throw and dive clips below are still in use. The batting parts of this note are history.
+
 ## Status (2026-09-25, second session)
 
 All of it is wired in, tested (61/61) and checked in captures. See "Done in the second session" at the end.

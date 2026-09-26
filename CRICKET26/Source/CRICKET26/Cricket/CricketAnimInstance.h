@@ -13,6 +13,23 @@
 
 class UAnimSequence;
 
+// The striker's whole body from CricketBatter::Plan, in world space (cm). Solved bone by bone over the idle:
+// pelvis and hips, the spine sharing the chest's turn and bend, the legs to feet placed on the ground, the
+// head to the ball, and the arms to hands gripping the bat, each elbow swivelled clear of the torso.
+struct FCricketBatterPose
+{
+	float Weight = 0.f;                   // 0: the idle and the actions below; 1: all this
+	FVector Pelvis = FVector::ZeroVector; // the ground under the pelvis
+	float Drop = 0.f;                     // pelvis below its standing height, for a body whose pelvis stands 97 cm up
+	FVector Hips = FVector::ForwardVector, Chest = FVector::ForwardVector, ChestUp = FVector::UpVector;
+	FVector Ball[2] = { FVector::ZeroVector, FVector::ZeroVector }; // [0] left, [1] right: the ball of each foot, on the ground
+	FVector Toe[2] = { FVector::ForwardVector, FVector::ForwardVector };
+	float Heel[2] = { 0.f, 0.f };         // degrees raised, pivoting on the ball
+	float Lift[2] = { 0.f, 0.f };         // cm off the ground, mid-step
+	FVector Grip = FVector::ZeroVector, BatAxis = -FVector::UpVector, BatFace = FVector::ForwardVector;
+	int32 TopHand = 0;
+};
+
 struct FCricketBodyPose
 {
 	float JogWeight = 0.f, JogRate = 1.f;
@@ -30,6 +47,7 @@ struct FCricketBodyPose
 	float ClipTime[2] = { 0.f, 0.f }, ClipWeight[2] = { 0.f, 0.f };
 	FVector ShouldersAt = FVector::ZeroVector; // where the point between the shoulders should be: the whole upper body
 	float ShouldersWeight = 0.f;               // moves there over planted feet, e.g. to keep a clip's hands on the bat
+	FCricketBatterPose Batter;
 
 	/** Keeps the locomotion, clears the actions. */
 	void ClearActions()
@@ -53,6 +71,29 @@ struct FCricketAnimProxy : public FAnimInstanceProxy
 
 private:
 	void ApplyActions(FPoseContext& Output) const;
+	void SolveBatter(FCompactPose& Out);
+
+	// The skeleton's reference pose in component space and what the batter solve needs of it, built once per
+	// bone container. Indices are the mesh's bone indices, INDEX_NONE if it lacks the bone; the geometry comes from
+	// the whole skeleton, so a distant LOD without fingers or twist bones still solves (and simply skips them).
+	struct FBatterRig
+	{
+		uint16 Serial = 0;
+		bool bValid = false;
+		TArray<FTransform> Ref;
+		TArray<int32> Compact; // mesh bone index to this LOD's compact pose index, INDEX_NONE if not in it
+		int32 Pelvis = INDEX_NONE, Head = INDEX_NONE;
+		TArray<int32> Spine, Neck;
+		int32 Clavicle[2], Upper[2], Lower[2], Hand[2], Twist[2][2], Thigh[2], Calf[2], Foot[2], Ball[2];
+		int32 Finger[2][5][3];
+		FVector Across[2], Palm[2], GripOffset[2]; // per hand: index to pinky knuckle, out of the palm, hand bone to the handle's centre
+		FVector CurlAxis[2][5];
+		float PelvisZ = 97.f;
+	};
+	void BuildRig(const FBoneContainer& Bones);
+	FBatterRig Rig;
+	float Swivel[2] = { 0.f, 0.f }, Roll[2] = { 0.f, 0.f }; // last frame's arm solution, for continuity
+	bool bSolved = false;
 
 	UAnimSequence* Idle = nullptr;
 	UAnimSequence* Jog = nullptr;

@@ -98,6 +98,7 @@ public:
 	int32 BallsPlayed = 0, ShotBall = 0; // -CricketShotBall=N: save the game view while delivery N is live
 	int32 QuitAfter = 0;
 	float ShotEvery = 0.2f;  // -CricketShotEvery: capture interval (s)
+	float SlowMo = 1.f;      // -CricketSlowMo: game speed while the ball is live, to inspect strokes in slow motion
 	TArray<float> DevCam;    // -CricketDevCam
 	bool bDevCamFielder = false;                 // -CricketQuitAfter=N: quit after N deliveries (default: after the shot ball)
 	float ShotClock = 0.f;
@@ -241,7 +242,6 @@ private:
 	UPROPERTY() TObjectPtr<UAnimSequence> JogAnim;
 	UPROPERTY() TObjectPtr<UAnimSequence> SprintAnim;
 	static constexpr float SprintSpeed = 6.3f; // m/s the sprint clip's stride covers at its own rate (import log)
-	UPROPERTY() TMap<FName, TObjectPtr<UAnimSequence>> StrokeAnims; // the captured strokes that were imported, by clip name
 	UPROPERTY() TObjectPtr<UAnimSequence> ThrowAnim;    // optional, as are the dives
 	UPROPERTY() TObjectPtr<UAnimSequence> DiveAnims[2]; // to the fielder's right, left
 	UAnimSequence* Diving = nullptr;                    // this frame's dive for the fielder who took the ball, if any
@@ -263,6 +263,15 @@ private:
 	struct FPerfSample { float Frame, Game, Render, Gpu; };
 	TArray<FPerfSample> Perf;
 	TArray<float> HandMiss; // striker's hands from their bat targets (cm), logged with the perf summary
+	int32 ElbowChecks = 0, ElbowInside = 0; // striker's elbow and forearm samples, and those inside the torso
+	int32 RaisedChecks = 0, ElbowFlared = 0; // striker's arm samples with the hand above the shoulder, and those with the elbow winged out
+	TArray<float> FootSlide;                 // how far a planted foot's ball moved in a frame (cm)
+	FVector LastBall[2] = { FVector::ZeroVector, FVector::ZeroVector };
+	bool bWasPlanted[2] = { false, false };
+	FTransform StrikerPosed;                 // the striker where the body poses were last set
+	float StrikerPosedT = 0.f;               // and the ball time they were set for
+	bool bStrikerCut = false;                // that time jumped (a replay's rewind, a new ball): not motion
+	FVector2D StrikerFrom = FVector2D::ZeroVector; // where the striker's stroke left them, to set off for a run from
 	bool bRecordAudio = false, bRecording = false;
 	bool bTouchWasDown[10] = {};
 	// -CricketTouchScript: plays a whole match through the touch layer by injecting touches into the
