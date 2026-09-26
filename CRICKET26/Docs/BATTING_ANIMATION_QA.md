@@ -114,3 +114,59 @@ measured on a machine under heavy background load (hung crash reporters), so tre
 - The pull at the front and rear cameras.
 - The elbows in the high finish of the cover drive and the loft, which the winged-elbow metric still counts.
 - The defence's new, longer-armed shape (`arms_defend_close`).
+
+## Pipeline repair: authored source motion, 2026-09-26
+
+The in-game striker is still the runtime plan above (CricketBatter::Plan solved bone by bone every frame). That is full-body IK inventing the shot, which is the failure the pipeline mission names. The replacement is a baked source clip authored offline on the striker's own MetaHuman skeleton. Runtime would then only place the clip and make small corrections.
+
+Authoring (Scripts/anim, Blender 5.2, headless):
+
+- `strokes.py` keys the stroke on a few animator controls: bat, feet, pelvis, chest, clavicles, elbow poles and gaze.
+- `author_stroke.py` fits the skeleton every frame. The arms are planned over the whole clip in one dynamic program over hand roll and both elbow swivels. Two things are ruled out, not just penalised:
+  - every state outside the clinical range: humeral rotation -80..90°, forearm twist ±90°, wrist deviation -20..35°, and the elbow outside the trunk;
+  - every step that turns a bone more than 20° in one frame.
+- Where no legal motion exists, the script reports ILLEGAL frames and the keys have to change. The solver never bends the anatomy to fit.
+- The humeral angle is measured by swinging via the scapular plane, not the hanging arm. The hanging-arm measure is singular with the arm straight up, which is exactly the high finish; there it spun through 180°.
+- `validate_stroke.py` checks the baked clip frame by frame. Any FAIL means the clip does not ship.
+- `test_author_stroke.py` covers the planner, the legality report, the smoothing and the arm measures, then plans, bakes and validates the golden drive end to end. Swapping the scapular-plane measure back to the hanging-arm one makes it fail.
+
+Golden straight drive, validator worst values:
+
+| Check | Worst | Limit |
+|---|---|---|
+| bone turn per frame (hands against the bat) | 19.9° (top upper arm, just after contact) | 20° |
+| bat turn per frame | 27.2° | 33° |
+| humeral rotation | 79.9° | -80..90° |
+| forearm twist | 75.0° | ±90° |
+| wrist deviation | 33.8° | -20..35° |
+| elbow against trunk | 2.3 (1 is the surface) | ≥ 1 |
+| handle slip in either hand | 0.0 mm | 2 mm |
+| handle turn in either hand | 0.08° | 0.5° |
+| planted-foot slide | 0.2 cm/frame | 0.3 |
+| hands speeding up after contact | 0.35 m/s | 1.0 |
+
+At contact (frame 50, 0.82 s):
+
+- the sweet spot is at (0.80, 0.43, 0.30) m in the batter frame;
+- the eyes are 0.97 m above it and 0.10 m behind it;
+- the bat is 18° off vertical.
+
+Keys re-authored to get there, each for a reason the planner reported:
+
+- The downswing was back-loaded, and the bottom arm would have had to turn 20.6° in one frame. The bat now turns at an even rate into contact.
+- At contact the bottom elbow was caught between the trunk and its wrist limit. The back shoulder is now driven through (clavicle forward 40°).
+- The chest now opens after contact so the bottom elbow clears the trunk.
+- The finish is as far back as both wrists allow with the grip unchanged.
+
+Raw playback (Phase 1): `blend_views.py` with `MOVIE=1,0.5,0.25` writes `Saved/AnimQA/drive/raw/drive_az{000,090,180,270}_x{1,05,025}.mp4`, plus a contact sheet per view. No layers, no camera cuts.
+
+Bug found on the way: importing the kit FBX for review reset the scene to 25 fps before export, so the FBX stretched the 1.9 s stroke to 4.6 s. Unreal would have played it at 0.42x. The export now sets the stroke's own rate, and `stroke_ue.py` rejects a clip whose length differs from its keys.
+
+Still open:
+
+- Importing into Unreal (`Scripts/anim/import_stroke.sh`) and wiring the clip into the game in place of the runtime plan. Two changes are needed:
+  - the bat must follow the top hand bone at the grip the validator proves fixed;
+  - the unreachable ball must become a miss or a mistime.
+- Blocked: the editor module does not build right now. The untracked `Source/CRICKET26/Frontend/` work includes `Widgets/FrontendRoot.h`, which does not exist.
+- Then acceptance of the golden drive at 0.25x, by your eye.
+- The other eleven shots are not started, by design: the library does not grow until the drive passes.
