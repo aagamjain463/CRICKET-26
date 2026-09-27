@@ -221,6 +221,30 @@ def import_kit(name, part):
 if STEP == "material":  # KIT_STEP=material: rebuilds M_Kit alone
     kit_material(rebuild=True)
     NAMES = []
+if STEP == "keeper":
+    for n in NAMES:
+        import_kit(n, "Keeper")
+    NAMES = []
+if STEP == "gear":
+    for n in NAMES:
+        import_kit(n, "Gear")
+    NAMES = []
+if STEP == "face":  # KIT_STEP=face: exports each face mesh, which make_kit.py fits the hat's crown over
+    for n in NAMES:
+        t = unreal.AssetExportTask()
+        t.object = unreal.load_asset(f"/Game/MetaHumans/{n}/Face/SKM_{n}_FaceMesh")
+        t.filename = f"{DIR}/{n}_Face.fbx"
+        t.automated = t.replace_identical = True
+        t.prompt = False
+        o = unreal.FbxExportOption()
+        o.level_of_detail = o.collision = False
+        t.options = o
+        unreal.log(f"KIT {n}: face exported {unreal.Exporter.run_asset_export_task(t)}")
+    NAMES = []
+if STEP == "hat":
+    for n in NAMES:
+        import_kit(n, "Hat")
+    NAMES = []
 if STEP == "import":
     kit_material()
     bat_material()

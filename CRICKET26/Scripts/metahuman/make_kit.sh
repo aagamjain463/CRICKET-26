@@ -20,9 +20,10 @@ unreal() {
   grep -E "LogPython: (KIT|Error)" "$KIT_DIR/$1.log" | grep -v LogInit | sed 's/^.*LogPython: //'
 }
 unreal export
+unreal face
 for NAME in ${(s:,:)KIT_NAMES}; do
   "$BLENDER" -b --python "$ROOT/Scripts/metahuman/make_kit.py" -- "$KIT_DIR/${NAME}_Body.fbx" "$KIT_DIR/${NAME}_Kit.fbx" "$KIT_DIR/${NAME}_Gear.fbx" "$KIT_DIR/${NAME}_Keeper.fbx" \
-    "$KIT_DIR/${NAME}_Hat.fbx" 2>&1 | grep -E "^KIT written|Error" || true
+    "$KIT_DIR/${NAME}_Hat.fbx" "$KIT_DIR/${NAME}_Face.fbx" 2>&1 | grep -E "^KIT (written|hat)|Error" || true
 done
 "$BLENDER" -b --python "$ROOT/Scripts/metahuman/make_bat.py" -- "$KIT_DIR/Bat.fbx" 2>&1 | grep -E "^KIT written|Error" || true
 unreal import

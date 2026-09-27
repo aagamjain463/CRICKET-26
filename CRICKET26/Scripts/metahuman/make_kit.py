@@ -21,6 +21,7 @@ import math
 from mathutils import Matrix, Vector
 
 BODY, KIT, GEAR, KEEPER, HAT = sys.argv[sys.argv.index("--") + 1:][:5]
+FACE = (sys.argv[sys.argv.index("--") + 1:][5:] or [""])[0]  # the face mesh (KIT_STEP=face), to fit the hat to the scalp
 
 # Offsets from the skin in cm. Outer layers sit further out where they overlap: the shirt hem over the trousers,
 # the trouser hem over the shoes.
@@ -370,7 +371,7 @@ def both(make, material, thickness, *args):
     return parts[0]
 
 
-pads = both(pad, "Gear_Pads", 1.2, 0.0)
+pads = both(pad, "Gear_Pads", 1.2, -2.0)
 straps = both(strap, "Gear_Straps", 0.4)
 
 # Batting gloves: the hands padded out, with a gauntlet over the wrist.
@@ -430,7 +431,8 @@ gloves = finish(o, bm, "Gear_Gloves", 0.5)
 far = max(min((v.co - hand[s]).length for s in "lr") for v in gloves.data.vertices)
 assert far < 35.0, f"Gloves reach {far:.0f} cm from the hands"
 # The keeper's: slimmer pads, and gloves twice as padded, smoothed into mitts that web the thumb to the fingers.
-keeper_pads = both(pad, "Gear_Pads", 1.0, 1.0)
+# The fitted parametric trousers sit farther from the skin than the bare body used to measure the pads.
+keeper_pads = both(pad, "Gear_Pads", 1.0, -2.0)
 keeper_gloves = finish(*piece("KeeperGloves", glove_keep, lambda p: glove_offset(p) + 1.0, 8), "Gear_Gloves", 0.6)
 
 
@@ -483,15 +485,34 @@ def grille(bm):
         bar(bm, at(deg, 0.5), at(deg, -10.5))
 
 
+def scalp(base):
+    """The face mesh's vertices above height base, in the body's space; none without the face."""
+    if not os.path.isfile(FACE):
+        return []
+    old = set(bpy.data.objects)
+    bpy.ops.import_scene.fbx(filepath=FACE)
+    new = [o for o in bpy.data.objects if o not in old]
+    points = [body.matrix_world.inverted() @ o.matrix_world @ v.co for o in new if o.type == 'MESH' for v in o.data.vertices]
+    for o in new:
+        bpy.data.objects.remove(o)
+    return [p for p in points if p.z > base]
+
+
 def hat(bm):
-    """The umpire's sun hat: a low crown and a wide brim sloping down a little all round."""
+    """The umpire's sun hat: a crown over the scalp and a wide brim sloping down a little all round."""
     top = CENTRE + Vector((0.0, 1.0, -1.0))
+    # 12 cm tall at least: at 9 the MetaHuman scalp stood 8-9.5 cm above the crown's base and poked through the dome.
+    # With the face mesh the crown grows until the whole scalp is 1 cm inside it (a bigger head needs a bigger hat).
+    radii = Vector((10.0, 11.5, 12.0))
+    inside = [math.sqrt(sum(((p - top)[i] / radii[i]) ** 2 for i in range(3))) for p in scalp(top.z)]
+    radii *= max([1.0] + [e + 1.0 / min(radii) for e in inside])
+    print(f"KIT hat crown {radii.x:.1f} x {radii.y:.1f} x {radii.z:.1f} cm over {len(inside)} scalp points")
     bmesh.ops.create_uvsphere(bm, u_segments=32, v_segments=12, radius=1.0)
     for v in bm.verts:
-        v.co = top + Vector((v.co.x * 10.0, v.co.y * 11.5, v.co.z * 9.0))
+        v.co = top + Vector((v.co.x * radii.x, v.co.y * radii.y, v.co.z * radii.z))
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z < top.z - 0.01], context='VERTS')
     rim = sorted((v for v in bm.verts if v.is_boundary), key=lambda v: math.atan2(v.co.y - top.y, v.co.x - top.x))
-    outer = [bm.verts.new(top + Vector(((v.co.x - top.x) * 1.65, (v.co.y - top.y) * 1.6, -2.5))) for v in rim]
+    outer = [bm.verts.new(top + Vector(((v.co.x - top.x) * 1.45, (v.co.y - top.y) * 1.4, -1.8))) for v in rim]
     for i in range(len(rim)):
         j = (i + 1) % len(rim)
         bm.faces.new((rim[i], rim[j], outer[j], outer[i]))
