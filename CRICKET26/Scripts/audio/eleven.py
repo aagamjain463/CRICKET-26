@@ -169,7 +169,7 @@ def finish(pcm, peak, trim=True):
     a = array.array('h', pcm[:len(pcm) // 2 * 2])
     if not a: return b''
     if trim:
-        loud = [i for i, v in enumerate(a) if abs(v) > 400]
+        loud = [i for i, v in enumerate(a[:-RATE // 50]) if abs(v) > 400]  # v3 clips can end on a click
         if loud: a = a[max(0, loud[0] - RATE // 100):min(len(a), loud[-1] + RATE // 12)]
     top = max(1, max(abs(v) for v in a))
     g = peak * 32767 / top

@@ -30,4 +30,7 @@ for line in lines:
 pcm = array.array('h', [0] * 5000 + [1000, -2000, 1500] * 100 + [0] * 5000).tobytes()
 out = array.array('h', E.finish(pcm, 0.5))
 assert 300 <= len(out) < 5000 and max(abs(v) for v in out) == int(0.5 * 32767), (len(out), max(out))
+# A click in the last samples is not speech: the trailing silence before it is still trimmed.
+pcm = array.array('h', [1000] * 2000 + [0] * 20000 + [1300] * 3).tobytes()
+assert len(E.finish(pcm, 0.5)) // 2 < 5000
 print('TESTS PASS')
