@@ -1,5 +1,6 @@
 #include "SuperOverGameMode.h"
 #include "SuperOverHUD.h"
+#include "MatchHUDWidget.h"
 #include "CricketAnimInstance.h"
 #include "CricketBatter.h"
 #include "CricketPose.h"
@@ -12,6 +13,8 @@
 #include "Components/SkyAtmosphereComponent.h"
 #include "Components/SkyLightComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/LODSyncComponent.h"
+#include "Components/PrimitiveComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Kismet/KismetRenderingLibrary.h"
 #include "Engine/Canvas.h"
@@ -22,9 +25,14 @@
 #include "AudioMixerBlueprintLibrary.h"
 #include "Components/AudioComponent.h"
 #include "CricketCommentary.h"
+#include "CricketKeeper.h"
+#include "Frontend/FrontendStatics.h"
+#include "Framework/Application/SlateApplication.h"
 #include "GenericPlatform/GenericPlatformInputDeviceMapper.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundWaveProcedural.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/DirectionalLight.h"
 #include "Engine/ExponentialHeightFog.h"
@@ -132,9 +140,11 @@ void ASuperOverGameMode::StartPlay()
 	Rng.Initialize(MatchSeed);
 	bTouchScript = FParse::Param(FCommandLine::Get(), TEXT("CricketTouchScript")); // a human side, played by injected touches
 	bAutoPlay = FParse::Param(FCommandLine::Get(), TEXT("CricketAutoPlay")) && !bTouchScript; // soak/smoke runs
+	bDebug = FParse::Param(FCommandLine::Get(), TEXT("CricketDebug")); // F1 overlay on: camera role/state/lens + replay + buffer, for captures
 	FParse::Value(FCommandLine::Get(), TEXT("CricketShotBall="), ShotBall);
 	QuitAfter = ShotBall;
 	FParse::Value(FCommandLine::Get(), TEXT("CricketShotEvery="), ShotEvery);
+	FParse::Value(FCommandLine::Get(), TEXT("CricketUIShotEvery="), UIShotEvery);
 	FParse::Value(FCommandLine::Get(), TEXT("CricketSlowMo="), SlowMo);
 	// -CricketDevCam=X,Y,Z,LookX,LookY,LookZ,Fov (simulation metres): a fixed camera for inspecting bodies;
 	// -CricketDevCam=fielder: 7 m from whoever fields the ball (their body), on the pitch side; or a named review shot of the
@@ -149,21 +159,48 @@ void ASuperOverGameMode::StartPlay()
 		Cam.ParseIntoArray(V, TEXT(","));
 		if (V.Num() == 7) DevCam = { FCString::Atof(*V[0]), FCString::Atof(*V[1]), FCString::Atof(*V[2]), FCString::Atof(*V[3]), FCString::Atof(*V[4]), FCString::Atof(*V[5]), FCString::Atof(*V[6]) };
 	}
+	// -CricketDeliveryCam=Distance,Height,Lateral,Fov (metres, degrees): development-only calibration of the
+	// standard delivery camera against the Cricket 24 broadcast reference. With Scripts/capture.sh, each
+	// delivery's run-up/release/contact frames can be compared and the composition dialled in directly.
+	FString Tune;
+	if (FParse::Value(FCommandLine::Get(), TEXT("CricketDeliveryCam="), Tune, false))
+	{
+		TArray<FString> V;
+		Tune.ParseIntoArray(V, TEXT(","));
+		if (V.Num() >= 4)
+		{
+			BroadcastTuning.Delivery.Distance = FCString::Atof(*V[0]);
+			BroadcastTuning.Delivery.Height = FCString::Atof(*V[1]);
+			BroadcastTuning.Delivery.LateralOffset = FCString::Atof(*V[2]);
+			BroadcastTuning.Delivery.FOV = FCString::Atof(*V[3]);
+			UE_LOG(LogCRICKET26, Display, TEXT("Delivery camera calibration override: D=%.1f H=%.1f Lat=%.1f FOV=%.1f"),
+				BroadcastTuning.Delivery.Distance, BroadcastTuning.Delivery.Height,
+				BroadcastTuning.Delivery.LateralOffset, BroadcastTuning.Delivery.FOV);
+		}
+	}
 	FParse::Value(FCommandLine::Get(), TEXT("CricketQuitAfter="), QuitAfter);
 	int32 Level = int32(Difficulty);
+	// Frontend hook (additive): match setup chosen in the menu arrives as travel URL options
+	// (UFrontendSettingsSave::MatchOptions); the Cricket* command-line switches still override them.
+	Level = UGameplayStatics::GetIntOption(OptionsString, TEXT("Difficulty"), Level);
+	Quality = UGameplayStatics::GetIntOption(OptionsString, TEXT("Quality"), Quality);
+	bTimingFeedback = UGameplayStatics::GetIntOption(OptionsString, TEXT("TimingBar"), bTimingFeedback ? 1 : 0) != 0;
 	FParse::Value(FCommandLine::Get(), TEXT("CricketDifficulty="), Level);
 	Difficulty = CricketAI::EDifficulty(FMath::Clamp(Level, 0, 3));
 	FParse::Value(FCommandLine::Get(), TEXT("CricketQuality="), Quality);
 	Quality = FMath::Clamp(Quality, 0, 3);
 	ApplyQuality();
-	bTouchUI = PLATFORM_IOS || PLATFORM_ANDROID || bTouchScript || FParse::Param(FCommandLine::Get(), TEXT("CricketTouch"));
 	bRecordAudio = FParse::Param(FCommandLine::Get(), TEXT("CricketRecordAudio")) && ShotBall > 0;
 	VenueIndex = bAutoPlay ? 0 : FMath::RandRange(0, CricketStadium::NumVenues - 1);
+	VenueIndex = UGameplayStatics::GetIntOption(OptionsString, TEXT("Venue"), VenueIndex);
 	FParse::Value(FCommandLine::Get(), TEXT("CricketVenue="), VenueIndex);
 	VenueIndex = FMath::Clamp(VenueIndex, 0, CricketStadium::NumVenues - 1);
 	UE_LOG(LogCRICKET26, Display, TEXT("Venue: %s"), CricketStadium::Venue(VenueIndex).Name);
 	BuildScene();
 	SetupAudio();
+	CommRng.Initialize(MatchSeed * 31 + 7);
+	AudioDir.Reset();
+	CommDir.Reset();
 	Match.Start(HumanTeam);
 	PlaceForDelivery();
 }
@@ -195,6 +232,7 @@ void ASuperOverGameMode::EndPlay(const EEndPlayReason::Type Reason)
 	}
 	if (ElbowChecks > 0) UE_LOG(LogCRICKET26, Display, TEXT("Pose: striker arm inside torso %d of %d samples"), ElbowInside, ElbowChecks);
 	if (RaisedChecks > 0) UE_LOG(LogCRICKET26, Display, TEXT("Pose: striker raised-arm elbow flared out %d of %d samples"), ElbowFlared, RaisedChecks);
+	if (ArmChecks > 0) UE_LOG(LogCRICKET26, Display, TEXT("Pose: striker elbow bowed up (upper arm up, forearm down) %d of %d samples"), ElbowUp, ArmChecks);
 	if (FootSlide.Num() > 0)
 	{
 		FootSlide.Sort();
@@ -288,6 +326,151 @@ float ASuperOverGameMode::BallDisplayScale(float DistanceM, float HorizontalFovD
 	const float ViewHeight = 2.f * DistanceM * FMath::Tan(FMath::DegreesToRadians(HorizontalFovDeg) * 0.5f) / Aspect;
 	if (ViewHeight <= 0.f) return 1.f;
 	return FMath::Clamp(MinBallScreen * ViewHeight / (2.f * CricketGeo::BallRadius), 1.f, MaxBallScale);
+}
+
+// ---------- Broadcast camera + replay runtime (isolated modules, fed here) ----------
+
+bool ASuperOverGameMode::IsReplaying() const
+{
+	return bReplayThis && DPhase == EDeliveryPhase::DeadBall && PhaseTime >= ReplayDelay && PhaseTime < ReplayDelay + ReplayTotalTime();
+}
+
+int32 ASuperOverGameMode::ReplayAngle() const
+{
+	if (!ActivePackage.IsValid() || ActivePackage.Angles.Num() == 0) return PhaseTime - ReplayDelay < ReplayAngleTime ? 0 : 1;
+	float Accum = 0.f;
+	for (int32 I = 0; I < ActivePackage.Angles.Num(); ++I)
+	{
+		Accum += ActivePackage.Angles[I].WallTime;
+		if (PhaseTime - ReplayDelay < Accum) return I;
+	}
+	return ActivePackage.Angles.Num() - 1;
+}
+
+float ASuperOverGameMode::ReplayAngleDuration(int32 Angle) const
+{
+	if (ActivePackage.Angles.IsValidIndex(Angle)) return ActivePackage.Angles[Angle].WallTime;
+	return ReplayAngleTime;
+}
+
+float ASuperOverGameMode::ReplayTotalTime() const
+{
+	if (ActivePackage.IsValid()) return ActivePackage.TotalWallTime();
+	return ReplayTime;
+}
+
+float ASuperOverGameMode::ReplayAngleBallSpan(int32 Angle) const
+{
+	if (ActiveRemaps.IsValidIndex(Angle)) return ActiveRemaps[Angle].BallSpan();
+	// Legacy span of the super-slow angle (kept for the HUD overlay when no package exists).
+	return Angle == 1 ? ReplayAngleTime * SuperSlowSpeed : ReplayAngleTime * ReplaySpeed;
+}
+
+float ASuperOverGameMode::ReplayAngleStartTp(int32 Angle) const
+{
+	if (ActivePackage.Angles.IsValidIndex(Angle)) return ActivePackage.Angles[Angle].StartTp;
+	return Angle == 1 ? FMath::Max(0.f, Result.ContactTime - SuperSlowLead) : FMath::Max(0.f, Result.ContactTime - ReplayLead);
+}
+
+bool ASuperOverGameMode::IsReplaySlowAngle() const
+{
+	if (!IsReplaying()) return false;
+	const int32 Angle = ReplayAngle();
+	if (ActivePackage.Angles.IsValidIndex(Angle))
+		return ActivePackage.Angles[Angle].Shot == EBroadcastShot::ReplaySlowMo;
+	return Angle == 1;
+}
+
+float ASuperOverGameMode::ReplayBallTime() const
+{
+	const float Into = PhaseTime - ReplayDelay;
+	const int32 Angle = ReplayAngle();
+	if (ActiveRemaps.IsValidIndex(Angle))
+	{
+		float Start = 0.f;
+		for (int32 I = 0; I < Angle; ++I) Start += ActivePackage.Angles[I].WallTime;
+		return ActiveRemaps[Angle].Sample(Into - Start);
+	}
+	// Legacy two-angle replay (no package): side-on at half speed, then super slow-mo down the pitch.
+	return Angle == 0 ? FMath::Max(0.f, Result.ContactTime - ReplayLead) + Into * ReplaySpeed
+		: FMath::Max(0.f, Result.ContactTime - SuperSlowLead) + (Into - ReplayAngleTime) * SuperSlowSpeed;
+}
+
+void ASuperOverGameMode::ClearBroadcastReplay()
+{
+	ActivePackage = CricketBroadcast::FReplayPackage();
+	ActiveRemaps.Reset();
+	bBufferPose = false;
+}
+
+void ASuperOverGameMode::BuildReplayPackageForResult(const FDeliveryOutcome& Outcome, bool bMilestone)
+{
+	using namespace CricketBroadcast;
+	ClearBroadcastReplay();
+	const FReplayTrigger Trigger = ClassifyReplayEvent(Result, Outcome, bMilestone);
+	if (Trigger.Priority == EReplayPriority::None) return;
+	// Geometry inputs are resolved at replay time from live actors; the package only needs the
+	// ball story (contact, boundary crossing) plus the event.
+	FBroadcastFrame Frame;
+	Frame.ContactPos = Result.Contact.ContactPos;
+	Frame.ExitVel = Result.Contact.ExitVel;
+	Frame.OffSign = OffSideSign(StrikerPlayer().BatHand);
+	Frame.ArmSign = BowlerPlayer().BowlHand == ECricketHand::Right ? 1.f : -1.f;
+	if (Result.Fielding.Boundary > 0)
+	{
+		Frame.bHasBoundaryCross = true;
+		Frame.BoundaryCrossPos = ToWorld(Result.BallAt(Result.ContactTime + Result.Fielding.BoundaryTime));
+	}
+	ActivePackage = BuildReplayPackage(Trigger, Result, Frame, BroadcastTuning, RecentReplayShots);
+	ActiveRemaps.Reserve(ActivePackage.Angles.Num());
+	for (const FReplayAnglePlay& A : ActivePackage.Angles) ActiveRemaps.Add(BuildTimeRemap(A));
+}
+
+void ASuperOverGameMode::RebuildReplayCast()
+{
+	// Stable record order: the buffer maps index -> actor, so this order must never shuffle.
+	ReplayCast.Reset();
+	auto Add = [&](AStaticMeshActor* A) { if (A && ReplayCast.Num() < ReplayBuffer.MaxActors) ReplayCast.Add(A); };
+	Add(Ball); Add(Striker); Add(NonStriker); Add(Bowler); Add(Bat); Add(NonStrikerBat);
+	for (TObjectPtr<AStaticMeshActor> H : BatHandles) Add(H.Get());
+	for (TObjectPtr<AStaticMeshActor> U : Umpires) Add(U.Get());
+	for (TObjectPtr<AStaticMeshActor> F : Fielders) Add(F.Get());
+}
+
+void ASuperOverGameMode::RecordReplayFrame(float BallT, const FVector& BallPos, const FVector& BallVel)
+{
+	if (ReplayCast.Num() == 0) RebuildReplayCast();
+	ReplayScratch.Reset(ReplayCast.Num());
+	for (const TObjectPtr<AStaticMeshActor>& A : ReplayCast)
+	{
+		FReplayActorPose P;
+		P.Position = A->GetActorLocation();
+		P.Rotation = A->GetActorQuat();
+		P.Scale = A->GetActorScale3D();
+		ReplayScratch.Add(P);
+	}
+	ReplayBuffer.Record(BallT, BallPos, BallVel, ReplayScratch);
+}
+
+FString ASuperOverGameMode::CameraDebugString() const
+{
+	using namespace CricketBroadcast;
+	FString S = FString::Printf(TEXT("CAM %s | %s"), ShotName(LastSolvedShot), *LastCameraDebug);
+	if (IsReplaying())
+	{
+		const int32 A = ReplayAngle();
+		S += FString::Printf(TEXT(" | REPLAY %s P%d A%d/%d Tbal %.2f x%.2f"), ReplayEventName(ActivePackage.Event),
+			int32(ActivePackage.Priority), A + 1, ActivePackage.Angles.Num(), ReplayBallTime(),
+			ActivePackage.Angles.IsValidIndex(A) ? ReplaySpeedAt(ReplayBallTime(), ActivePackage.Angles[A].DecisiveTp, ActivePackage.Angles[A].SlowFactor) : 1.f);
+	}
+	else if (bReplayThis)
+	{
+		S += FString::Printf(TEXT(" | REPLAY-COMING %s P%d %d angles"), ReplayEventName(ActivePackage.Event),
+			int32(ActivePackage.Priority), ActivePackage.Angles.Num());
+	}
+	S += FString::Printf(TEXT(" | BUF %d frames %.1f-%.1f s %dkB %s"), ReplayBuffer.NumFrames(), ReplayBuffer.EarliestT(),
+		ReplayBuffer.LatestT(), int32(ReplayBuffer.FootprintBytes() / 1024), bBufferPose ? TEXT("POSE-FROM-BUFFER") : TEXT("analytic"));
+	return S;
 }
 
 void ASuperOverGameMode::Paint(AStaticMeshActor* A, const FLinearColor& Colour, const FCricketTeam* Team, const FString& Name, int32 Number)
@@ -438,10 +621,31 @@ void ASuperOverGameMode::AddBody(AStaticMeshActor* Marker, const TCHAR* MetaHuma
 		if (bOutfit || Wear(TEXT("Kit")))
 		{
 			if (!bOutfit) for (USkinnedMeshComponent* Part : Garment) if (Part != Body && Part->GetFName() != TEXT("Face")) Part->SetVisibility(false);
-			if (Marker == Striker || Marker == NonStriker) Wear(TEXT("Gear"));
+			const bool bEquippedBatter = (Marker == Striker || Marker == NonStriker) && Wear(TEXT("Gear"));
 			// Every field preset puts the keeper first (CricketField::Make).
-			if (!Fielders.IsEmpty() && Marker == Fielders[0]) Wear(TEXT("Keeper"));
-			if (Umpires.Contains(Marker)) Wear(TEXT("Hat"));
+			const bool bEquippedKeeper = !Fielders.IsEmpty() && Marker == Fielders[0] && Wear(TEXT("Keeper"));
+			// The one-LOD gloves use finger bones stripped from optimized body LODs 1/2.
+			// Keep full body/face pose only for the three equipped actors; other fielders retain mobile LODs.
+			if (bEquippedBatter || bEquippedKeeper)
+				if (ULODSyncComponent* LOD = Player->FindComponentByClass<ULODSyncComponent>()) LOD->ForcedLOD = 0;
+			// Medium MetaHumans map close hair and beard to groom card LOD 3. Use the existing denser
+			// card LOD 2 for the active bowler only; strands remain disabled for mobile.
+			if (Marker == Bowler)
+				if (ULODSyncComponent* LOD = Player->FindComponentByClass<ULODSyncComponent>())
+				{
+					for (const FName Part : { FName(TEXT("Hair")), FName(TEXT("Beard")) })
+						if (FLODMappingData* Mapping = LOD->CustomLODMapping.Find(Part); Mapping && Mapping->Mapping.Num() > 0 && Mapping->Mapping[0] == 3)
+							Mapping->Mapping[0] = 2;
+					LOD->RefreshSyncComponents();
+				}
+			const bool bHattedUmpire = Umpires.Contains(Marker) && Wear(TEXT("Hat"));
+			if (bEquippedBatter || bHattedUmpire)
+			{
+				TArray<UPrimitiveComponent*> Visuals;
+				Player->GetComponents(Visuals);
+				for (UPrimitiveComponent* Visual : Visuals)
+					if (Visual->GetName().StartsWith(TEXT("Hair"))) Visual->SetVisibility(false);
+			}
 		}
 	}
 	else if (BodyMesh)
@@ -478,9 +682,33 @@ USkeletalMeshComponent* ASuperOverGameMode::BodyOf(const AActor* Figure) const
 	return Body ? Body->Get() : nullptr;
 }
 
+namespace
+{
+	/** A raw 22.05 kHz mono s16le clip under Content/Audio; empty when absent. */
+	TArray<int16> LoadClip(const FString& Rel)
+	{
+		TArray<uint8> Bytes;
+		TArray<int16> Pcm;
+		if (FFileHelper::LoadFileToArray(Bytes, *(FPaths::ProjectContentDir() / TEXT("Audio") / Rel), FILEREAD_Silent) && Bytes.Num() >= 2)
+		{
+			Pcm.SetNumUninitialized(Bytes.Num() / 2);
+			FMemory::Memcpy(Pcm.GetData(), Bytes.GetData(), Pcm.Num() * sizeof(int16));
+		}
+		return Pcm;
+	}
+}
+
 void ASuperOverGameMode::SetupAudio()
 {
-	for (int32 I = 0; I < int32(CricketAudio::ECue::Count); ++I) CuePcm[I] = CricketAudio::Synthesize(CricketAudio::ECue(I));
+	// Recorded cues (Content/Audio/Sfx/<Cue>.pcm) replace the synthesized ones one by one.
+	static const TCHAR* CueNames[] = { TEXT("BatCrack"), TEXT("EdgeTick"), TEXT("Bounce"), TEXT("Stumps"), TEXT("Crowd"), TEXT("BatMiddle"),
+		TEXT("BatToe"), TEXT("PadThud"), TEXT("KeeperGlove"), TEXT("CatchPop"), TEXT("ThrowRelease"), TEXT("Footstep") };
+	static_assert(UE_ARRAY_COUNT(CueNames) == int32(CricketAudio::ECue::Count), "a name per cue");
+	for (int32 I = 0; I < int32(CricketAudio::ECue::Count); ++I)
+	{
+		CuePcm[I] = LoadClip(FString::Printf(TEXT("Sfx/%s.pcm"), CueNames[I]));
+		if (CuePcm[I].IsEmpty()) CuePcm[I] = CricketAudio::Synthesize(CricketAudio::ECue(I));
+	}
 	auto Channel = [this](TObjectPtr<USoundWaveProcedural>& Wave, TObjectPtr<UAudioComponent>& Comp)
 	{
 		Wave = NewObject<USoundWaveProcedural>(this);
@@ -492,11 +720,32 @@ void ASuperOverGameMode::SetupAudio()
 	};
 	Channel(FieldWave, FieldAudio);
 	Channel(CrowdWave, CrowdAudio);
+	Channel(VoiceWave, VoiceAudio);
+	Channel(VocalWave, VocalAudio);
+	// Same make-up gain as the field channel: at unity the voice sat level with the crowd bed (-26 dB RMS).
+	if (VoiceAudio) VoiceAudio->SetVolumeMultiplier(CricketAudio::BusTrim(CricketAudio::EMixBus::Commentary) * CricketAudio::MixGain);
+	if (VocalAudio) VocalAudio->SetVolumeMultiplier(CricketAudio::BusTrim(CricketAudio::EMixBus::PlayerVocal) * CricketAudio::MixGain);
+}
+
+void ASuperOverGameMode::Say(const FString& Body, const FString& Suffix, float At)
+{
+	VoicePending = LoadClip(TEXT("Commentary/") + CricketCommentary::ClipKey(Body) + TEXT(".pcm"));
+	VoiceAt = VoicePending.IsEmpty() ? -1.f : At;
+	UE_LOG(LogCRICKET26, Display, TEXT("Voice: %s (%s)"), *CricketCommentary::ClipKey(Body), VoicePending.IsEmpty() ? TEXT("no clip, caption only") : TEXT("clip"));
+	if (VoicePending.IsEmpty()) return;
+	const TArray<int16> Tail = Suffix.IsEmpty() ? TArray<int16>() : LoadClip(TEXT("Commentary/") + CricketCommentary::ClipKey(Suffix) + TEXT(".pcm"));
+	if (Tail.IsEmpty()) return;
+	VoicePending.AddZeroed(CricketAudio::SampleRate * 12 / 100); // breath between the call and the situation
+	VoicePending.Append(Tail);
 }
 
 void ASuperOverGameMode::PlayCue(CricketAudio::ECue Cue, float Volume)
 {
 	if (!FieldAudio) return;
+	const float Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
+	// Concurrency: a new cue never stacks audibly on itself (footsteps, throws, takes).
+	if (!CricketAudioDirector::ShouldPlay(AudioDir, Cue, Now)) return;
+	CricketAudioDirector::MarkPlayed(AudioDir, Cue, Now);
 	// ponytail: one ball channel, a new cue cuts the tail of the last; mix on separate channels if cues overlap audibly.
 	FieldWave->ResetAudio();
 	FieldAudio->SetVolumeMultiplier(Volume * CricketAudio::MixGain);
@@ -563,6 +812,13 @@ void ASuperOverGameMode::UpdateFigures(float Dt)
 				}
 				// A raised arm's elbow winged out sideways, beyond the shoulder, rather than forward under the hands.
 				const FVector Shoulder = Socket(TEXT("upperarm"));
+				// The elbow bowed up off the shoulder-to-wrist line: the upper arm lifting and the forearm dropping
+				// to the hands, the reverse of a real stroke, where the upper arm hangs and the forearm rises.
+				const FVector Chord = (Wrist - Shoulder).GetSafeNormal();
+				const FVector Bow = Elbow - Shoulder - Chord * ((Elbow - Shoulder) | Chord);
+				++ArmChecks;
+				ElbowUp += Bow.Z > 3.f;
+				if (Bow.Z > 3.f) UE_LOG(LogTemp, Display, TEXT("Elbow bowed up %.0f cm: hand %d phase %d time %.2f"), Bow.Z, H, int32(DPhase), PhaseTime);
 				if (Wrist.Z > Shoulder.Z)
 				{
 					const bool bFlared = FMath::Abs((Elbow - Pelvis) | Wide) - FMath::Abs((Shoulder - Pelvis) | Wide) > 12.f;
@@ -883,6 +1139,11 @@ void ASuperOverGameMode::ApplyQuality()
 	IConsoleManager::Get().FindConsoleVariable(TEXT("r.ReflectionMethod"))->Set(bLumen ? 1 : 2, ECVF_SetByCode);
 	// TSR costs about 6 ms a frame at native resolution on an M-series Mac (60 fps missed); TAA costs about 2.
 	IConsoleManager::Get().FindConsoleVariable(TEXT("r.AntiAliasingMethod"))->Set(Quality >= 3 ? 4 : 2, ECVF_SetByCode);
+	// Mobile perf guards (M2): Low phones skip VSM + contact shadows; strands stay off on all phone tiers.
+	if (IConsoleVariable* VSM = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Shadow.Virtual.Enable")))
+		VSM->Set(Quality >= 1 ? 1 : 0, ECVF_SetByCode);
+	if (IConsoleVariable* Hair = IConsoleManager::Get().FindConsoleVariable(TEXT("r.HairStrands.Enable")))
+		Hair->Set(0, ECVF_SetByCode);
 	UE_LOG(LogCRICKET26, Display, TEXT("Quality %d"), Quality);
 }
 
@@ -1155,6 +1416,12 @@ void ASuperOverGameMode::PlaceForDelivery()
 	Ctx.Fielding.Catching = 0.75f;
 	Ctx.Fielding.Throwing = 0.65f;
 	Ctx.Field = CricketField::Make(CricketField::PresetFor(Bwl.BowlerType), Batter.BatHand, Bwl.BowlHand);
+	// Keeper depth by bowler type AND stock pace (isolated to the keeper slot):
+	// express pace stands deepest, medium/slower pace an intermediate step up,
+	// spin stands up. Aligned behind the striker's wicket for this handedness.
+	if (Ctx.Field.Num() > 0 && Ctx.Field[0].bKeeper)
+		Ctx.Field[0].Home = CricketKeeper::KeeperHome(Bwl.BowlerType, Bwl.PaceKph, Batter.BatHand);
+	if (HumanBowls()) ApplyHumanField(Ctx.Field, Batter.BatHand);
 	Ctx.bFreeHit = Match.bFreeHit;
 	Ctx.Rules = Match.Rules;
 	Ctx.BouncersBowled = Match.Cur().Bouncers;
@@ -1169,7 +1436,7 @@ void ASuperOverGameMode::PlaceForDelivery()
 	// Umpires: behind the bowler's stumps on the side away from the bowling arm, and at square leg.
 	Umpires[0]->SetActorLocation(ToWorld(FVector(CricketGeo::PitchLength + 1.8f, -0.9f * Arm, 0.9f)));
 	Umpires[1]->SetActorLocation(ToWorld(FVector(0.5f, -26.f * Off, 0.9f)));
-	for (AStaticMeshActor* U : Umpires) Paint(U, FLinearColor(0.05f, 0.05f, 0.06f)); // umpires in black: white picked up the grass green
+	for (AStaticMeshActor* U : Umpires) Paint(U, FLinearColor(0.14f, 0.16f, 0.18f)); // charcoal slate keeps officiating cloth readable under match light
 	// ponytail: shirt numbers come from the names' hashes; give players a Number field if a squad needs real ones.
 	auto Shirt = [](const FCricketPlayer& P) { return 1 + static_cast<int32>(GetTypeHash(P.Name) % 99); };
 	Paint(Striker, BatCol, &Teams[Match.BattingTeam()], Batter.Name, Shirt(Batter));
@@ -1188,6 +1455,135 @@ void ASuperOverGameMode::PlaceForDelivery()
 	BatInput = FBatInput();
 	Result = FDeliveryResult();
 	BowlerIntent.Reset();
+	// A new delivery is a new control state: no pending run calls, no held pull, no stale gesture.
+	HumanRunCalls = FRunCalls();
+	LiveAim = FShotAim();
+	bBatPullActive = false;
+	LastTimingGrade = ETimingGrade::None;
+	LastRunState = ERunState::AtCrease;
+	ShotDirection = 0.f;
+	TouchGesture.Finger = INDEX_NONE;
+}
+
+bool ASuperOverGameMode::ApplyHumanField(TArray<FFielder>& Field, ECricketHand BatHand) const
+{
+	if (HumanFieldRH.Num() != Field.Num()) return false;
+	TArray<FFielder> Set = Field;
+	const float Off = OffSideSign(BatHand);
+	for (int32 I = 0; I < Set.Num(); ++I)
+	{
+		if (Set[I].bKeeper || Set[I].bBowler) continue;
+		Set[I].Home = FVector2D(HumanFieldRH[I].X, HumanFieldRH[I].Y * Off);
+		Set[I].Position = CricketField::PositionName(Set[I].Home, BatHand);
+	}
+	if (!CricketField::Validate(Set, BatHand).IsEmpty()) return false;
+	Field = MoveTemp(Set);
+	return true;
+}
+
+FVector ASuperOverGameMode::TargetMarkerLocation() const
+{
+	return TargetMarker ? TargetMarker->GetActorLocation() : FVector::ZeroVector;
+}
+
+ASuperOverGameMode::FLiveField ASuperOverGameMode::LiveField() const
+{
+	auto At = [](const AActor* A) { return FVector2D(A->GetActorLocation() / 100.f); };
+	FLiveField L;
+	for (int32 I = 0; I < Ctx.Field.Num(); ++I)
+	{
+		const AActor* Who = Ctx.Field[I].bBowler ? Bowler.Get() : Fielders.IsValidIndex(I) ? Fielders[I].Get() : nullptr;
+		L.Field.Add(Who ? At(Who) : Ctx.Field[I].Home);
+	}
+	if (Striker) L.Striker = At(Striker);
+	if (NonStriker) L.NonStriker = At(NonStriker);
+	L.bBall = Ball && !Ball->IsHidden() && DPhase == EDeliveryPhase::BallInPlay;
+	if (L.bBall) L.Ball = At(Ball);
+	return L;
+}
+
+void ASuperOverGameMode::UpdateFieldEdit(const FCricketControls& C)
+{
+	APlayerController* PC = GetWorld()->GetFirstPlayerController();
+	auto Buzz = [PC](float Strength) { if (PC) PC->PlayDynamicForceFeedback(Strength, 0.06f, true, true, true, true); };
+	if (!bFieldEdit)
+	{
+		if (C.bFieldOpen && CanEditField())
+		{
+			bFieldEdit = true;
+			EditField = Ctx.Field;
+			EditPick = INDEX_NONE;
+			EditError.Reset();
+			Buzz(0.2f);
+		}
+		return;
+	}
+	// Locked the moment the ball can no longer be set for: the run-up, a replay, the end of the innings.
+	if (!CanEditField()) { bFieldEdit = false; EditPick = INDEX_NONE; return; }
+
+	const ECricketHand Hand = StrikerPlayer().BatHand;
+	auto LoadOutfield = [&](EFieldPreset Preset)
+	{
+		const TArray<FFielder> From = CricketField::Make(Preset, Hand, BowlerPlayer().BowlHand);
+		for (int32 I = 0; I < EditField.Num() && I < From.Num(); ++I)
+			if (!EditField[I].bKeeper && !EditField[I].bBowler) EditField[I] = From[I];
+		EditPick = INDEX_NONE;
+	};
+	if (C.FieldPreset >= 0 && C.FieldPreset < CricketTouch::NumFieldPresets) LoadOutfield(EFieldPreset(C.FieldPreset));
+	if (C.bFieldReset) LoadOutfield(CricketField::PresetFor(BowlerPlayer().BowlerType));
+	if (C.bFieldCancel) { bFieldEdit = false; EditPick = INDEX_NONE; return; }
+	if (C.bFieldApply)
+	{
+		const FString Why = CricketField::Validate(EditField, Hand);
+		if (!Why.IsEmpty()) { EditError = Why; EditErrorAt = GetWorld()->GetTimeSeconds(); Buzz(0.6f); return; }
+		const float Off = OffSideSign(Hand);
+		HumanFieldRH.SetNum(EditField.Num());
+		for (int32 I = 0; I < EditField.Num(); ++I) HumanFieldRH[I] = FVector2D(EditField[I].Home.X, EditField[I].Home.Y * Off);
+		bFieldEdit = false;
+		EditPick = INDEX_NONE;
+		PlaceForDelivery();
+		Buzz(0.3f);
+		UE_LOG(LogCRICKET26, Display, TEXT("Field set by the captain: %s"), *FString::JoinBy(Ctx.Field, TEXT(", "), [](const FFielder& F) { return F.Position; }));
+		return;
+	}
+
+	// Pick up the nearest outfielder under the finger, carry them, and put them down where the rules allow.
+	const FBox2D Map = CricketTouch::FieldMap(ViewAspect, TouchSafe);
+	const FVector2D At = CricketTouch::MapToField(Map, C.FieldAt);
+	constexpr float Reach = 8.f; // m on the ground: a fingertip on the map
+	if (C.bFieldGrab)
+	{
+		EditPick = INDEX_NONE;
+		float Best = Reach;
+		for (int32 I = 0; I < EditField.Num(); ++I)
+		{
+			const float D = FVector2D::Distance(EditField[I].Home, At);
+			if (!EditField[I].bKeeper && !EditField[I].bBowler && D < Best) { Best = D; EditPick = I; }
+		}
+		if (EditPick != INDEX_NONE) Buzz(0.15f);
+	}
+	if (!EditField.IsValidIndex(EditPick)) return;
+	TArray<FFielder> Moved = EditField;
+	Moved[EditPick].Home = At;
+	EditDrag = At;
+	EditDragWhy = CricketField::Validate(Moved, Hand);
+	if (C.bFieldDrop)
+	{
+		if (EditDragWhy.IsEmpty())
+		{
+			Moved[EditPick].Position = CricketField::PositionName(At, Hand);
+			EditField = MoveTemp(Moved);
+			Buzz(0.25f);
+		}
+		else
+		{
+			EditError = EditDragWhy;
+			EditErrorAt = GetWorld()->GetTimeSeconds();
+			Buzz(0.6f);
+		}
+		EditPick = INDEX_NONE;
+		EditDragWhy.Reset();
+	}
 }
 
 void ASuperOverGameMode::Tick(float Dt)
@@ -1198,6 +1594,9 @@ void ASuperOverGameMode::Tick(float Dt)
 	if (PC && !bViewSet)
 	{
 		PC->SetViewTarget(Camera);
+		PC->bShowMouseCursor = true; // desktop plays with the touch controls, the mouse as the finger
+		// The match HUD rides the viewport (the HUD actor's canvas only carries the F1 debug overlay).
+		SCricketMatchHUD::AddToGameViewport(this, Cast<ASuperOverHUD>(PC->GetHUD()));
 		bViewSet = true;
 	}
 	if (PC)
@@ -1205,6 +1604,13 @@ void ASuperOverGameMode::Tick(float Dt)
 		int32 VX = 0, VY = 0;
 		PC->GetViewportSize(VX, VY);
 		if (VY > 0) ViewAspect = float(VX) / VY;
+		// The notch, rounded corners and home bar, in the layout's screen-height units.
+		if (VY > 0 && FSlateApplication::IsInitialized())
+		{
+			FMargin Safe;
+			FSlateApplication::Get().GetSafeZoneSize(Safe, FVector2D(VX, VY));
+			TouchSafe = { Safe.Left / VY, Safe.Top / VY, Safe.Right / VY, Safe.Bottom / VY };
+		}
 	}
 	if (PC && bTouchScript) RunTouchScript(PC);
 	if (PC) HandleInput(PC, Dt);
@@ -1225,6 +1631,14 @@ void ASuperOverGameMode::Tick(float Dt)
 		FScreenshotRequest::RequestScreenshot(FPaths::ScreenShotDir() / FString::Printf(TEXT("Ball%d_%03d.png"), ShotBall, Shot++), true, false);
 		// -CricketRecordAudio: also write the mixed game audio of the delivery to Saved/BallN.wav.
 		if (bRecordAudio && !bRecording) { UAudioMixerBlueprintLibrary::StartRecordingOutput(this, 30.f); bRecording = true; }
+	}
+	if (UIShotEvery > 0.f && (UIShotClock += Dt) >= UIShotEvery)
+	{
+		// Named by innings, ball and phase so Scripts/ui_capture.sh can pick each screen out.
+		UIShotClock = 0.f;
+		static int32 UIShot = 0;
+		FScreenshotRequest::RequestScreenshot(FPaths::ScreenShotDir() / FString::Printf(TEXT("UI_%04d_i%d_b%d_p%d_m%d.png"), UIShot++,
+			Match.CurrentInnings, BallsPlayed, int32(DPhase), int32(Match.Phase)), true, false);
 	}
 	if (QuitAfter > 0 && BallsPlayed >= QuitAfter && DPhase == EDeliveryPhase::Waiting)
 	{
@@ -1271,12 +1685,16 @@ void ASuperOverGameMode::Tick(float Dt)
 		}
 		if (InReel())
 		{
-			if (PhaseTime >= ReplayDelay + ReplayAngleTime) PlayClip(ReelClip + 1);
+			if (PhaseTime >= ReplayDelay + ReplayAngleDuration(0)) PlayClip(ReelClip + 1);
 		}
-		else if (PhaseTime > (bReviewThis ? ReviewFrom() + ReviewTime + 0.5f : 1.8f + (bReplayThis ? ReplayTime : 0.f)))
+		else if (PhaseTime > (bReviewThis ? ReviewFrom() + ReviewTime + 0.5f : 1.8f + (bReplayThis ? ReplayTotalTime() : 0.f)))
 		{
 			DPhase = EDeliveryPhase::Waiting;
 			PhaseTime = 0.f;
+			// Return to live (§37): the replay is over, so its state dies here and the camera snaps
+			// back to the delivery shot instead of gliding from the close-up. Match state is untouched.
+			bCutCamera = true;
+			BroadcastDirector.Reset(EBroadcastShot::StandardDelivery);
 			if (Match.Phase == EMatchPhase::ReadyForDelivery) PlaceForDelivery();
 			else if (Highlights.Num())
 			{
@@ -1292,7 +1710,6 @@ void ASuperOverGameMode::Tick(float Dt)
 void ASuperOverGameMode::HandleInput(APlayerController* PC, float Dt)
 {
 	auto Pressed = [PC](const FKey& K) { return PC->WasInputKeyJustPressed(K); };
-	auto Down = [PC](const FKey& K) { return PC->IsInputKeyDown(K); };
 
 	if (Pressed(EKeys::F1)) bDebug = !bDebug;
 	if (Pressed(EKeys::F4)) bTrajectory = !bTrajectory;
@@ -1305,6 +1722,12 @@ void ASuperOverGameMode::HandleInput(APlayerController* PC, float Dt)
 	}
 	if (Pressed(EKeys::F8)) bAutoPlay = !bAutoPlay;
 	if (Pressed(EKeys::F9)) bTimingFeedback = !bTimingFeedback;
+	// Frontend hook (additive): Esc / Android back returns to the menu shell, on the Play screen.
+	if (Pressed(EKeys::Escape) || Pressed(EKeys::Android_Back))
+	{
+		UFrontendStatics::OpenFrontend(this, EFrontendTab::Play);
+		return;
+	}
 	if (DPhase == EDeliveryPhase::Waiting && Match.Phase == EMatchPhase::ReadyForDelivery)
 	{
 		if (Pressed(EKeys::F2))
@@ -1323,36 +1746,34 @@ void ASuperOverGameMode::HandleInput(APlayerController* PC, float Dt)
 		}
 	}
 
-	// Keyboard and touch fill the same controls; everything below reads only the controls.
-	FCricketControls C;
-	C.bLeft = Down(EKeys::A) || Down(EKeys::Left);
-	C.bRight = Down(EKeys::D) || Down(EKeys::Right);
-	C.bUp = Down(EKeys::W) || Down(EKeys::Up);
-	C.bDown = Down(EKeys::S) || Down(EKeys::Down);
-	C.bGround = Pressed(EKeys::J);
-	C.bLoft = Pressed(EKeys::K);
-	C.bDefend = Pressed(EKeys::L);
-	C.bRun = Pressed(EKeys::R);
-	C.bAction = Pressed(EKeys::SpaceBar);
-	C.bProgress = Pressed(EKeys::Enter);
-	const FKey Numbers[] = { EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four, EKeys::Five, EKeys::Six, EKeys::Seven };
-	for (int32 I = 0; I < UE_ARRAY_COUNT(Numbers); ++I) if (Pressed(Numbers[I])) C.DeliveryPick = I;
-	const FCricketControls Touch = ReadTouch(PC);
-	C.Merge(Touch);
+	// The touch UI is the only gameplay input, on every platform: on desktop the mouse is the finger.
+	FCricketControls C = ReadTouch(PC);
+	UpdateFieldEdit(C);
 
-	if (HumanReviews() && (Pressed(EKeys::V) || C.bProgress)) SettleReview(Pressed(EKeys::V));
+	if (HumanReviews() && (C.bReview || C.bProgress)) SettleReview(C.bReview);
 	else if (C.bProgress && InReel())
 	{
 		PlayClip(INDEX_NONE); // skip the whole reel, back to the scorecard
 		C.bProgress = false;
 	}
-	else if (C.bProgress && IsReplaying()) PhaseTime = ReplayDelay + ReplayTime; // skip the replay
+	else if (C.bProgress && IsReplaying()) PhaseTime = ReplayDelay + ReplayTotalTime(); // skip the replay
 	if (C.bProgress && DPhase == EDeliveryPhase::Waiting)
 	{
 		if (Match.Phase == EMatchPhase::InningsBreak) Match.StartSecondInnings();
 		else if (Match.Phase == EMatchPhase::MatchComplete) { if (!Match.StartNextSuperOver()) Match.Start(HumanTeam); }
 		PlaceForDelivery();
 	}
+
+	// One helper: playing a shot re-resolves deterministically, so everything shown stays identical.
+	auto PlayShot = [&](const FBatInput& In, const TCHAR* Via)
+	{
+		BatInput = In;
+		Ctx.RunCalls = HumanRunCalls;
+		Result = CricketDelivery::Resolve(Release, BatInput, Ctx);
+		LastTimingGrade = CricketControl::GradeShot(Result, BatInput, ControlTuning);
+		UE_LOG(LogCRICKET26, Display, TEXT("Shot input (%s): intent %d, direction %.0f, power %.2f, press %.3f s, timing %s"),
+			Via, int32(In.Intent), In.DirectionDeg, In.Power, In.PressTime, CricketControl::TimingGradeName(LastTimingGrade));
+	};
 
 	if (HumanBowls())
 	{
@@ -1361,10 +1782,11 @@ void ASuperOverGameMode::HandleInput(APlayerController* PC, float Dt)
 			const TArray<EDeliveryType> Rep = CricketBowling::Repertoire(BowlerPlayer().BowlerType);
 			if (Rep.IsValidIndex(C.DeliveryPick)) HumanPlan.Type = Rep[C.DeliveryPick];
 			if (!Rep.Contains(HumanPlan.Type)) HumanPlan.Type = Rep[0];
-			// The camera looks down the pitch from behind the bowler: screen left is world +Y.
-			const float Off = OffSideSign(StrikerPlayer().BatHand);
-			HumanPlan.Length = FMath::Clamp(HumanPlan.Length + ((C.bDown ? 1.f : 0.f) - (C.bUp ? 1.f : 0.f)) * 4.f * Dt, 0.5f, 13.f);
-			HumanPlan.Line = FMath::Clamp(HumanPlan.Line + ((C.bLeft ? 1.f : 0.f) - (C.bRight ? 1.f : 0.f)) * Off * 0.8f * Dt, -1.f, 1.6f);
+			if (!C.TargetDrag.IsNearlyZero())
+				CricketControl::DragTarget(HumanPlan, C.TargetDrag, StrikerPlayer().BatHand, ControlTuning);
+			if (C.Effort > -1.5f) HumanPlan.Effort = C.Effort;
+			if (C.Dial > -1.5f) CricketControl::ApplyDial(HumanPlan, C.Dial, StrikerPlayer().BatHand, ControlTuning);
+			CricketControl::ClampTarget(HumanPlan);
 			if (C.bAction && Match.Phase == EMatchPhase::ReadyForDelivery) BeginRunUp();
 		}
 		else if (DPhase == EDeliveryPhase::RunUp && C.bAction)
@@ -1374,67 +1796,81 @@ void ASuperOverGameMode::HandleInput(APlayerController* PC, float Dt)
 	}
 	else if (HumanBats())
 	{
-		if (C.bRun) HumanRunMargin = HumanRunMargin > 0.5f ? -0.1f : HumanRunMargin + 0.35f;
-		const float Side = (C.bLeft ? 1.f : 0.f) - (C.bRight ? 1.f : 0.f);
-		const float Base = C.bUp ? 40.f : C.bDown ? 130.f : 85.f;
-		ShotDirection = Side == 0.f ? 0.f : Base * Side * OffSideSign(StrikerPlayer().BatHand);
-		if (DPhase == EDeliveryPhase::BallInPlay && !BatInput.IsShot() && !Result.bTooLate)
+		// Shot mode around the pull-and-release: the GROUND / LOFT / DEFEND buttons latch it.
+		if (C.bDefend) BatMode = EBatIntent::Defend;
+		else if (C.bLoft) BatMode = EBatIntent::Loft;
+		else if (C.bGround) BatMode = EBatIntent::Ground;
+
+		// The pull: holding aims, letting go swings with the release as the timing.
+		if (C.bPullHeld || C.bPullReleased)
 		{
-			EBatIntent Intent = EBatIntent::Leave;
-			if (C.bGround) Intent = EBatIntent::Ground;
-			if (C.bLoft) Intent = EBatIntent::Loft;
-			if (C.bDefend) Intent = EBatIntent::Defend;
-			if (Intent != EBatIntent::Leave)
+			LiveAim = CricketControl::Aim(C.Pull, StrikerPlayer().BatHand, ControlTuning);
+			ShotDirection = LiveAim.DirectionDeg;
+		}
+		bBatPullActive = C.bPullHeld;
+		if (C.bPullReleased && DPhase == EDeliveryPhase::BallInPlay && !BatInput.IsShot() && !Result.bTooLate)
+			PlayShot(CricketControl::ShotFor(LiveAim, BatMode, CricketMath::PressTime(PhaseTime, Dt)), TEXT("touch"));
+
+		// Manual running: RUN queues another run, CANCEL drops a pending call or sends the batters back.
+		// Pressing RUN never scores by itself; the match awards only runs the runners complete.
+		const float Post = Result.ContactTime > 0.f ? PhaseTime - Result.ContactTime : -0.1f;
+		if (C.bRun && DPhase == EDeliveryPhase::BallInPlay)
+		{
+			if (CricketControl::CallRun(HumanRunCalls, Result.Running, Post, ControlTuning))
 			{
-				BatInput.Intent = Intent;
-				BatInput.DirectionDeg = Intent == EBatIntent::Defend ? 0.f : ShotDirection;
-				BatInput.PressTime = CricketMath::PressTime(PhaseTime, Dt);
-				// Deterministic re-resolve: everything already shown is identical.
-				Ctx.RunMargin = HumanRunMargin;
+				Ctx.RunCalls = HumanRunCalls;
 				Result = CricketDelivery::Resolve(Release, BatInput, Ctx);
-				UE_LOG(LogCRICKET26, Display, TEXT("Shot input (%s): intent %d, direction %.0f, press %.3f s"),
-					Touch.bGround || Touch.bLoft || Touch.bDefend ? TEXT("touch") : TEXT("keys"), int32(Intent), BatInput.DirectionDeg, BatInput.PressTime);
 			}
 		}
+		if (C.bCancel && DPhase == EDeliveryPhase::BallInPlay)
+		{
+			if (CricketControl::CancelRun(HumanRunCalls, Result.Running, Post) != ECancelResult::Nothing)
+			{
+				Ctx.RunCalls = HumanRunCalls;
+				Result = CricketDelivery::Resolve(Release, BatInput, Ctx);
+			}
+		}
+		if (DPhase == EDeliveryPhase::BallInPlay || DPhase == EDeliveryPhase::DeadBall)
+			LastRunState = CricketControl::RunState(Result.Running, HumanRunCalls, Post);
 	}
 }
 
 CricketTouch::EMode ASuperOverGameMode::TouchMode() const
 {
 	using CricketTouch::EMode;
-	if (!bTouchUI) return EMode::None;
-	// ponytail: a touch player can only accept an umpire's decision; a review button needs its own touch mode.
-	if (HumanReviews() || IsReplaying() || (DPhase == EDeliveryPhase::Waiting && Match.Phase != EMatchPhase::ReadyForDelivery)) return EMode::Progress;
+	if (HumanReviews()) return EMode::Review;
+	if (IsReplaying() || (DPhase == EDeliveryPhase::Waiting && Match.Phase != EMatchPhase::ReadyForDelivery)) return EMode::Progress;
 	if (HumanBats()) return EMode::Batting;
+	if (bFieldEdit && CanEditField()) return EMode::FieldEdit;
 	if (HumanBowls() && (DPhase == EDeliveryPhase::Waiting || DPhase == EDeliveryPhase::RunUp)) return EMode::Bowling;
 	return EMode::None;
 }
 
 FCricketControls ASuperOverGameMode::ReadTouch(APlayerController* PC)
 {
-	if (!bTouchUI) return FCricketControls();
 	int32 VX = 0, VY = 0;
 	PC->GetViewportSize(VX, VY);
 	if (VY <= 0) return FCricketControls();
-	// Positions in screen-height units, as the layout uses.
-	TArray<FVector2D> Held, New;
+	// Positions in screen-height units, as the layout uses. One gesture finger owns the
+	// batting pull / bowling target drag across frames; buttons act on touch-down.
+	TArray<CricketTouch::FFinger> Fingers;
 	for (int32 I = 0; I < UE_ARRAY_COUNT(bTouchWasDown); ++I)
 	{
 		float X = 0.f, Y = 0.f;
 		bool bDown = false;
 		PC->GetInputTouchState(ETouchIndex::Type(I), X, Y, bDown);
-		if (bDown) Held.Add(FVector2D(X, Y) / VY);
-		if (bDown && !bTouchWasDown[I]) New.Add(FVector2D(X, Y) / VY);
+		if (bDown) Fingers.Add({ I, FVector2D(X, Y) / VY, !bTouchWasDown[I] });
 		bTouchWasDown[I] = bDown;
 	}
-	// On desktop the mouse stands in for a finger.
+	// On desktop the mouse stands in for a finger (id 10, clear of the touch ids).
 	float MX = 0.f, MY = 0.f;
 	if (PC->IsInputKeyDown(EKeys::LeftMouseButton) && PC->GetMousePosition(MX, MY))
 	{
-		Held.Add(FVector2D(MX, MY) / VY);
-		if (PC->WasInputKeyJustPressed(EKeys::LeftMouseButton)) New.Add(FVector2D(MX, MY) / VY);
+		const bool bNew = PC->WasInputKeyJustPressed(EKeys::LeftMouseButton);
+		Fingers.Add({ 10, FVector2D(MX, MY) / VY, bNew });
 	}
-	return CricketTouch::Read(TouchMode(), CricketBowling::Repertoire(BowlerPlayer().BowlerType).Num(), ViewAspect, Held, New);
+	TouchFingers = Fingers;
+	return CricketTouch::Read(TouchMode(), CricketBowling::Repertoire(BowlerPlayer().BowlerType).Num(), ViewAspect, Fingers, TouchGesture, TouchSafe);
 }
 
 void ASuperOverGameMode::InjectTouch(APlayerController* PC, int32 Finger, uint8 Type, const FVector2D& At)
@@ -1453,7 +1889,7 @@ void ASuperOverGameMode::RunTouchScript(APlayerController* PC)
 	const int32 NumTypes = CricketBowling::Repertoire(BowlerPlayer().BowlerType).Num();
 	auto Tap = [&](EButton Button, int32 Index, const TCHAR* What)
 	{
-		for (const FButton& B : Layout(Mode, NumTypes, ViewAspect))
+		for (const FButton& B : Layout(Mode, NumTypes, ViewAspect, TouchSafe))
 			if (B.Button == Button && B.Index == Index)
 			{
 				ScriptTapAt = B.Rect.GetCenter();
@@ -1471,37 +1907,110 @@ void ASuperOverGameMode::RunTouchScript(APlayerController* PC)
 		bScriptTapDown = true;
 		UE_LOG(LogCRICKET26, Display, TEXT("Touch script: tap to continue"));
 	}
+	else if (Mode == EMode::Review && PhaseTime > 1.5f) Tap(EButton::Accept, 0, TEXT("ACCEPT"));
 	else if (Mode == EMode::Batting)
 	{
-		// Bat with the AI's choice for this ball: hold the stick for its direction, tap its shot on time.
-		if (DPhase == EDeliveryPhase::BallInPlay && !bScriptStickDown)
+		// Bat with the AI's choice for this ball through the same pull-and-release the player uses:
+		// tap its mode, pull for its direction and power, let go on time.
+		if (DPhase == EDeliveryPhase::BallInPlay && !ScriptShot.IsShot() && !bScriptStickDown)
 		{
 			FRandomStream AiRng(Ctx.Seed + 7);
 			ScriptShot = CricketAI::ChooseShot(Release, StrikerPlayer(), BowlerPlayer().BowlerType, CricketAI::Aggression(Match), Ctx.Field, Ctx.Conditions, AiRng, AiSkill());
-			const float Side = FMath::Sign(ScriptShot.DirectionDeg) * OffSideSign(StrikerPlayer().BatHand); // +1: stick left
-			const float Abs = FMath::Abs(ScriptShot.DirectionDeg);
-			const FVector2D Stick = StickCentre() + StickRadius * FVector2D(-Side, Side == 0.f ? 0.f : Abs < 62.f ? -1.f : Abs > 107.f ? 1.f : 0.f);
-			InjectTouch(PC, 1, ETouchType::Began, Stick);
-			bScriptStickDown = true;
 			UE_LOG(LogCRICKET26, Display, TEXT("Touch script: AI would play intent %d, direction %.0f, press %.3f s"), int32(ScriptShot.Intent), ScriptShot.DirectionDeg, ScriptShot.PressTime);
+			if (ScriptShot.IsShot())
+			{
+				const EButton B = ScriptShot.Intent == EBatIntent::Loft ? EButton::Loft : ScriptShot.Intent == EBatIntent::Defend ? EButton::Defend : EButton::Ground;
+				Tap(B, 0, B == EButton::Loft ? TEXT("LOFT") : B == EButton::Defend ? TEXT("DEFEND") : TEXT("GROUND"));
+			}
 		}
-		if (DPhase == EDeliveryPhase::BallInPlay && !BatInput.IsShot() && ScriptShot.IsShot() && PhaseTime >= ScriptShot.PressTime)
+		if (DPhase == EDeliveryPhase::BallInPlay && ScriptShot.IsShot() && !BatInput.IsShot())
 		{
-			const EButton B = ScriptShot.Intent == EBatIntent::Loft ? EButton::Loft : ScriptShot.Intent == EBatIntent::Defend ? EButton::Defend : EButton::Ground;
-			Tap(B, 0, B == EButton::Loft ? TEXT("LOFT") : B == EButton::Defend ? TEXT("DEFEND") : TEXT("GROUND"));
+			const float Lead = 0.30f;
+			if (!bScriptStickDown && PhaseTime >= ScriptShot.PressTime - Lead)
+			{
+				// The pull this shot stands for: length for power, angle for direction (down is straight).
+				ScriptPullOrigin = GestureZone(Mode, ViewAspect, TouchSafe).GetCenter();
+				ScriptPullTarget = ScriptPullOrigin;
+				if (ScriptShot.Intent != EBatIntent::Defend)
+				{
+					const float Shape = FMath::Clamp((ScriptShot.Power - ControlTuning.MinPower)
+						/ FMath::Max(ControlTuning.MaxPower - ControlTuning.MinPower, 1e-4f), 0.f, 1.f);
+					const float Len = ControlTuning.PullDeadZone
+						+ FMath::Pow(Shape, 2.f / 3.f) * (ControlTuning.PullMax - ControlTuning.PullDeadZone);
+					const float Raw = FMath::DegreesToRadians(-ScriptShot.DirectionDeg * OffSideSign(StrikerPlayer().BatHand));
+					ScriptPullTarget = ScriptPullOrigin + Len * FVector2D(FMath::Sin(Raw), FMath::Cos(Raw));
+				}
+				InjectTouch(PC, 1, ETouchType::Began, ScriptPullOrigin);
+				bScriptStickDown = true;
+				UE_LOG(LogCRICKET26, Display, TEXT("Touch script: pull from (%.2f, %.2f)"), ScriptPullOrigin.X, ScriptPullOrigin.Y);
+			}
+			else if (bScriptStickDown && PhaseTime < ScriptShot.PressTime)
+			{
+				const float U = FMath::Clamp((PhaseTime - (ScriptShot.PressTime - Lead)) / Lead, 0.f, 1.f);
+				InjectTouch(PC, 1, ETouchType::Moved, FMath::Lerp(ScriptPullOrigin, ScriptPullTarget, U));
+			}
+			else if (bScriptStickDown && PhaseTime >= ScriptShot.PressTime)
+			{
+				InjectTouch(PC, 1, ETouchType::Ended, ScriptPullTarget);
+				bScriptStickDown = false;
+				UE_LOG(LogCRICKET26, Display, TEXT("Touch script: release at (%.2f, %.2f)"), ScriptPullTarget.X, ScriptPullTarget.Y);
+			}
 		}
 		if (DPhase == EDeliveryPhase::DeadBall && bScriptStickDown)
 		{
-			InjectTouch(PC, 1, ETouchType::Ended, StickCentre());
+			InjectTouch(PC, 1, ETouchType::Ended, ScriptPullTarget);
 			bScriptStickDown = false;
 			ScriptShot = FBatInput();
 		}
+		// After contact with no dismissal, call the run through the same RUN button the player uses.
+		if (DPhase == EDeliveryPhase::BallInPlay && BatInput.IsShot() && Result.Contact.HasContact()
+			&& Result.Dismissal == EDismissal::None && !bScriptRunTapped && PhaseTime >= Result.ContactTime + 0.4f)
+		{
+			Tap(EButton::Run, 0, TEXT("RUN"));
+			bScriptRunTapped = true;
+		}
+		if (DPhase == EDeliveryPhase::DeadBall)
+			bScriptRunTapped = false; // next ball calls its own runs
+	}
+	else if (Mode == EMode::FieldEdit)
+	{
+		// The field editor, once: carry a ring fielder to the deep (refused - a sixth outside the circle), then to
+		// cover, then apply. The same finger on the same map the player uses.
+		const FBox2D Map = FieldMap(ViewAspect, TouchSafe);
+		const float Off = OffSideSign(StrikerPlayer().BatHand), T = PhaseTime - ScriptFieldFrom;
+		auto Spot = [&](float Deg, float Dist) { const float A = FMath::DegreesToRadians(Deg); return FieldToMap(Map, FVector2D(Dist * FMath::Cos(A), Off * Dist * FMath::Sin(A))); };
+		constexpr int32 Who = 7;
+		auto Carry = [&](float From, const FVector2D& To)
+		{
+			if (!bScriptStickDown && T >= From && EditField.IsValidIndex(Who))
+			{
+				ScriptPullOrigin = FieldToMap(Map, EditField[Who].Home);
+				ScriptPullTarget = To;
+				InjectTouch(PC, 1, ETouchType::Began, ScriptPullOrigin);
+				bScriptStickDown = true;
+				UE_LOG(LogCRICKET26, Display, TEXT("Touch script: pick up %s"), *EditField[Who].Position);
+			}
+			else if (bScriptStickDown)
+			{
+				const float U = FMath::Clamp((T - From) / 0.8f, 0.f, 1.f);
+				InjectTouch(PC, 1, U < 1.f ? ETouchType::Moved : ETouchType::Ended, FMath::Lerp(ScriptPullOrigin, ScriptPullTarget, U));
+				if (U >= 1.f) { bScriptStickDown = false; ++ScriptFieldStep; }
+			}
+		};
+		if (ScriptFieldStep == 0) Carry(1.f, Spot(70.f, 55.f));
+		else if (ScriptFieldStep == 1) Carry(2.6f, Spot(70.f, 20.f));
+		else if (T > 4.2f) { Tap(EButton::FieldApply, 0, TEXT("APPLY")); bScriptFieldDone = true; }
 	}
 	else if (Mode == EMode::Bowling)
 	{
 		// Bowl the second delivery type in the repertoire, releasing near the perfect point of the meter.
 		const EDeliveryType Want = CricketBowling::Repertoire(BowlerPlayer().BowlerType)[1];
-		if (DPhase == EDeliveryPhase::Waiting && PhaseTime > 0.5f)
+		if (!bScriptFieldDone && DPhase == EDeliveryPhase::Waiting && PhaseTime > 0.5f)
+		{
+			Tap(EButton::Field, 0, TEXT("FIELD"));
+			ScriptFieldFrom = PhaseTime;
+		}
+		else if (DPhase == EDeliveryPhase::Waiting && PhaseTime > 0.5f)
 			HumanPlan.Type != Want ? Tap(EButton::Delivery, 1, TEXT("delivery 2")) : Tap(EButton::Bowl, 0, TEXT("BOWL (run-up)"));
 		else if (DPhase == EDeliveryPhase::RunUp && -1.f + 2.f * PhaseTime / RunUpSeconds >= -0.05f)
 			Tap(EButton::Bowl, 0, TEXT("BOWL (release)"));
@@ -1514,6 +2023,13 @@ void ASuperOverGameMode::BeginRunUp()
 	// -CricketLeftHanded: every striker bats left-handed, to inspect the mirrored strokes.
 	if (FParse::Param(FCommandLine::Get(), TEXT("CricketLeftHanded")))
 		Teams[Match.BattingTeam()].Batters[Match.Cur().Striker].BatHand = ECricketHand::Left;
+	// -CricketPace: the bowler bowls quick (as F3 does), so a forced pull or hook meets a ball that gets up.
+	if (FParse::Param(FCommandLine::Get(), TEXT("CricketPace")))
+	{
+		FCricketPlayer& B = Teams[Match.BowlingTeam()].Bowler;
+		B.BowlerType = EBowlerType::Pace;
+		B.PaceKph = 140.f;
+	}
 	PlaceForDelivery();
 	Ctx.Seed = Rng.RandHelper(1 << 30);
 	const float Aggr = CricketAI::Aggression(Match);
@@ -1534,9 +2050,14 @@ void ASuperOverGameMode::BeginRunUp()
 	DPhase = EDeliveryPhase::RunUp;
 	PhaseTime = 0.f;
 	Meter = -1.f;
+	NextFootstepAt = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
 	// A new delivery is a new shot: cut back to the bowler's-end camera instead of easing from the last
-	// ball's follow, and retire the last ball's result from the HUD.
+	// ball's follow, and retire the last ball's result from the HUD. The broadcast director, replay
+	// package and rolling buffer all restart with the delivery.
 	bCutCamera = true;
+	BroadcastDirector.Reset(EBroadcastShot::StandardDelivery);
+	ClearBroadcastReplay();
+	ReplayBuffer.Reset();
 	LastSummary.Reset();
 	Commentary.Reset();
 }
@@ -1546,6 +2067,7 @@ void ASuperOverGameMode::DoRelease(float Timing)
 	const FCricketPlayer& Batter = StrikerPlayer();
 	Release = CricketBowling::Execute(BowlerPlayer(), Batter.BatHand, HumanPlan, Timing, Ctx.Seed, Ctx.Conditions);
 	ReleaseTiming = Timing;
+	LastReleaseGrade = CricketControl::GradeRelease(Timing, ControlTuning);
 	BatInput = FBatInput();
 	// -CricketAiLeaves: the AI batter lets every ball go (to inspect pad impacts and their ball tracking).
 	static const bool bAiLeaves = FParse::Param(FCommandLine::Get(), TEXT("CricketAiLeaves"));
@@ -1563,9 +2085,16 @@ void ASuperOverGameMode::DoRelease(float Timing)
 		else
 			BatInput = CricketAI::ChooseShot(Release, Batter, BowlerPlayer().BowlerType, CricketAI::Aggression(Match), Ctx.Field, Ctx.Conditions, AiRng, AiSkill());
 	}
+	Ctx.RunCalls = HumanRunCalls; // pre-contact run calls buffered during the run-up count from contact
 	Result = CricketDelivery::Resolve(Release, BatInput, Ctx);
 	DPhase = EDeliveryPhase::BallInPlay;
 	PhaseTime = 0.f;
+	// Micro-drop around the release so the contact lands; the landing foot is the last run-up step.
+	if (GetWorld())
+	{
+		CricketAudioDirector::OnRelease(AudioDir, GetWorld()->GetTimeSeconds());
+		PlayCue(CricketAudio::ECue::Footstep, 0.25f);
+	}
 }
 
 void ASuperOverGameMode::FinishDelivery()
@@ -1603,6 +2132,8 @@ void ASuperOverGameMode::FinishDelivery()
 			bAwaitingReview = true;
 			DPhase = EDeliveryPhase::DeadBall;
 			PhaseTime = 0.f;
+			// The appeal goes up as the ball dies: HOWZAT now, umpire's decision after.
+			if (GetWorld()) CricketAudioDirector::QueueVocal(AudioDir, CricketAudioDirector::EVocal::Howzat, GetWorld()->GetTimeSeconds() + 0.3f);
 			return;
 		}
 	}
@@ -1647,7 +2178,8 @@ void ASuperOverGameMode::SettleReview(bool bReview)
 void ASuperOverGameMode::ScoreDelivery(FDeliveryOutcome Outcome)
 {
 	Result.Dismissal = Outcome.Dismissal; // the decision that stood, for the HUD and replays
-	const CricketCommentary::FNames Names{ StrikerPlayer().Name, Teams[Match.BattingTeam()].Batters[Match.Cur().NonStriker].Name, Teams[Match.BattingTeam()].Name };
+	const CricketCommentary::FNames Names{ StrikerPlayer().Name, Teams[Match.BattingTeam()].Batters[Match.Cur().NonStriker].Name, Teams[Match.BattingTeam()].Name,
+		Teams[Match.BowlingTeam()].Name };
 	const float OffSign = OffSideSign(StrikerPlayer().BatHand);
 	FBallMark& Mark = Marks.AddDefaulted_GetRef();
 	Mark.SuperOver = Match.SuperOverNumber;
@@ -1670,7 +2202,13 @@ void ASuperOverGameMode::ScoreDelivery(FDeliveryOutcome Outcome)
 	FString Err;
 	if (!Match.CheckInvariants(Err)) UE_LOG(LogCRICKET26, Error, TEXT("Match invariant broken: %s"), *Err);
 	LastSummary = Result.Summary;
-	Commentary = CricketCommentary::Describe(Result, Outcome, Match, Names, OffSign, BallsPlayed);
+	// Broadcast audio: the directors consume the finished delivery (they never decide it).
+	const float NowAudio = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
+	CricketAudioDirector::OnDelivery(AudioDir, Result, Outcome, Match, NowAudio);
+	CricketCommentaryDirector::FContext CommCtx = CricketCommentaryDirector::FContext::Build(Result, Outcome, Match, Names, OffSign, Release.Type);
+	CricketCommentaryDirector::FSelection Sel = CricketCommentaryDirector::SelectLine(CommDir, CommCtx, Names, NowAudio, BallsPlayed, CommRng);
+	Commentary = Sel.bSilent ? FString() : Sel.Text;
+	if (!Sel.bSilent) Say(Sel.Body, Sel.Suffix, NowAudio + Sel.DelaySeconds);
 	if (bReviewTaken && ReviewResult == CricketUmpire::EReview::Overturned) Commentary = TEXT("Overturned on review! ") + Commentary;
 	if (bReferredThis) Commentary = (Outcome.Dismissal == EDismissal::None ? TEXT("Not out, says the third umpire. ") : TEXT("Given out by the third umpire. ")) + Commentary;
 	UE_LOG(LogCRICKET26, Display, TEXT("Commentary: %s"), *Commentary);
@@ -1678,10 +2216,22 @@ void ASuperOverGameMode::ScoreDelivery(FDeliveryOutcome Outcome)
 	UE_LOG(LogCRICKET26, Display, TEXT("%s %d/%d (%d.%d): %s"), *Teams[Match.BattingTeam()].Short, Match.Cur().Runs,
 		Match.Cur().Wickets, Match.Cur().LegalBalls / 6, Match.Cur().LegalBalls % 6, *LastSummary);
 	Emit(Events);
-	bReplayThis = (Events.Contains(ECricketEvent::Wicket) || Events.Contains(ECricketEvent::BoundaryFour) || Events.Contains(ECricketEvent::BoundarySix))
-		&& Result.BallPath.Num() > 1 && !bReferredThis; // the third umpire's frames were the replay
+	// Broadcast replay: the trigger classifies the ACTUAL result + umpire outcome (wickets, boundaries,
+	// edges, drops, close run-outs, milestones), not just wicket/boundary events. The third umpire's
+	// frames were the replay, so a referred delivery never replays again.
+	const bool bMilestone = Events.Contains(ECricketEvent::MatchWon);
+	BuildReplayPackageForResult(Outcome, bMilestone);
+	bReplayThis = ActivePackage.IsValid() && Result.BallPath.Num() > 1 && !bReferredThis;
+	if (!bReplayThis) ClearBroadcastReplay();
 	bWicketThis = Events.Contains(ECricketEvent::Wicket);
-	if (bReplayThis) Highlights.Add({ Result, Ctx, BatInput, ReleaseTiming, Commentary });
+	if (bReplayThis)
+	{
+		Highlights.Add({ Result, Ctx, BatInput, ReleaseTiming, Commentary });
+		ReplayBuffer.MarkEvent(Result.ContactTime, TEXT("contact"));
+		if (Result.bStumpsHit) ReplayBuffer.MarkEvent(Result.StumpsTime, TEXT("stumps"));
+		if (Result.BrokenTime >= 0.f) ReplayBuffer.MarkEvent(Result.BrokenTime, TEXT("broken"));
+		if (Result.Fielding.Boundary > 0) ReplayBuffer.MarkEvent(Result.ContactTime + Result.Fielding.BoundaryTime, TEXT("boundary"));
+	}
 	bReviewThis = Result.bPadImpact && Result.Tracking.Projected.Num() > 1 && Result.BallPath.Num() > 1;
 	DPhase = EDeliveryPhase::DeadBall;
 	PhaseTime = 0.f;
@@ -1699,15 +2249,20 @@ void ASuperOverGameMode::PlayClip(int32 Clip)
 	bReviewThis = false;
 	if (Highlights.IsValidIndex(Clip))
 	{
-		// The replay's side-on angle, from its start.
+		// The clip's own multi-angle replay package, from its start. The buffer belongs to the live
+		// delivery, not the clip, so reel replays pose analytically from the stored result (same data).
 		ReelClip = Clip;
 		bReplayThis = true;
+		BuildReplayPackageForResult(Result.ToOutcome(), false);
+		if (!ActivePackage.IsValid()) ClearBroadcastReplay(); // legacy fallback timings still replay it
 		DPhase = EDeliveryPhase::DeadBall;
 		PhaseTime = ReplayDelay;
 		return;
 	}
 	ReelClip = -1;
 	bReplayThis = false;
+	ClearBroadcastReplay();
+	bCutCamera = true;
 	Highlights.Empty();
 	DPhase = EDeliveryPhase::Waiting;
 	PhaseTime = 0.f;
@@ -1715,11 +2270,12 @@ void ASuperOverGameMode::PlayClip(int32 Clip)
 
 void ASuperOverGameMode::Emit(const TArray<ECricketEvent>& Events)
 {
+	const float Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
 	for (ECricketEvent E : Events)
 	{
-		// The crowd lifts for boundaries and wickets, then settles back to the bed.
-		if (E == ECricketEvent::BoundarySix) CrowdLevel = 1.f;
-		else if (E == ECricketEvent::BoundaryFour || E == ECricketEvent::Wicket) CrowdLevel = FMath::Max(CrowdLevel, 0.8f);
+		// The crowd lifts for boundaries and wickets through the audio director, then settles
+		// back to the bed gradually (no instant quiet->screaming cuts).
+		CricketAudioDirector::OnEvent(AudioDir, E, Match, Now);
 		OnCricketEvent.Broadcast(E);
 	}
 }
@@ -1803,8 +2359,10 @@ void ASuperOverGameMode::UpdatePoses(float T, bool bLive, float Post, float Off,
 		Dir.Z = FMath::Tan(FMath::DegreesToRadians(FMath::Clamp(Result.Shot.LoftDeg, 0.f, 45.f)));
 		In.ShotDir = Dir.GetSafeNormal();
 		// Back into the stance after the ball; from down the track, back in their ground when the simulation says.
+		// Otherwise the finish (reached 0.5 s after the contact) is held a second, watching the ball, as in the
+		// broadcast reference, before the hands come down.
 		In.Settle = In.Foot == EFootwork::Advance && Result.BrokenTime >= 0.f ? Result.BrokenTime - Result.HomeMargin - 0.8f
-			: In.Foot == EFootwork::Advance ? Result.ContactTime + 0.4f : In.Impact + 0.9f;
+			: In.Foot == EFootwork::Advance ? Result.ContactTime + 0.4f : In.Impact + 1.5f;
 		const CricketBatter::FBody Body = CricketBatter::Plan(In);
 		if (!(bLive && Run.Attempted > 0 && Post > 0.f))
 		{
@@ -1887,8 +2445,10 @@ void ASuperOverGameMode::UpdatePoses(float T, bool bLive, float Post, float Off,
 		P.ChestBend = 30.f * BowlW * Ramp(Ttr, -0.1f, 0.15f);
 	}
 
-	// Fielders and keeper: the keeper squats until the ball is on its way; anyone the ball comes near gets
-	// down to it and puts both hands where it will be a moment later; a thrower windmills the arm over.
+	// Fielders and keeper. The keeper runs its own isolated pipeline below
+	// (CricketKeeper: stance, pre-delivery rhythm, trajectory-aware takes,
+	// footwork, dives, spin, stumping, run-out reception, recovery); outfielders
+	// keep the previous generic reach/throw behaviour untouched.
 	for (int32 I = 0; I < Ctx.Field.Num(); ++I)
 	{
 		const FFielder& F = Ctx.Field[I];
@@ -1898,37 +2458,206 @@ void ASuperOverGameMode::UpdatePoses(float T, bool bLive, float Post, float Off,
 		FCricketBodyPose& P = Anim->Pose;
 		const FVector At = SimAt(Who);
 		const FVector Fwd = Who->GetActorForwardVector();
-		float Drop = 0.f, ReadyW = 0.f;
 		if (F.bKeeper)
 		{
-			Drop = bLive ? FMath::Lerp(0.4f, 0.12f, Ramp(T, 0.f, Result.PitchTime > 0.f ? Result.PitchTime + 0.1f : 0.5f)) : 0.4f;
-			ReadyW = 1.f;
-		}
-		else if (!F.bBowler && (DPhase == EDeliveryPhase::RunUp || (bLive && T < Result.ContactTime + 0.4f))) Drop = 0.08f; // walking in, ready
-		const FVector Chest0 = At + FVector(0.f, 0.f, ShoulderHeight - MarkerHeight - 0.1f);
-		FVector Reach = Chest0 + Fwd * 0.4f - FVector(0.f, 0.f, 0.55f); // keeper's gloves by the knees
-		float Near = 0.f;
-		if (bLive)
-		{
-			const FVector Soon = Result.BallAt(T + 0.12f);
-			Near = 1.f - Ramp(FVector::Dist(Soon, Chest0), 0.8f, 1.8f);
-			Drop = FMath::Max(Drop, Near * FMath::Clamp(Chest0.Z - 0.55f - Soon.Z, 0.f, 0.5f));
+			// ---- WICKETKEEPER PIPELINE (isolated; simulation stays authoritative) ----
+			const bool bStandingUp = CricketKeeper::IsStandingUp(F.Home);
+			const CricketKeeper::FKeeperReady Ready = CricketKeeper::ReadyFor(bStandingUp);
+			const float WorldT = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
+			// Athletic base + restrained life (breathing, tiny glove movement):
+			// never a static mannequin, never nervous fidgeting.
+			const float Breathe = 0.008f * FMath::Sin(WorldT * 1.4f + 0.7f * I);
+			float Drop = Ready.Drop + Breathe;
+			float ReadyW = 1.f;
+			if (!bLive)
+			{
+				Drop = Ready.Drop + Breathe; // waiting between balls: set, alive
+			}
+			else
+			{
+				// Pre-delivery rhythm synced to the bowler: load through the
+				// approach, balanced and reactive at release (split-step state),
+				// then rise as the ball comes through.
+				Drop += CricketKeeper::PreDeliveryLoad(Ttr);
+				Drop = FMath::Lerp(Drop, 0.12f, Ramp(T, 0.f, Result.PitchTime > 0.f ? Result.PitchTime + 0.1f : 0.5f));
+			}
+			const FVector Chest0 = At + FVector(0.f, 0.f, ShoulderHeight - MarkerHeight - 0.1f);
 			const FVector Chest = Chest0 - FVector(0.f, 0.f, Drop);
-			Reach = FMath::Lerp(Reach, Chest + (Soon - Chest).GetClampedToMaxSize(0.65f), Near);
+			// Gloves presented naturally by the knees, head stable to the ball.
+			FVector Reach = Chest + Fwd * Ready.GloveForward - FVector(0.f, 0.f, Chest.Z - Ready.GloveHeight);
+			Reach += Fwd * (0.012f * FMath::Sin(WorldT * 1.1f)) + FVector(0.f, 0.f, 0.01f * FMath::Sin(WorldT * 1.7f));
+			float Near = 0.f;
+			CricketKeeper::FKeeperSelection Sel;
+			bool bHaveSel = false;
+			const FFieldingOutcome& Fd = Result.Fielding;
+			const bool bKeeperTakes = bLive && Fd.Fielder == I;
+			const bool bContact = bLive && Result.Contact.HasContact();
+			if (bLive)
+			{
+				const FVector Soon = Result.BallAt(T + 0.12f);
+				Near = 1.f - Ramp(FVector::Dist(Soon, Chest0), 0.8f, 1.8f);
+				// Trajectory-aware selection: the REAL interception, height,
+				// lateral displacement and time to arrival. Never a generic event.
+				const bool bBounced = !bContact && Result.PitchTime >= 0.f;
+				const float TimeToArr = FMath::Max(0.f, Fd.FieldTime - Post);
+				Sel = CricketKeeper::Classify(F.Home, Fd.FieldPos, bKeeperTakes, Fd.bDive,
+					bContact, bBounced, bStandingUp, TimeToArr, Off);
+				bHaveSel = true;
+				// Log once per delivery as the ball comes through (dev/QA).
+				if (FMath::Abs(Post) < 0.02f)
+					UE_LOG(LogTemp, Display, TEXT("%s"), *CricketKeeper::SelectionLog(Sel, Fd.FieldPos, FMath::Abs(F.Home.X), Ctx.Bowler.BowlerType));
+				// Semantic markers (dev/QA; gameplay never reads these).
+				auto Mark = [&](float AtPost, const TCHAR* Name)
+				{
+					if (FMath::Abs(Post - AtPost) < 0.025f)
+						UE_LOG(LogTemp, Display, TEXT("Keeper event %s post %.2f take %s"), Name, Post, CricketKeeper::TakeName(Sel.Family));
+				};
+				if (bKeeperTakes)
+				{
+					if (Sel.Footwork == CricketKeeper::EKeeperFootwork::PushDive) Mark(Fd.FieldTime - 0.4f, TEXT("KeeperPushOff"));
+					Mark(Fd.FieldTime, TEXT("KeeperCatchContact"));
+					Mark(Fd.FieldTime + 0.25f, TEXT("KeeperSecureBall"));
+					Mark(Fd.FieldTime + 1.2f, TEXT("KeeperRecoveryComplete"));
+				}
+				if (bKeeperTakes && Sel.Reach != CricketKeeper::EKeeperReach::Unreachable)
+				{
+					// Take shape: height drives the body, not the spine alone.
+					if (Sel.Height < 0.35f && !bStandingUp)
+						Drop += 0.18f * (1.f - FMath::Clamp(Sel.Height / 0.35f, 0.f, 1.f)); // low: ankles/knees/hips
+					else if (Sel.Height > 1.1f)
+						Drop = FMath::Max(0.08f, Drop - 0.15f * Ramp(Sel.Height, 1.1f, 1.7f)); // high: feet reposition, stand taller
+					const FVector ChestD = Chest0 - FVector(0.f, 0.f, Drop);
+					// Gloves track the real ball, converge onto the true take.
+					FVector Gloves;
+					FVector TakePoint = Fd.FieldPos;
+					// Stumping transfer: possession first, then quick economical
+					// gloves-to-wicket, synced to the sim's BrokenTime.
+					float StampP = 0.f;
+					if (Result.BrokenTime >= 0.f && Result.bBrokenAtStrikerEnd && Post >= Fd.FieldTime)
+					{
+						const float BreakPost = Result.BrokenTime - Result.ContactTime;
+						StampP = CricketKeeper::StumpingProgress(Post, Fd.FieldTime, BreakPost);
+						if (StampP > 0.f)
+						{
+							Mark(BreakPost, TEXT("KeeperStumpBreak"));
+							const FVector StumpTop(0.f, 0.f, CricketGeo::StumpHeight);
+							TakePoint = FMath::Lerp(Fd.FieldPos, StumpTop, StampP);
+						}
+					}
+					const float Approach = FMath::Clamp(1.f - FMath::Max(0.f, Fd.FieldTime - Post) / 0.35f, 0.f, 1.f);
+					const FVector Tracked = FMath::Lerp(Soon, TakePoint, Approach);
+					const float ClampM = CricketKeeper::GloveTarget(Sel, ChestD, Tracked, Gloves);
+					if (ClampM > Sel.MaxIKCorrection + 0.05f)
+						UE_LOG(LogTemp, Display, TEXT("Keeper WRONG-ANIM take %s clamp %.2f m (lat %+.2f h %.2f)"), CricketKeeper::TakeName(Sel.Family), ClampM, Sel.Lateral, Sel.Height);
+					// Absorb the ball: gloves give, elbows absorb, body
+					// stabilizes. Pace gives more than spin.
+					float Give = 0.f;
+					if (Post > Fd.FieldTime)
+					{
+						const float Rate = bStandingUp ? 0.07f : 0.16f;
+						Give = Rate * FMath::Clamp((Post - Fd.FieldTime) / 0.18f, 0.f, 1.f);
+						Gloves += (ChestD - Gloves) * Give;
+					}
+					Reach = FMath::Lerp(Reach, Gloves, FMath::Max(Near, Approach));
+					// Body behind the line: upper body travels with the take
+					// over planted feet (small, constrained; feet re-plant by IK).
+					const FVector ToTake = TakePoint - ChestD;
+					const FVector LatDir = FVector(0.f, ToTake.Y, 0.f).GetSafeNormal(UE_SMALL_NUMBER, Who->GetActorRightVector());
+					const float LatShift = FMath::Clamp(FMath::Abs(ToTake.Y) * 0.3f, 0.f, bStandingUp ? 0.25f : 0.35f);
+					P.ShouldersAt = ToWorld(ChestD + LatDir * LatShift);
+					P.ShouldersWeight = FMath::Max(Near, Approach) * (Sel.Footwork == CricketKeeper::EKeeperFootwork::PushDive ? 0.3f : 0.5f);
+					// Restrained appeal shape on caught-behind/stumping: gloves
+					// lift briefly, no theatrical scream.
+					if ((Result.Dismissal == EDismissal::Caught || Result.Dismissal == EDismissal::Stumped)
+						&& Post > Fd.FieldTime + 0.2f && Post < Fd.FieldTime + 1.0f)
+						Reach.Z += 0.22f * FMath::Sin(PI * (Post - Fd.FieldTime - 0.2f) / 0.8f);
+				}
+				else if (bKeeperTakes)
+				{
+					// Honest miss: capped stretch toward the ball, body holds,
+					// then turn and chase via the existing locomotion.
+					FVector Gloves;
+					CricketKeeper::GloveTarget(Sel, Chest, Soon, Gloves);
+					Reach = FMath::Lerp(Reach, Gloves, Near * 0.6f);
+				}
+				// Run-out reception at the keeper's end: orient to the incoming
+				// throw, position near the wicket, receive, stay balanced.
+				const FRunningOutcome& RunK = Result.Running;
+				if (!bKeeperTakes && RunK.ThrowRelease > 0.f && RunK.bThrowToStrikerEnd && Post > RunK.ThrowRelease - 0.5f && Post < RunK.ThrowArrive + 0.4f)
+				{
+					const int32 Thrower = Fd.Fielder;
+					FVector ThrowFrom = FVector(12.f, 0.f, 1.f);
+					if (Ctx.Field.IsValidIndex(Thrower))
+					{
+						if (Thrower == I) ThrowFrom = At;
+						else if (Fielders.IsValidIndex(Thrower)) ThrowFrom = Fielders[Thrower]->GetActorLocation() / 100.f;
+						else if (Thrower >= 0 && Ctx.Field[Thrower].bBowler && Bowler) ThrowFrom = Bowler->GetActorLocation() / 100.f;
+					}
+					const FVector Aim = FVector(-At.X, -At.Y, 0.f).GetSafeNormal(UE_SMALL_NUMBER, Fwd); // toward the striker's stumps
+					const float H = RunK.ThrowType == EThrowType::Underarm ? 0.6f : 1.2f;
+					const FVector Reception(0.f, 0.f, H);
+					const float Rw = Ramp(Post, RunK.ThrowRelease - 0.4f, RunK.ThrowArrive);
+					Reach = FMath::Lerp(Reach, Reception, Rw);
+					Near = FMath::Max(Near, Rw);
+					P.ChestFacing = FMath::Lerp(Fwd, (ThrowFrom - At).GetSafeNormal(UE_SMALL_NUMBER, Fwd), Rw * 0.7f);
+					if (FMath::Abs(Post - RunK.ThrowRelease) < 0.025f)
+						UE_LOG(LogTemp, Display, TEXT("Keeper event KeeperThrowReceive post %.2f h %.2f"), Post, H);
+				}
+			}
+			const FVector ChestF = Chest0 - FVector(0.f, 0.f, Drop);
+			FVector Across = FVector::CrossProduct(Reach - ChestF, FVector::UpVector).GetSafeNormal(UE_SMALL_NUMBER, Who->GetActorRightVector());
+			// Variation without quality loss: millimetre glove separation by
+			// delivery, never a different body shape.
+			const float Var = 0.005f * FMath::Sin(float(BallsPlayed * 3 + I) * 1.7f);
+			for (int32 H = 0; H < 2; ++H)
+			{
+				const float S = H == 0 ? 1.f : -1.f;
+				P.Hand[H] = ToWorld(Reach + Across * (0.07f * S + Var * S));
+				// Elbows stay valid per take height: low takes wide and low,
+				// high takes below the hands, never collapsed or inverted.
+				const float Hgt = bHaveSel ? Sel.Height : 0.7f;
+				const float ElbOut = Hgt > 1.1f ? 0.42f : 0.5f;
+				const float ElbDown = Hgt > 1.1f ? 0.28f : Hgt < 0.35f ? 0.58f : 0.5f;
+				P.Elbow[H] = ToWorld(ChestF + Across * (ElbOut * S) - FVector(0.f, 0.f, ElbDown));
+				P.HandWeight[H] = FMath::Max(Near, ReadyW * (bLive ? 1.f : 0.85f));
+			}
+			P.PelvisOffset = FVector(0.f, 0.f, -100.f * Drop);
+			P.ChestBend = (bStandingUp ? 50.f : 45.f) * Drop;
+			if (P.ChestFacing.IsNearlyZero()) P.ChestFacing = Fwd;
 		}
-		const FVector Chest = Chest0 - FVector(0.f, 0.f, Drop);
-		const FVector Across = FVector::CrossProduct(Reach - Chest, FVector::UpVector).GetSafeNormal(UE_SMALL_NUMBER, Who->GetActorRightVector());
-		for (int32 H = 0; H < 2; ++H)
+		else
 		{
-			const float S = H == 0 ? 1.f : -1.f;
-			P.Hand[H] = ToWorld(Reach + Across * (0.07f * S));
-			P.Elbow[H] = ToWorld(Chest + Across * (0.5f * S) - FVector(0.f, 0.f, 0.5f));
-			P.HandWeight[H] = FMath::Max(Near, ReadyW);
+			// Outfielders: generic ready reach, untouched.
+			float Drop = 0.f, ReadyW = 0.f;
+			if (!F.bBowler && (DPhase == EDeliveryPhase::RunUp || (bLive && T < Result.ContactTime + 0.4f))) Drop = 0.08f; // walking in, ready
+			const FVector Chest0 = At + FVector(0.f, 0.f, ShoulderHeight - MarkerHeight - 0.1f);
+			FVector Reach = Chest0 + Fwd * 0.4f - FVector(0.f, 0.f, 0.55f);
+			float Near = 0.f;
+			if (bLive)
+			{
+				const FVector Soon = Result.BallAt(T + 0.12f);
+				Near = 1.f - Ramp(FVector::Dist(Soon, Chest0), 0.8f, 1.8f);
+				Drop = FMath::Max(Drop, Near * FMath::Clamp(Chest0.Z - 0.55f - Soon.Z, 0.f, 0.5f));
+				const FVector Chest = Chest0 - FVector(0.f, 0.f, Drop);
+				Reach = FMath::Lerp(Reach, Chest + (Soon - Chest).GetClampedToMaxSize(0.65f), Near);
+			}
+			const FVector Chest = Chest0 - FVector(0.f, 0.f, Drop);
+			const FVector Across = FVector::CrossProduct(Reach - Chest, FVector::UpVector).GetSafeNormal(UE_SMALL_NUMBER, Who->GetActorRightVector());
+			for (int32 H = 0; H < 2; ++H)
+			{
+				const float S = H == 0 ? 1.f : -1.f;
+				P.Hand[H] = ToWorld(Reach + Across * (0.07f * S));
+				P.Elbow[H] = ToWorld(Chest + Across * (0.5f * S) - FVector(0.f, 0.f, 0.5f));
+				P.HandWeight[H] = FMath::Max(Near, ReadyW);
+			}
+			P.PelvisOffset = FVector(0.f, 0.f, -100.f * Drop);
+			P.ChestBend = 45.f * Drop;
 		}
-		P.PelvisOffset = FVector(0.f, 0.f, -100.f * Drop);
-		P.ChestBend = 45.f * Drop;
 
 		// A captured dive or throw moves the whole body, so the reach, crouch and gaze give way to it.
+		// Shared by keeper and outfielders: keeper dives use the same clip path, selected by the solver.
+		{
+			const FVector ChestT = At + FVector(0.f, 0.f, ShoulderHeight - MarkerHeight - 0.1f) + P.PelvisOffset / 100.f;
 		const FClipPlay Dive = bLive && Diving && I == Result.Fielding.Fielder ? DiveClip(Post, Result.Fielding.FieldTime) : FClipPlay();
 		const FClipPlay Throw = bLive ? ThrowPlay(I, Post) : FClipPlay();
 		P.Clip[0] = Diving;
@@ -1956,12 +2685,13 @@ void ASuperOverGameMode::UpdatePoses(float T, bool bLive, float Post, float Off,
 			const FVector To = bToRelay ? SimAt(Fielders[Run.RelayMove.Fielder]) : Stumps;
 			const FVector Aim = FVector(To.X - At.X, To.Y - At.Y, 0.f).GetSafeNormal(UE_SMALL_NUMBER, Fwd);
 			const FVector Right(-Aim.Y, Aim.X, 0.f);
-			const FVector Shoulder = Chest + Right * ShoulderHalfWidth;
+			const FVector Shoulder = ChestT + Right * ShoulderHalfWidth;
 			P.Hand[1] = ToWorld(ArmCircle(Shoulder, Aim, BowlingArmAngle(Tt), 0.8f));
 			P.Elbow[1] = ToWorld(Shoulder + Right);
 			P.HandWeight[1] = ThrowW;
 			P.HandWeight[0] *= 1.f - ThrowW;
 			P.ChestFacing = FMath::Lerp(Fwd, Aim, ThrowW);
+		}
 		}
 	}
 }
@@ -1978,20 +2708,75 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	const float T = bAwaitingThirdUmpire ? ThirdUmpireBallTime() : bReplay ? ReplayBallTime() : DPhase == EDeliveryPhase::DeadBall ? Result.DeadTime : PhaseTime;
 
 	// Ball sounds when the presented ball passes each moment, so a replay plays them again.
+	// Every pick is contact-driven (middle/toe/edge/pad/keeper/catch), never one sample rescaled.
 	if (T < PrevCueT) PrevCueT = T; // a new ball or a replay rewinds the clock
+	const float NowSfx = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
 	if (bLive)
 	{
 		using CricketAudio::ECue;
 		auto Crossed = [&](float At) { return At > PrevCueT && At <= T; };
-		const EContactZone Z = Result.Contact.Zone;
-		const bool bEdge = Z == EContactZone::InsideEdge || Z == EContactZone::OutsideEdge || Z == EContactZone::TopEdge || Z == EContactZone::BottomEdge;
-		if (Result.PitchTime > 0.f && Crossed(Result.PitchTime)) PlayCue(ECue::Bounce, 0.5f);
-		if (Result.Contact.HasContact() && Crossed(Result.ContactTime)) PlayCue(bEdge ? ECue::EdgeTick : ECue::BatCrack, 0.4f + 0.6f * Result.Contact.Quality);
+		if (Result.PitchTime > 0.f && Crossed(Result.PitchTime))
+			PlayCue(ECue::Bounce, CricketAudio::PitchVolume(Result.SpeedKph));
+		if (Result.Contact.HasContact() && Crossed(Result.ContactTime))
+		{
+			CricketAudioDirector::FSfxPick Pick = CricketAudioDirector::ContactSfx(Result);
+			if (bReplay) Pick.Volume = FMath::Max(Pick.Volume, 0.7f); // replay: impact emphasised, bed reduced
+			PlayCue(Pick.Cue, Pick.Volume);
+		}
+		if (Result.bPadImpact && Crossed(Result.Tracking.ImpactTime)
+			&& (!Result.Contact.HasContact() || FMath::Abs(Result.Tracking.ImpactTime - Result.ContactTime) > 0.05f))
+			PlayCue(ECue::PadThud, 0.5f);
+		const FFieldingOutcome& Fd = Result.Fielding;
+		if (Fd.Fielder >= 0 && Crossed(Fd.FieldTime))
+		{
+			const bool bKeeper = Ctx.Field.IsValidIndex(Fd.Fielder) && Ctx.Field[Fd.Fielder].bKeeper;
+			if (bKeeper && Fd.Action == EFieldAction::KeeperTake) PlayCue(CricketAudioDirector::KeeperSfx(Result).Cue, CricketAudioDirector::KeeperSfx(Result).Volume);
+			else if (Fd.bCaught) PlayCue(CricketAudioDirector::CatchSfx(Result).Cue, CricketAudioDirector::CatchSfx(Result).Volume);
+			else if (!bKeeper && Fd.Action != EFieldAction::None && Fd.Boundary == 0) PlayCue(ECue::CatchPop, 0.3f); // ground-fielding take
+		}
+		const FRunningOutcome& Run = Result.Running;
+		if (Run.ThrowRelease > 0.f && Crossed(Result.ContactTime + Run.ThrowRelease))
+			PlayCue(ECue::ThrowRelease, CricketAudioDirector::ThrowVolume(Result));
+		if (Run.RelayRelease > 0.f && Crossed(Result.ContactTime + Run.RelayRelease))
+			PlayCue(ECue::ThrowRelease, CricketAudioDirector::ThrowVolume(Result));
 		if (Result.bStumpsHit && Crossed(Result.StumpsTime)) PlayCue(ECue::Stumps, 1.f);
+		if (Result.BrokenTime >= 0.f && Crossed(Result.BrokenTime)) PlayCue(ECue::Stumps, 0.9f);
+	}
+	// Bowler's run-up footsteps: subtle, strictly under the cricket (never louder than contact).
+	if (DPhase == EDeliveryPhase::RunUp && NowSfx >= NextFootstepAt)
+	{
+		PlayCue(CricketAudio::ECue::Footstep, CricketAudioDirector::FootstepVolume());
+		NextFootstepAt = NowSfx + CricketAudioDirector::RunUpStride;
 	}
 	PrevCueT = T;
-	CrowdLevel = FMath::FInterpTo(CrowdLevel, 0.3f, Dt, 0.4f);
-	if (CrowdAudio) CrowdAudio->SetVolumeMultiplier(CrowdLevel * CricketAudio::MixGain);
+	// Crowd: layered energy model (reaction + pre-delivery tension + micro-drop), ducked slightly
+	// under active commentary, reduced bed inside replays. Excitement mirrors the energy for the stands.
+	if (DPhase == EDeliveryPhase::Waiting || DPhase == EDeliveryPhase::RunUp)
+		CricketAudioDirector::PreDelivery(AudioDir, Match);
+	const bool bCommActive = CricketCommentaryDirector::IsSpeaking(CommDir, NowSfx);
+	if (CrowdAudio) CrowdAudio->SetVolumeMultiplier(CricketAudioDirector::TickCrowd(AudioDir, Dt, NowSfx, bCommActive, bReplay));
+	CrowdLevel = AudioDir.CrowdEnergy;
+	// Voiced commentary: the picked line once its moment has breathed, then the analyst's handoff.
+	CricketCommentaryDirector::Update(CommDir, NowSfx, BallsPlayed);
+	if (const FString Handoff = CricketCommentaryDirector::TakeHandoff(CommDir, NowSfx); !Handoff.IsEmpty())
+	{
+		Commentary = Handoff;
+		Say(Handoff, FString(), NowSfx);
+	}
+	if (VoiceWave && VoiceAt >= 0.f && NowSfx >= VoiceAt)
+	{
+		VoiceWave->ResetAudio(); // a new call cuts the last one off
+		VoiceWave->QueueAudio(reinterpret_cast<const uint8*>(VoicePending.GetData()), VoicePending.Num() * sizeof(int16));
+		VoiceAt = -1.f;
+	}
+	// Player vocals: the fielders' and batters' shouts on the director's timing hooks.
+	if (CricketAudioDirector::EVocal V = CricketAudioDirector::PollVocal(AudioDir, NowSfx); V != CricketAudioDirector::EVocal::None && VocalWave)
+	{
+		static const TCHAR* VocalNames[] = { TEXT("None"), TEXT("Howzat"), TEXT("Run"), TEXT("No"), TEXT("Wait"), TEXT("CatchCall"), TEXT("Celebrate"), TEXT("Frustrated") };
+		const TArray<int16> Pcm = LoadClip(FString::Printf(TEXT("Vocal/%s.pcm"), VocalNames[int32(V)]));
+		VocalWave->ResetAudio();
+		VocalWave->QueueAudio(reinterpret_cast<const uint8*>(Pcm.GetData()), Pcm.Num() * sizeof(int16));
+	}
 	if (CrowdWave && CrowdWave->GetAvailableAudioByteCount() < CricketAudio::SampleRate * 2)
 		CrowdWave->QueueAudio(reinterpret_cast<const uint8*>(CuePcm[int32(CricketAudio::ECue::Crowd)].GetData()), CuePcm[int32(CricketAudio::ECue::Crowd)].Num() * sizeof(int16));
 	const float Post = T - Result.ContactTime; // seconds after contact (or after passing the batter)
@@ -2186,99 +2971,217 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	}
 	// Otherwise the striker's own footwork (UpdatePoses) moves them.
 
-	// Camera: broadcast telephoto from behind the bowler, then pull wide and follow the ball after the shot.
-	const bool bFollow = bLive && !bReplay && T > Result.ContactTime + 0.15f && (Result.Contact.HasContact() || Result.Fielding.Fielder >= 0);
-	// Delivery shot: a long lens high in the stand behind the bowler, framing the striker and keeper about
-	// 11 m across so the batter reads large and the flight is compressed, as on a broadcast.
-	FVector WantLoc = bFollow ? ToWorld(FVector(PitchLength + 32.f, 0.f, 20.f)) : ToWorld(FVector(PitchLength + 62.f, 0.f, 12.f));
-	FVector LookAt = bFollow ? BallPos : ToWorld(FVector(0.5f, 0.f, 1.3f));
-	float WantFov = bFollow ? 42.f : 8.f;
-	// Director: cuts on the simulation's events. A camera beyond the rope watches a boundary come to it; a
-	// fielder's pickup or catch is seen from in front of them; once the ball is dead, a close-up of the bowler
-	// after a wicket, or of the striker otherwise, until the replay or the next ball. Any change of shot is a
-	// cut, except the delivery shot pulling out to follow the ball.
-	enum EShot { Delivery, Follow, Boundary, Fielding, CloseUp, Replay, SuperSlow, Review, Scorecard };
-	EShot Shot = bFollow ? Follow : Delivery;
+	// Buffer-posed replay: when the rolling buffer covers this replay angle, the actors take their
+	// RECORDED presented transforms (the actual event), over the analytic re-pose. Otherwise the
+	// analytic path below stands (same stored result data). The ball look-target follows the pose.
+	bBufferPose = false;
+	if (bReplay && !InReel() && ActivePackage.IsValid())
+	{
+		const int32 RA = ReplayAngle();
+		if (ActivePackage.Angles.IsValidIndex(RA)
+			&& ReplayBuffer.HasCoverage(ActivePackage.Angles[RA].StartTp, ActivePackage.Angles[RA].EndTp))
+		{
+			FVector BufBall;
+			TArray<FReplayActorPose> BufActors;
+			if (ReplayBuffer.SampleAt(T, BufBall, BufActors) && BufActors.Num() == ReplayCast.Num())
+			{
+				Ball->SetActorLocation(BufBall);
+				for (int32 I = 0; I < BufActors.Num(); ++I)
+					if (ReplayCast.IsValidIndex(I) && ReplayCast[I])
+						ReplayCast[I]->SetActorLocationAndRotation(BufActors[I].Position, BufActors[I].Rotation);
+				BallPos = BufBall;
+				bBufferPose = true;
+			}
+		}
+	}
+
+	// Camera: the broadcast director observes gameplay and chooses the shot. Geometry and timing come
+	// from CricketBroadcast (isolated, tested); this block only feeds it the current frame.
+	using namespace CricketBroadcast;
 	const FFieldingOutcome& Fld = Result.Fielding;
 	const float After = T - Result.ContactTime;
-	if (bFollow && Fld.Boundary > 0 && After > Fld.BoundaryTime - 0.8f)
+	FBroadcastFrame Frame;
+	Frame.BallPos = BallPos;
+	Frame.BallVel = BallVel;
+	Frame.BowlerPos = Bowler->GetActorLocation() + ToWorld(BowlerShift);
+	Frame.StrikerPos = Striker->GetActorLocation();
+	Frame.NonStrikerPos = NonStriker->GetActorLocation();
+	Frame.OffSign = Off;
+	Frame.ArmSign = Arm;
+	Frame.AfterContact = After;
+	Frame.BallT = T;
+	Frame.DeadTime = Result.DeadTime;
+	Frame.Dismissal = DPhase == EDeliveryPhase::DeadBall ? Result.Dismissal : EDismissal::None;
+	Frame.Boundary = Result.Fielding.Boundary;
+	Frame.bCaught = Result.Fielding.bCaught;
+	Frame.bCatchChance = Result.Fielding.bCatchChance;
+	Frame.bWicketThis = bWicketThis;
+	Frame.FieldTime = Result.Fielding.FieldTime;
+	Frame.BoundaryTime = Fld.Boundary > 0 ? Fld.BoundaryTime : -1.f;
+	if (Fielders.IsValidIndex(0)) { Frame.KeeperPos = Fielders[0]->GetActorLocation(); Frame.bHasKeeper = true; }
+	if (Fielders.IsValidIndex(Fld.Fielder) && Fld.Fielder >= 0 && !Ctx.Field[Fld.Fielder].bBowler)
 	{
-		// Beyond the rope where the ball crosses it, a little to one side so it does not fly into the lens, wide
-		// enough to take in the rope.
-		const FVector2D Centre(PitchCentre());
-		const FVector2D Out = (FVector2D(Result.BallAt(Result.ContactTime + Fld.BoundaryTime)) - Centre).GetSafeNormal();
-		Shot = Boundary;
-		WantLoc = ToWorld(FVector(Centre + Out * (BoundaryRadius + 6.f) + FVector2D(-Out.Y, Out.X) * 5.f, 2.5f));
-		LookAt = BallPos;
-		WantFov = 50.f;
+		Frame.FielderPos = Fielders[Fld.Fielder]->GetActorLocation();
+		Frame.bHasFielder = true;
 	}
-	else if (bFollow && Fld.Fielder > 0 && Fielders.IsValidIndex(Fld.Fielder) && After > Fld.FieldTime - 0.7f && After < Fld.FieldTime + 1.5f)
+	Frame.ContactPos = Result.Contact.ContactPos;
+	Frame.ExitVel = Result.Contact.ExitVel;
+	if (Fld.Boundary > 0)
 	{
-		// Fielders[0] is the keeper, whose takes the delivery shot already frames.
-		const FVector At = Fielders[Fld.Fielder]->GetActorLocation();
-		const FVector In = FVector(FVector2D(PitchCentre() * 100.f - At), 0.f).GetSafeNormal();
-		Shot = Fielding;
-		WantLoc = At + In * 900.f + FVector(0.f, 0.f, 120.f);
-		LookAt = At + FVector(0.f, 0.f, 40.f);
-		WantFov = 30.f;
+		Frame.bHasBoundaryCross = true;
+		Frame.BoundaryCrossPos = ToWorld(Result.BallAt(Result.ContactTime + Fld.BoundaryTime));
 	}
-	if (DPhase == EDeliveryPhase::DeadBall && PhaseTime > 0.7f)
+	// Look-ahead from the resolver's stored path (deterministic, spike-free): the camera frames where
+	// the ball is GOING, never by chasing it.
+	if (bLive && Result.BallPath.Num() > 1)
 	{
+		Frame.PredictedPos = ToWorld(Result.BallAt(FMath::Clamp(T + 0.3f, 0.f, Result.DeadTime)));
+		Frame.bHasPrediction = true;
+	}
+	// Post-contact class from the actual result; a boundary still travelling holds its follow shot
+	// until the rope is near, and a take holds wide until the ball is nearly there.
+	Frame.ShotClass = ClassifyShot(Result, Frame.Dismissal);
+	if (Frame.ShotClass == EShotClass::BoundaryTrajectory && After < Fld.BoundaryTime - 0.8f)
+	{
+		const float Loft = Frame.ExitVel.Z;
+		Frame.ShotClass = Loft > 6.f ? EShotClass::LoftedOutfield : EShotClass::GroundOutfield;
+	}
+
+	// Broadcast phase: the dead ball keeps showing the ball story until the presentation settles
+	// (close-ups), the replay takes over, or a referral/review flow owns the screen.
+	const bool bSettledDead = DPhase == EDeliveryPhase::DeadBall && !bAwaitingThirdUmpire && !bReviewThis
+		&& PhaseTime > (bReplayThis ? ReplayDelay + ReplayTotalTime() : 0.7f);
+	FPhaseInput PhaseIn;
+	PhaseIn.bRunUp = DPhase == EDeliveryPhase::RunUp;
+	PhaseIn.bBallLive = DPhase == EDeliveryPhase::BallInPlay || (DPhase == EDeliveryPhase::DeadBall && !bSettledDead && !bReplay);
+	PhaseIn.bDead = bSettledDead;
+	PhaseIn.bReplaying = bReplay;
+	PhaseIn.BallT = T;
+	PhaseIn.ContactTime = Result.ContactTime;
+	PhaseIn.bHasContact = Result.Contact.HasContact();
+	PhaseIn.AfterContact = After;
+	PhaseIn.Dismissal = Frame.Dismissal;
+	PhaseIn.Boundary = Frame.Boundary;
+	PhaseIn.bCaught = false;
+	PhaseIn.bRunning = Result.Running.Attempted > 0;
+	PhaseIn.bWicketFallen = bWicketThis && bSettledDead;
+	const EBroadcastPhase BPhase = ResolvePhase(PhaseIn, BroadcastTuning);
+
+	EBroadcastShot Desired = SelectLiveShot(BPhase, Frame);
+	bool bForce = false;
+	if (bReplay)
+	{
+		// Replay direction: the package's angle, or the legacy two-angle fallback.
+		const int32 RA = ReplayAngle();
+		Desired = ActivePackage.Angles.IsValidIndex(RA) ? ActivePackage.Angles[RA].Shot
+			: (RA == 1 ? EBroadcastShot::ReplaySlowMo : EBroadcastShot::ReplayBeauty);
+		bForce = true; // every replay angle is an intentional cut
+	}
+	// Event windows from the resolver's actual times: the take punches in, the rope shot holds off.
+	const bool bTakeWindow = PhaseIn.bBallLive && Frame.bHasFielder && After > Frame.FieldTime - 0.7f && After < Frame.FieldTime + 1.5f
+		&& Frame.ShotClass != EShotClass::WicketEvent && Frame.ShotClass != EShotClass::BoundaryTrajectory
+		&& Frame.ShotClass != EShotClass::KeeperEdge && Frame.ShotClass != EShotClass::RunningPlay;
+	if (bTakeWindow) { Desired = EBroadcastShot::Catch; bForce = true; }
+	if (BPhase == EBroadcastPhase::Wicket || Desired == EBroadcastShot::Boundary) bForce = true;
+
+	// Flows that own the screen keep their exact established geometry (director only snaps to them).
+	EBroadcastShot FlowShot = Desired;
+	FVector FlowLoc = FVector::ZeroVector, FlowLook = FVector::ZeroVector;
+	float FlowFov = 0.f;
+	bool bFlow = false;
+	if (DPhase == EDeliveryPhase::DeadBall && PhaseTime > 0.7f && !bReplay && !bAwaitingThirdUmpire && !bReview && !bScorecard)
+	{
+		// Close-up of the bowler after a wicket, else the striker, until the replay or the next ball.
 		AStaticMeshActor* Who = bWicketThis ? Bowler : Striker;
 		const USkeletalMeshComponent* WhoBody = BodyOf(Who);
 		const FVector Head = WhoBody ? WhoBody->GetSocketLocation(TEXT("head")) : Who->GetActorLocation() + FVector(0.f, 0.f, 70.f);
-		// In front of them: the bowler faces back down the pitch, the striker toward the off side.
 		const FVector Front = bWicketThis ? FVector(-1.f, 0.3f * Arm, 0.f) : FVector(0.3f, Off, 0.15f);
-		Shot = CloseUp;
-		WantLoc = Head + Front.GetSafeNormal() * 800.f;
-		LookAt = Head - FVector(0.f, 0.f, 35.f); // the head above the banner
-		WantFov = 20.f;
-	}
-	if (bReplay)
-	{
-		Shot = Replay;
-		// Side-on from the off side at batter height (facing the stance, clear of the square-leg umpire):
-		// the stroke, then the ball's flight on a wider lens.
-		WantLoc = ToWorld(FVector(Result.Shot.ContactX() + 2.f, 38.f * Off, 2.2f));
-		LookAt = T < Result.ContactTime + 0.3f ? ToWorld(FVector(Result.Shot.ContactX(), 0.f, 1.f)) : BallPos;
-		WantFov = T < Result.ContactTime + 0.3f ? 12.f : 35.f;
-		if (ReplayAngle() == 1)
-		{
-			// From the main camera's place high behind the bowler (above the bowler and umpire), in close.
-			Shot = SuperSlow;
-			WantLoc = ToWorld(FVector(PitchLength + 62.f, 0.f, 12.f));
-			LookAt = ToWorld(FVector(Result.Shot.ContactX(), 0.f, 1.f));
-			WantFov = 3.f;
-		}
+		FlowShot = bWicketThis ? EBroadcastShot::WicketClose : EBroadcastShot::StandardDelivery;
+		FlowLoc = Head + Front.GetSafeNormal() * 800.f;
+		FlowLook = Head - FVector(0.f, 0.f, 35.f); // the head above the banner
+		FlowFov = BroadcastTuning.CloseUpFOV;
+		bFlow = true;
+		bForce = true;
 	}
 	if (bAwaitingThirdUmpire)
 	{
 		// Square-on to the popping crease at the broken wicket, then from down the pitch back at it (behind the
 		// stumps, the umpire and the fielder taking the ball stand in the way).
-		Shot = ThirdUmpireAngle() == 0 ? Replay : SuperSlow;
+		FlowShot = ThirdUmpireAngle() == 0 ? EBroadcastShot::ReplayBeauty : EBroadcastShot::ReplaySlowMo;
 		const bool bNear = Result.bBrokenAtStrikerEnd;
 		const float StumpsX = bNear ? 0.f : PitchLength, Toward = bNear ? 1.f : -1.f, CreaseX = StumpsX + Toward * PoppingCrease;
-		WantLoc = ToWorld(ThirdUmpireAngle() == 0 ? FVector(CreaseX, 22.f * Off, 1.2f) : FVector(CreaseX + Toward * 14.f, 0.f, 2.5f));
-		LookAt = ToWorld(FVector(ThirdUmpireAngle() == 0 ? CreaseX : CreaseX - Toward * 0.5f, 0.f, 0.5f));
-		WantFov = ThirdUmpireAngle() == 0 ? 14.f : 20.f;
+		FlowLoc = ToWorld(ThirdUmpireAngle() == 0 ? FVector(CreaseX, 22.f * Off, 1.2f) : FVector(CreaseX + Toward * 14.f, 0.f, 2.5f));
+		FlowLook = ToWorld(FVector(ThirdUmpireAngle() == 0 ? CreaseX : CreaseX - Toward * 0.5f, 0.f, 0.5f));
+		FlowFov = ThirdUmpireAngle() == 0 ? 14.f : 20.f;
+		bFlow = true;
+		bForce = true;
 	}
 	if (bReview)
 	{
 		// Ball tracking: from above the bowler's stumps while the path comes down the pitch, then round to the
 		// off side of the striker's stumps, to see from the pad on to them.
-		Shot = Review;
+		FlowShot = EBroadcastShot::Review;
 		const bool bClose = ReviewProgress() > 0.4f;
-		WantLoc = ToWorld(bClose ? FVector(4.5f, 2.5f * Off, 1.6f) : FVector(PitchLength + 5.f, 0.f, 3.f));
-		LookAt = ToWorld(bClose ? FVector(0.6f, 0.f, 0.35f) : FVector(2.f, 0.f, 0.5f));
-		WantFov = bClose ? 32.f : 24.f;
+		FlowLoc = ToWorld(bClose ? FVector(4.5f, 2.5f * Off, 1.6f) : FVector(PitchLength + 5.f, 0.f, 3.f));
+		FlowLook = ToWorld(bClose ? FVector(0.6f, 0.f, 0.35f) : FVector(2.f, 0.f, 0.5f));
+		FlowFov = bClose ? 32.f : 24.f;
+		bFlow = true;
+		bForce = true;
 	}
 	if (bScorecard)
 	{
 		// High in the square-leg stand, across the square to the far stands.
-		Shot = Scorecard;
-		WantLoc = ToWorld(FVector(0.5f * PitchLength, -80.f, 26.f));
-		LookAt = ToWorld(FVector(0.5f * PitchLength, 30.f, 4.f));
-		WantFov = 70.f;
+		FlowShot = EBroadcastShot::Scorecard;
+		FlowLoc = ToWorld(FVector(0.5f * PitchLength, -80.f, 26.f));
+		FlowLook = ToWorld(FVector(0.5f * PitchLength, 30.f, 4.f));
+		FlowFov = 70.f;
+		bFlow = true;
+		bForce = true;
+	}
+	if (bFlow) Desired = FlowShot;
+
+	bool bDirectorCut = false;
+	const EBroadcastShot ActiveShot = BroadcastDirector.Update(Dt, Desired, bForce, BroadcastTuning, bDirectorCut);
+	LastSolvedShot = ActiveShot;
+
+	FLiveCameraSolution Sol;
+	if (bFlow)
+	{
+		Sol.Shot = ActiveShot;
+		Sol.Location = FlowLoc;
+		Sol.LookAt = FlowLook;
+		Sol.FOV = FlowFov;
+		Sol.Transition = ECameraTransition::Cut;
+	}
+	else
+	{
+		Sol = SolveShotGeometry(ActiveShot, Frame, BroadcastTuning);
+	}
+	FVector WantLoc = Sol.Location;
+	FVector LookAt = Sol.LookAt;
+	float WantFov = Sol.FOV;
+	float DeliveryU = -1.f; // delivery clock, shown in the camera debug overlay for calibration
+	if (!bFlow && ActiveShot == EBroadcastShot::StandardDelivery && BPhase != EBroadcastPhase::BallDead)
+	{
+		// The delivery shot is a lock-off with an operator's zoom: the position never chases; the lens
+		// and tilt ride the Cricket 24 curve on the delivery clock (run-up to release to the batter),
+		// and the weighted bowler/release/ball/batter target only nudges the pan.
+		const bool bPreRelease = DPhase == EDeliveryPhase::Waiting || DPhase == EDeliveryPhase::RunUp;
+		const float RunUpU = DPhase == EDeliveryPhase::RunUp ? PhaseTime / FMath::Max(PhaseTime - TimeToRelease(T, false), 0.05f)
+			: bReplay ? 1.f + T / FMath::Max(RunUpSeconds, 0.4f) : 0.f;
+		const float U = DeliveryClock(RunUpU, bPreRelease ? -1.f : T, FMath::Max(Result.ContactTime, 0.05f));
+		const FVector Pan = WeightedDeliveryTarget(Frame, BroadcastTuning.Delivery, FMath::Clamp(U - 1.f, 0.f, 1.f));
+		const FLiveCameraSolution D = SolveDeliveryShot(BroadcastTuning.Delivery, U, 16.f / 9.f, Arm, Pan);
+		DeliveryU = U;
+		WantLoc = D.Location;
+		LookAt = D.LookAt;
+		WantFov = D.FOV;
+	}
+	if (!bFlow && ActiveShot == EBroadcastShot::ReplayBeauty && T > Result.ContactTime + 0.3f)
+	{
+		// The beauty angle opens up to the flight once the stroke has read.
+		LookAt = BallPos;
+		WantFov = BroadcastTuning.ReplayWideFOV;
 	}
 	if (bDevCamFielder && bLive && Fielders.IsValidIndex(Result.Fielding.Fielder) && !Ctx.Field[Result.Fielding.Fielder].bBowler)
 	{
@@ -2299,15 +3202,34 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 		WantFov = DevCam[6];
 		bCutCamera = true;
 	}
-	if (Shot != LastShot && !(LastShot == Delivery && Shot == Follow)) bCutCamera = true;
-	LastShot = Shot;
-	const float K = FMath::Clamp(Dt * 3.f, 0.f, 1.f);
+	// Tuned lenses are 16:9: any other screen keeps the same vertical view (a phone sees wider, not closer).
+	WantFov = AspectFOV(WantFov, ViewAspect);
+	// Cut or blend (§18): a cut snaps (with a one-off occlusion pull-in); a blend rides the smoother.
+	// The director already decided cut-vs-blend from broadcast grammar; bCutCamera forces it.
+	const bool bCut = bCutCamera || bDirectorCut;
 	UCameraComponent* Cam = Camera->GetCameraComponent();
-	const FVector Loc = bCutCamera ? WantLoc : FMath::Lerp(Camera->GetActorLocation(), WantLoc, bViewSet ? K : 1.f);
-	const FRotator Want = (LookAt - Loc).Rotation();
-	Camera->SetActorLocationAndRotation(Loc, bCutCamera ? Want : FMath::RInterpTo(Camera->GetActorRotation(), Want, Dt, bFollow ? 5.f : 8.f));
-	Cam->SetFieldOfView(bCutCamera ? WantFov : FMath::Lerp(Cam->FieldOfView, WantFov, K));
+	if (bCut)
+	{
+		WantLoc = ApplyOcclusion(GetWorld(), LookAt, WantLoc);
+		const FQuat WantRot = (LookAt - WantLoc).GetSafeNormal().Rotation().Quaternion();
+		BroadcastSmoother.Snap(WantLoc, WantRot, WantFov);
+		Camera->SetActorLocationAndRotation(WantLoc, WantRot.Rotator());
+		Cam->SetFieldOfView(WantFov);
+	}
+	else
+	{
+		const bool bDeliveryHold = ActiveShot == EBroadcastShot::StandardDelivery;
+		const float PosLambda = bDeliveryHold ? 1.f / FMath::Max(BroadcastTuning.Delivery.TrackingLag, 0.03f) : BroadcastTuning.Delivery.PositionDamping;
+		const float RotLambda = bDeliveryHold ? BroadcastTuning.Delivery.RotationDamping : 5.f;
+		BroadcastSmoother.Update(WantLoc, LookAt, WantFov, Dt, PosLambda, RotLambda,
+			BroadcastTuning.MaxAngularVelocity, BroadcastTuning.LookDeadZoneCm, bDeliveryHold ? 3.f * RotLambda : -1.f); // the zoom rides its curve closely
+		Camera->SetActorLocationAndRotation(BroadcastSmoother.Location, BroadcastSmoother.Rotation.Rotator());
+		Cam->SetFieldOfView(BroadcastSmoother.FOV);
+	}
 	bCutCamera = false;
+	LastShot = int32(ActiveShot);
+	LastCameraDebug = FString::Printf(TEXT("%s %s %.2fs fov %.1f"), PhaseName(BPhase), ShotName(ActiveShot), BroadcastDirector.ShotTime, Cam->FieldOfView);
+	if (DeliveryU >= 0.f) LastCameraDebug += FString::Printf(TEXT(" U %.2f"), DeliveryU);
 	UpdateFigures(Dt);
 	UpdatePoses(T, bLive, Post, Off, Arm);
 	StrikerPosed = Striker->GetActorTransform();
@@ -2327,4 +3249,10 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 		}
 		if (Result.PitchTime >= 0.f) DrawDebugSphere(GetWorld(), ToWorld(Result.PitchPos), 8.f, 8, FColor::Red);
 	}
+
+	// Rolling replay capture (§22): every presented live frame, keyed by ball time. Bounded and
+	// fixed-rate (see FCricketReplayBuffer): no per-frame allocation once full. Never recorded during
+	// replays, referrals or reviews: the buffer must hold the one true live pass.
+	const bool bRecordReplay = bLive && !bReplay && !bAwaitingReview && !bAwaitingThirdUmpire && !bReviewThis && !InReel();
+	if (bRecordReplay) RecordReplayFrame(T, Ball->GetActorLocation(), BallVel);
 }
