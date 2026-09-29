@@ -7,6 +7,7 @@
 #include "IPLSeason.h"
 #include "IPLSeasonSave.h"
 #include "AuctionTypes.h"
+#include "RealTeams.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/HorizontalBox.h"
@@ -46,6 +47,7 @@ namespace
 
 	UWidget* SeasonHub(UFrontendRoot* Root);
 	UWidget* TeamSelect(UFrontendRoot* Root);
+	UWidget* TossPanel(UFrontendRoot* Root);
 
 	// A tappable tile in the football-game manner: a brand gradient face (gold, royal, ember or night), optionally a
 	// photo plate laid over it, a figure breaking the frame on the right, a shade from the left so the copy reads, a
@@ -186,7 +188,7 @@ namespace
 		Add(Block, Title, FMargin(0.f, -18.f, 0.f, -14.f));
 		Add(Block, Text(T, TEXT("Six balls. Three batters. One winner."), 22, InkDim(), EWeight::Medium));
 		Add(Copy, Fit(T, Block), FMargin(0.f), 0.f, HAlign_Left);
-		UWidget* Feature = Tile(T, Banner, Copy, [Root]() { Root->ShowTab(EFrontendTab::MatchSetup); });
+		UWidget* Feature = Tile(T, Banner, Copy, [Root]() { Root->SelectMatchOvers(1); });
 		Add(Right, Feature, FMargin(0.f, 0.f, 0.f, S2), 1.5f);
 		Animate(Feature, EMotion::Enter, 0.f);
 
@@ -333,50 +335,239 @@ namespace
 		return Page;
 	}
 
-	UWidget* MatchSetup(UFrontendRoot* Root)
+	FString FormatName(int32 Overs)
+	{
+		return Overs == 1 ? FString(TEXT("SUPER OVER")) : FString::Printf(TEXT("%d OVERS"), Overs);
+	}
+
+	// Match setup, step 1: international cricket or the IPL.
+	UWidget* CompetitionPick(UFrontendRoot* Root)
+	{
+		UWidgetTree* T = Root->WidgetTree;
+		UVerticalBox* Page = VBox(T);
+		UHorizontalBox* Top = HBox(T);
+		Add(Top, CTA(T, TEXT("‹  BACK"), EButtonKind::Secondary, [Root]() { Root->ShowTab(EFrontendTab::MatchFormat); }, 52.f),
+			FMargin(0.f), 0.f, VAlign_Center);
+		Add(Top, Text(T, FString::Printf(TEXT("%s  /  CHOOSE YOUR CRICKET"), *FormatName(Root->MatchOvers())), 18, GoldHi(), EWeight::Bold, 300),
+			FMargin(S3, 0.f, 0.f, 0.f), 1.f, VAlign_Center);
+		Add(Page, Top, FMargin(0.f, 0.f, 0.f, S3));
+		struct FChoice { ECompetition Competition; const TCHAR* Eyebrow; const TCHAR* Title; const TCHAR* Line; const TCHAR* Face; const TCHAR* Plate; };
+		const FChoice Choices[] = {
+			{ ECompetition::International, TEXT("ICC full members"), TEXT("International"),
+				TEXT("Twelve nations with their real squads and playing XIs."), RoyalFace, StadiumArt },
+			{ ECompetition::IPL, TEXT("Indian Premier League"), TEXT("IPL"),
+				TEXT("Ten franchises with their real 2026 squads."), EmberFace, FranchiseArt } };
+		UHorizontalBox* Cards = HBox(T);
+		for (const FChoice& Choice : Choices)
+		{
+			FTileLook Look;
+			Look.Face = Choice.Face;
+			Look.Plate = Choice.Plate;
+			Look.PlateTint = Hex(0xFFFFFF, 0.5f);
+			Look.Accent = Gold();
+			const uint8 Pick = uint8(Choice.Competition);
+			UWidget* Card = ModeCard(T, Look, Choice.Eyebrow, Choice.Title, Choice.Line, true, [Root, Pick]() { Root->ChooseCompetition(Pick); },
+				CTA(T, TEXT("SELECT"), EButtonKind::Primary, [Root, Pick]() { Root->ChooseCompetition(Pick); }, 60.f));
+			Add(Cards, Card, FMargin(0.f, 0.f, S2, 0.f), 1.f);
+			Animate(Card, EMotion::Enter, 0.07f * Cards->GetChildrenCount());
+		}
+		Add(Page, Cards, FMargin(0.f), 1.f);
+		return Page;
+	}
+
+	// A team carousel: its colour, its name, and arrows through the competition's teams.
+	UWidget* TeamPicker(UWidgetTree* T, UFrontendRoot* Root, const FRealTeam& Team, const FString& Caption, bool bOpponent)
+	{
+		UVerticalBox* Col = VBox(T);
+		Add(Col, Text(T, Caption, 15, InkDim(), EWeight::Bold, 220), FMargin(0.f, 0.f, 0.f, S1));
+		UHorizontalBox* Pick = HBox(T);
+		Add(Pick, CTA(T, TEXT("‹"), EButtonKind::Secondary, [Root, bOpponent]() { Root->StepQuickTeam(bOpponent, -1); }, 56.f),
+			FMargin(0.f, 0.f, S2, 0.f));
+		UHorizontalBox* Label = HBox(T);
+		Add(Label, Sized(T, Box(T, Flat(Team.Primary)), 8.f, 40.f), FMargin(0.f, 0.f, S1, 0.f), 0.f, VAlign_Center);
+		Add(Label, Fit(T, Text(T, Team.Name.ToUpper(), 26, Ink(), EWeight::Black, 20)), FMargin(0.f), 1.f, VAlign_Center);
+		Add(Pick, Label, FMargin(0.f, 0.f, S2, 0.f), 1.f, VAlign_Center);
+		Add(Pick, CTA(T, TEXT("›"), EButtonKind::Secondary, [Root, bOpponent]() { Root->StepQuickTeam(bOpponent, 1); }, 56.f));
+		Add(Col, Pick);
+		return Col;
+	}
+
+	// Long names (the IPL's) give way to the team code on the big plates.
+	FString PlateName(const FRealTeam& Team)
+	{
+		return Team.Name.Len() > 16 ? Team.Code : Team.Name;
+	}
+
+	// Match setup, step 2: the user's team and the opponent, the XI, the AI and the ground; then the toss.
+	UWidget* QuickTeams(UFrontendRoot* Root)
 	{
 		UWidgetTree* T = Root->WidgetTree;
 		UFrontendSettingsSave* S = UFrontendSettingsSave::Get();
+		const ECompetition C = Root->QuickCompetition();
+		const TArray<FRealTeam>& All = RealTeams::Teams(C);
+		if (All.Num() < 2) return Space(T, 0.f, 0.f);
+		const FRealTeam& Mine = All[FMath::Clamp(S->QuickTeam, 0, All.Num() - 1)];
+		const FRealTeam& Theirs = All[FMath::Clamp(S->QuickOpponent, 0, All.Num() - 1)];
 		UOverlay* Page = Stack(T);
 		Add(Page, Versus(T, 700.f), HAlign_Fill, VAlign_Top, FMargin(0.f, 0.f, 0.f, 0.f));
-		Add(Page, CTA(T, TEXT("‹  BACK"), EButtonKind::Secondary, [Root]() { Root->ShowTab(EFrontendTab::MatchFormat); }, 52.f),
+		Add(Page, CTA(T, TEXT("‹  BACK"), EButtonKind::Secondary, [Root]() { Root->ShowQuickStep(EQuickStep::Competition); }, 52.f),
 			HAlign_Left, VAlign_Top);
-		Add(Page, Text(T, TEXT("MATCH SETUP"), 18, GoldHi(), EWeight::Bold, 300), HAlign_Center, VAlign_Top, FMargin(0.f, 14.f));
+		Add(Page, Text(T, FString::Printf(TEXT("%s  /  %s"), *FormatName(Root->MatchOvers()), RealTeams::CompetitionName(C)), 18, GoldHi(),
+			EWeight::Bold, 300), HAlign_Center, VAlign_Top, FMargin(0.f, 14.f));
 
 		UHorizontalBox* Plates = HBox(T);
-		Add(Plates, NamePlate(T, TEXT("HOME XI"), TEXT("You  /  Bat first"), Blue(), false), FMargin(0.f), 1.f, VAlign_Bottom);
-		Add(Plates, NamePlate(T, TEXT("AWAY XI"), TEXT("AI  /  Bowl first"), Red(), true), FMargin(0.f), 1.f, VAlign_Bottom);
+		Add(Plates, NamePlate(T, PlateName(Mine), TEXT("You"), Mine.Primary, false), FMargin(0.f), 1.f, VAlign_Bottom);
+		Add(Plates, NamePlate(T, PlateName(Theirs), TEXT("Opponent  /  AI"), Theirs.Primary, true), FMargin(0.f), 1.f, VAlign_Bottom);
 
 		UVerticalBox* Col = VBox(T);
 		Add(Col, Plates, FMargin(S3, 0.f, S3, S3));
 
-		UHorizontalBox* Controls = HBox(T);
+		UVerticalBox* Controls = VBox(T);
+		UHorizontalBox* Pickers = HBox(T);
+		Add(Pickers, TeamPicker(T, Root, Mine, TEXT("YOUR TEAM"), false), FMargin(0.f, 0.f, S4, 0.f), 1.f, VAlign_Center);
+		Add(Pickers, TeamPicker(T, Root, Theirs, TEXT("OPPONENT"), true), FMargin(0.f), 1.f, VAlign_Center);
+		Add(Controls, Pickers, FMargin(0.f, 0.f, 0.f, S3));
+
+		UHorizontalBox* Row = HBox(T);
+		UVerticalBox* XIBox = VBox(T);
+		Add(XIBox, Text(T, TEXT("PLAYING XI"), 15, InkDim(), EWeight::Bold, 220), FMargin(0.f, 0.f, 0.f, S1));
+		const bool bOwnXI = Root->QuickUserXI().BattingOrder != RealTeams::DefaultXI(C, S->QuickTeam).BattingOrder;
+		Add(XIBox, CTA(T, bOwnXI ? TEXT("YOUR XI  ›") : TEXT("REAL XI  ›"), EButtonKind::Secondary,
+			[Root]() { Root->ShowQuickStep(EQuickStep::PlayingXI); }, 56.f), FMargin(0.f), 0.f, HAlign_Left);
+		Add(Row, XIBox, FMargin(0.f, 0.f, S4, 0.f), 0.f, VAlign_Center);
 		UVerticalBox* Difficulty = VBox(T);
 		Add(Difficulty, Text(T, TEXT("AI DIFFICULTY"), 15, InkDim(), EWeight::Bold, 220), FMargin(0.f, 0.f, 0.f, S1));
 		Add(Difficulty, Segmented(T, FrontendData::DifficultyNames(), FMath::Clamp(S->Difficulty, 0, 3),
 			[S](int32 I) { S->Difficulty = I; S->Persist(); }));
-		Add(Controls, Difficulty, FMargin(0.f, 0.f, S4, 0.f), 1.2f, VAlign_Center);
+		Add(Row, Difficulty, FMargin(0.f, 0.f, S4, 0.f), 1.2f, VAlign_Center);
 		UVerticalBox* Venue = VBox(T);
 		Add(Venue, Text(T, TEXT("VENUE"), 15, InkDim(), EWeight::Bold, 220), FMargin(0.f, 0.f, 0.f, S1));
 		const TArray<FString> Venues = FrontendData::VenueNames();
 		UTextBlock* VenueName = Text(T, Venues[FMath::Clamp(S->Venue + 1, 0, Venues.Num() - 1)].ToUpper(), 24, Ink(), EWeight::Black, 40);
-		UHorizontalBox* Pick = HBox(T);
-		Add(Pick, CTA(T, TEXT("‹"), EButtonKind::Secondary, [S, VenueName, Venues]() {
+		UHorizontalBox* Ground = HBox(T);
+		Add(Ground, CTA(T, TEXT("‹"), EButtonKind::Secondary, [S, VenueName, Venues]() {
 			S->Venue = (S->Venue + Venues.Num()) % Venues.Num() - 1;
 			VenueName->SetText(FText::FromString(Venues[S->Venue + 1].ToUpper())); S->Persist();
 		}, 56.f), FMargin(0.f, 0.f, S2, 0.f));
-		Add(Pick, VenueName, FMargin(0.f, 0.f, S2, 0.f), 1.f, VAlign_Center);
-		Add(Pick, CTA(T, TEXT("›"), EButtonKind::Secondary, [S, VenueName, Venues]() {
+		Add(Ground, VenueName, FMargin(0.f, 0.f, S2, 0.f), 1.f, VAlign_Center);
+		Add(Ground, CTA(T, TEXT("›"), EButtonKind::Secondary, [S, VenueName, Venues]() {
 			S->Venue = (S->Venue + 2) % Venues.Num() - 1;
 			VenueName->SetText(FText::FromString(Venues[S->Venue + 1].ToUpper())); S->Persist();
 		}, 56.f));
-		Add(Venue, Pick);
-		Add(Controls, Venue, FMargin(0.f, 0.f, S4, 0.f), 0.8f, VAlign_Center);
-		Add(Controls, CTA(T, TEXT("START MATCH"), EButtonKind::Primary, [Root]() { Root->StartSuperOver(); }, 76.f),
+		Add(Venue, Ground);
+		Add(Row, Venue, FMargin(0.f, 0.f, S4, 0.f), 0.8f, VAlign_Center);
+		Add(Row, CTA(T, TEXT("TOSS  ›"), EButtonKind::Primary, [Root]() { Root->BeginToss(false); }, 76.f),
 			FMargin(S2, 0.f, S2, 0.f), 0.f, VAlign_Bottom);
+		Add(Controls, Row);
 		Add(Col, Box(T, Rounded(Glass(), 4.f, Line()), FMargin(S4, S3), Controls));
 		Add(Page, Col, HAlign_Fill, VAlign_Bottom);
 		return Page;
+	}
+
+	// Match setup, step 3: the user's playing XI, tapped in batting order from their real squad.
+	UWidget* QuickXI(UFrontendRoot* Root)
+	{
+		UWidgetTree* T = Root->WidgetTree;
+		const ECompetition C = Root->QuickCompetition();
+		const TArray<FRealTeam>& All = RealTeams::Teams(C);
+		const int32 Mine = UFrontendSettingsSave::Get()->QuickTeam;
+		if (!All.IsValidIndex(Mine)) return Space(T, 0.f, 0.f);
+		const FRealTeam& Team = All[Mine];
+		const TArray<FAuctionPlayer>& Players = RealTeams::Players(C);
+		UVerticalBox* Page = VBox(T);
+		UHorizontalBox* Top = HBox(T);
+		Add(Top, CTA(T, TEXT("‹  TEAMS"), EButtonKind::Secondary, [Root]() { Root->ShowQuickStep(EQuickStep::Teams); }, 52.f),
+			FMargin(0.f), 0.f, VAlign_Center);
+		Add(Top, Space(T, 0.f, 0.f), FMargin(0.f), 1.f);
+		Add(Top, CTA(T, TEXT("REAL XI"), EButtonKind::Secondary, [Root]() { Root->ResetQuickXI(); }, 52.f), FMargin(S2, 0.f, 0.f, 0.f), 0.f, VAlign_Center);
+		if (Root->QuickXIOrder.Num() == IPLSeason::PlayingXI)
+			Add(Top, CTA(T, TEXT("DONE  ›"), EButtonKind::Primary, [Root]() { Root->ShowQuickStep(EQuickStep::Teams); }, 52.f),
+				FMargin(S2, 0.f, 0.f, 0.f), 0.f, VAlign_Center);
+		Add(Page, Top, FMargin(0.f, 0.f, 0.f, S2));
+		Add(Page, Text(T, FString::Printf(TEXT("%s  PLAYING XI"), *Team.Name.ToUpper()), 40, Ink(), EWeight::Black, 20));
+		Add(Page, Text(T, FString::Printf(TEXT("TAP 11 IN BATTING ORDER, FIRST TWO OPEN  —  %d / 11"), Root->QuickXIOrder.Num()),
+			17, GoldHi(), EWeight::Bold, 200), FMargin(0.f, 0.f, 0.f, S2));
+		UScrollBox* List = T->ConstructWidget<UScrollBox>();
+		List->SetScrollBarVisibility(ESlateVisibility::Collapsed);
+		List->SetConsumeMouseWheel(EConsumeMouseWheel::WhenScrollingPossible);
+		for (int32 Id : Team.Squad)
+		{
+			if (!Players.IsValidIndex(Id)) continue;
+			const FAuctionPlayer& P = Players[Id];
+			const int32 PickPos = Root->QuickXIOrder.Find(Id);
+			const bool bPicked = PickPos != INDEX_NONE;
+			UHorizontalBox* Row = HBox(T);
+			Add(Row, Text(T, bPicked ? FString::Printf(TEXT("%02d"), PickPos + 1) : TEXT("--"), 20,
+				bPicked ? GoldHi() : InkFaint(), EWeight::Black, 60), FMargin(0.f), 0.35f, VAlign_Center);
+			Add(Row, Text(T, Id == Team.Captain ? P.Name + TEXT("  (c)") : P.Name, 20, Ink(), EWeight::Bold, 40), FMargin(0.f), 1.f, VAlign_Center);
+			Add(Row, Text(T, FString(AuctionRules::RoleCode(P.Role)), 16, InkDim(), EWeight::Bold, 100), FMargin(0.f), 0.4f, VAlign_Center);
+			Add(Row, Text(T, P.bLeftBat ? TEXT("LHB") : TEXT("RHB"), 16, InkDim(), EWeight::Bold, 100), FMargin(0.f), 0.4f, VAlign_Center);
+			Add(Row, Text(T, FString::Printf(TEXT("OVR %d"), P.Overall()), 16, InkDim(), EWeight::Bold, 60), FMargin(0.f), 0.5f, VAlign_Center);
+			UWidget* Card = Box(T, Rounded(Glass(), 4.f, bPicked ? Gold() : Line()), FMargin(S2, S1), Row);
+			List->AddChild(Button(T, Card, EButtonKind::Quiet, [Root, Id]() { Root->ToggleQuickXIPlayer(Id); }, 4.f));
+		}
+		Add(Page, List, FMargin(0.f), 1.f);
+		return Page;
+	}
+
+	// The toss, before every match the user plays: call it, then bat or bowl (or hear what the other captain chose).
+	UWidget* TossPanel(UFrontendRoot* Root)
+	{
+		UWidgetTree* T = Root->WidgetTree;
+		FString Mine, Theirs;
+		Root->TossTeams(Mine, Theirs);
+		UOverlay* Page = Stack(T);
+		Add(Page, CTA(T, TEXT("‹  BACK"), EButtonKind::Secondary, [Root]() { Root->Back(); }, 52.f), HAlign_Left, VAlign_Top);
+		UVerticalBox* Col = VBox(T);
+		Add(Col, Eyebrow(T, TEXT("BEFORE THE FIRST BALL"), Gold()), FMargin(0.f, 0.f, 0.f, S1), 0.f, HAlign_Center);
+		Add(Col, Text(T, TEXT("THE TOSS"), 72, Ink(), EWeight::Black, 20), FMargin(0.f, 0.f, 0.f, S1), 0.f, HAlign_Center);
+		Add(Col, Text(T, FString::Printf(TEXT("%s  VS  %s"), *Mine.ToUpper(), *Theirs.ToUpper()), 22, InkDim(), EWeight::Bold, 200),
+			FMargin(0.f, 0.f, 0.f, S3), 0.f, HAlign_Center);
+		// The coin, blank until it lands.
+		UOverlay* Coin = Stack(T);
+		Add(Coin, Box(T, Rounded(Gold(), RPill, GoldHi(), 4.f)));
+		Add(Coin, Text(T, Root->TossStage == 0 ? TEXT("?") : Root->bTossHeads ? TEXT("H") : TEXT("T"), 64, GoldInk(), EWeight::Black),
+			HAlign_Center, VAlign_Center);
+		UWidget* CoinFace = Sized(T, Coin, 140.f, 140.f);
+		Add(Col, CoinFace, FMargin(0.f, 0.f, 0.f, S3), 0.f, HAlign_Center);
+		if (Root->TossStage > 0) Animate(CoinFace, EMotion::Enter, 0.f);
+		const TCHAR* Side = Root->bTossHeads ? TEXT("heads") : TEXT("tails");
+		FString Say;
+		UHorizontalBox* Actions = HBox(T);
+		if (Root->TossStage == 0)
+		{
+			Say = FString::Printf(TEXT("%s, call it."), *Mine);
+			Add(Actions, CTA(T, TEXT("HEADS"), EButtonKind::Primary, [Root]() { Root->CallToss(true); }, 64.f), FMargin(0.f, 0.f, S2, 0.f));
+			Add(Actions, CTA(T, TEXT("TAILS"), EButtonKind::Primary, [Root]() { Root->CallToss(false); }, 64.f));
+		}
+		else if (Root->TossStage == 1)
+		{
+			Say = FString::Printf(TEXT("It's %s. %s won the toss: bat or bowl?"), Side, *Mine);
+			Add(Actions, CTA(T, TEXT("BAT FIRST"), EButtonKind::Primary, [Root]() { Root->ElectToBat(true); }, 64.f), FMargin(0.f, 0.f, S2, 0.f));
+			Add(Actions, CTA(T, TEXT("BOWL FIRST"), EButtonKind::Primary, [Root]() { Root->ElectToBat(false); }, 64.f));
+		}
+		else
+		{
+			const bool bWinnerBats = Root->bUserWonToss == Root->bUserBatsFirst;
+			Say = FString::Printf(TEXT("It's %s. %s won the toss and chose to %s first."), Side, Root->bUserWonToss ? *Mine : *Theirs,
+				bWinnerBats ? TEXT("bat") : TEXT("bowl"));
+			Add(Actions, CTA(T, TEXT("START MATCH  ›"), EButtonKind::Primary, [Root]() { Root->ConfirmToss(); }, 72.f));
+		}
+		Add(Col, Text(T, Say, 24, Ink(), EWeight::Bold), FMargin(0.f, 0.f, 0.f, S3), 0.f, HAlign_Center);
+		Add(Col, Actions, FMargin(0.f), 0.f, HAlign_Center);
+		Add(Page, Box(T, Rounded(Glass(), 4.f, Line()), FMargin(S5, S4), Col), HAlign_Center, VAlign_Center);
+		return Page;
+	}
+
+	UWidget* MatchSetup(UFrontendRoot* Root)
+	{
+		switch (Root->QuickStep)
+		{
+		case EQuickStep::Competition: return CompetitionPick(Root);
+		case EQuickStep::PlayingXI: return QuickXI(Root);
+		case EQuickStep::Toss: return TossPanel(Root);
+		default: return QuickTeams(Root);
+		}
 	}
 
 	UWidget* Franchise(UFrontendRoot* Root)
@@ -562,6 +753,7 @@ namespace
 			return Page;
 		}
 		if (Root->IPLView == 1) return TeamSelect(Root);
+		if (Root->IPLView == 2) return TossPanel(Root);
 		const FIPLSeason& Season = Save->Season;
 		const int32 User = Season.UserTeam;
 
@@ -729,7 +921,7 @@ namespace
 
 		Add(Page, Space(T, 0.f, S2));
 		if (Root->IPLXIOrder.Num() == IPLSeason::PlayingXI)
-			Add(Page, CTA(T, TEXT("START MATCH"), EButtonKind::Primary, [Root]() { Root->StartIPLMatch(); }, 68.f),
+			Add(Page, CTA(T, TEXT("TOSS  ›"), EButtonKind::Primary, [Root]() { Root->BeginToss(true); }, 68.f),
 				FMargin(0.f), 0.f, HAlign_Left);
 		else
 			Add(Page, Text(T, FString::Printf(TEXT("PICK 11  —  %d / 11"), Root->IPLXIOrder.Num()), 20, InkDim(), EWeight::Bold, 100));

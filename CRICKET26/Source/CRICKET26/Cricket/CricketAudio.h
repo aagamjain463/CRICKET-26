@@ -62,6 +62,8 @@ namespace CricketAudio
 	enum class EMixBus : uint8 { Master, Commentary, Crowd, FieldSfx, BatBall, PlayerVocal, Ambience, Ui, Music, Count };
 	/** Static bus trim, linear gain. Commentary and impacts sit above the bed; ambience below it. */
 	float BusTrim(EMixBus Bus);
+	/** The match's voiced commentary above its bus trim (x1.2, about +1.6 dB), so the voice sits clearly over the crowd. */
+	constexpr float CommentaryLift = 1.2f;
 	/** Crowd ducking while voiced commentary is active: slight, never a mute (0..1 multiplier). */
 	constexpr float CommentaryDuck = 0.8f;
 	/** Crowd scale inside action replays: reduced bed, impact emphasised. */

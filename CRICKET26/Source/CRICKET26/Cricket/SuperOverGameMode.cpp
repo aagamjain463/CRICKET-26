@@ -1008,8 +1008,9 @@ void ASuperOverGameMode::SetupAudio()
 	Channel(CrowdWave, CrowdAudio);
 	Channel(VoiceWave, VoiceAudio);
 	Channel(VocalWave, VocalAudio);
-	// Same make-up gain as the field channel: at unity the voice sat level with the crowd bed (-26 dB RMS).
-	if (VoiceAudio) VoiceAudio->SetVolumeMultiplier(CricketAudio::BusTrim(CricketAudio::EMixBus::Commentary) * CricketAudio::MixGain);
+	// Same make-up gain as the field channel (at unity the voice sat level with the crowd bed, -26 dB RMS), lifted a
+	// little more so the commentary reads over the crowd.
+	if (VoiceAudio) VoiceAudio->SetVolumeMultiplier(CricketAudio::BusTrim(CricketAudio::EMixBus::Commentary) * CricketAudio::MixGain * CricketAudio::CommentaryLift);
 	if (VocalAudio) VocalAudio->SetVolumeMultiplier(CricketAudio::BusTrim(CricketAudio::EMixBus::PlayerVocal) * CricketAudio::MixGain);
 }
 
@@ -1967,11 +1968,10 @@ void ASuperOverGameMode::PlaceForDelivery()
 	NonStriker->SetActorRotation(FRotator(0.f, 180.f, 0.f));
 	Bowler->SetActorLocation(ToWorld(FVector(RunUpX(0.f), 0.5f * Arm, 0.925f)));
 	Bowler->SetActorRotation(FRotator(0.f, 180.f, 0.f));
-	// Umpires like a real broadcast: the bowler's-end umpire just behind the stumps, in line
-	// to see over them but offset to the opposite side of the bowler's arm so the run-up passes
-	// clear on one side and the non-striker backs up wide on the other; square leg level with
-	// the popping crease on the leg side.
-	Umpires[0]->SetActorLocation(ToWorld(FVector(CricketGeo::PitchLength + 1.6f, -0.65f * Arm, 0.9f)));
+	// Umpires like a real match: the bowler's-end umpire stands behind the stumps (UmpireBack) almost in line with
+	// them, a little to the side away from the bowler's arm, so the run-up passes clear on one side and the
+	// non-striker backs up well wide on the other; square leg level with the popping crease on the leg side.
+	Umpires[0]->SetActorLocation(ToWorld(FVector(CricketGeo::PitchLength + UmpireBack, -UmpireSide * Arm, 0.9f)));
 	Umpires[0]->SetActorRotation(FRotator(0.f, 180.f, 0.f));
 	Umpires[1]->SetActorLocation(ToWorld(FVector(CricketGeo::PoppingCrease, -15.f * Off, 0.9f)));
 	{
@@ -3613,7 +3613,8 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	if (DPhase == EDeliveryPhase::Waiting || DPhase == EDeliveryPhase::RunUp)
 		CricketAudioDirector::PreDelivery(AudioDir, Match);
 	const bool bCommActive = CricketCommentaryDirector::IsSpeaking(CommDir, NowSfx);
-	if (CrowdAudio) CrowdAudio->SetVolumeMultiplier(CricketAudioDirector::TickCrowd(AudioDir, Dt, NowSfx, bCommActive, bReplay));
+	if (CrowdAudio) CrowdAudio->SetVolumeMultiplier(CricketAudioDirector::TickCrowd(AudioDir, Dt, NowSfx, bCommActive, bReplay)
+		* CricketAudio::BusTrim(CricketAudio::EMixBus::Crowd));
 	CrowdLevel = AudioDir.CrowdEnergy;
 	// Voiced commentary: the picked line once its moment has breathed, then the analyst's handoff.
 	CricketCommentaryDirector::Update(CommDir, NowSfx, BallsPlayed);
@@ -4243,6 +4244,13 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 void ASuperOverGameMode::SetupIPLMatch()
 {
 	UIPLPendingMatch* Pending = UIPLPendingMatch::Get();
+	if (Pending && Pending->bActive && Pending->bQuick)
+	{
+		// A quick match between two real teams; staging that cannot be played falls back to the placeholder squads.
+		SetupQuickMatch(*Pending);
+		Pending->Clear(); // consumed once: never leaks into a later match
+		return;
+	}
 	int32 FixtureId = INDEX_NONE;
 	FIPLPlayingXI HomeXI, AwayXI;
 	bool bFromPending = false;
@@ -4330,6 +4338,53 @@ void ASuperOverGameMode::SetupIPLMatch()
 		Fr.IsValidIndex(Season.UserTeam) ? *Fr[Season.UserTeam].Code : TEXT("?"));
 }
 
+bool ASuperOverGameMode::SetupQuickMatch(const UIPLPendingMatch& Pending)
+{
+	const ECompetition Comp = Pending.QuickCompetition < uint8(ECompetition::Count) ? ECompetition(Pending.QuickCompetition) : ECompetition::IPL;
+	const TArray<FRealTeam>& All = RealTeams::Teams(Comp);
+	const int32 Home = Pending.QuickHome, Away = Pending.QuickAway;
+	if (!All.IsValidIndex(Home) || !All.IsValidIndex(Away) || Home == Away)
+	{
+		UE_LOG(LogCRICKET26, Error, TEXT("Quick match staged with teams %d and %d; playing the placeholder squads."), Home, Away);
+		return false;
+	}
+	FIPLPlayingXI HomeXI = Pending.HomeXI, AwayXI = Pending.AwayXI;
+	FString Why;
+	if (!RealTeams::ValidXI(All[Home], HomeXI, &Why))
+	{
+		UE_LOG(LogCRICKET26, Error, TEXT("Quick match: %s XI invalid (%s); using their real XI."), *All[Home].Code, *Why);
+		HomeXI = RealTeams::DefaultXI(Comp, Home);
+	}
+	if (!RealTeams::ValidXI(All[Away], AwayXI, &Why))
+	{
+		UE_LOG(LogCRICKET26, Error, TEXT("Quick match: %s XI invalid (%s); using their real XI."), *All[Away].Code, *Why);
+		AwayXI = RealTeams::DefaultXI(Comp, Away);
+	}
+	const int32 Overs = Pending.QuickOvers == 3 || Pending.QuickOvers == 5 || Pending.QuickOvers == 10 || Pending.QuickOvers == 20 ? Pending.QuickOvers : 1;
+	bQuickMatch = true;
+	QuickCompetition = Comp;
+	QuickTeam[0] = Home;
+	QuickTeam[1] = Away;
+	const TArray<FAuctionPlayer>& Players = RealTeams::Players(Comp);
+	Teams = { RealTeams::MatchSide(All[Home], HomeXI, Players), RealTeams::MatchSide(All[Away], AwayXI, Players) };
+	SelectedMatchOvers = Overs;
+	Match.Rules.MaxLegalBalls = Overs * 6;
+	Match.Rules.MaxWickets = Overs == 1 ? 2 : 10;
+	IPLMaxBowlerBalls = RealTeams::MaxBallsPerBowler(Overs);
+	IPLHomeXI = HomeXI;
+	IPLAwayXI = AwayXI;
+	IPLBatFirst = Pending.QuickBatFirst == 1 ? 1 : 0; // the toss, called in the menu
+	HumanTeam = 0; // the user's team is always side 0
+	IPLBowlerBalls[0].SetNumZeroed(HomeXI.BattingOrder.Num());
+	IPLBowlerBalls[1].SetNumZeroed(AwayXI.BattingOrder.Num());
+	IPLBowlerSlot[0] = IPLBowlerSlot[1] = INDEX_NONE;
+	IPLLastBowlerSlot[0] = IPLLastBowlerSlot[1] = INDEX_NONE;
+	bAwaitingBatter = bAwaitingBowler = bIPLCommitted = false;
+	UE_LOG(LogCRICKET26, Display, TEXT("Quick match (%s, %d over%s): %s vs %s, %s bat first"), RealTeams::CompetitionName(Comp), Overs,
+		Overs == 1 ? TEXT("") : TEXT("s"), *All[Home].Code, *All[Away].Code, IPLBatFirst == 0 ? *All[Home].Code : *All[Away].Code);
+	return true;
+}
+
 void ASuperOverGameMode::ApplyIPLBowler(int32 Side, int32 Slot)
 {
 	if (!IsIPLMatch() || !Teams.IsValidIndex(Side)) return;
@@ -4353,17 +4408,17 @@ void ASuperOverGameMode::IPLNewInningsSetup()
 	IPLAwaitingSlot = INDEX_NONE;
 	const int32 BowlSide = Match.BowlingTeam();
 	const FIPLPlayingXI& XI = IPLXIForSide(BowlSide);
-	const TArray<FAuctionPlayer>& Players = AuctionData::Players();
+	const TArray<FAuctionPlayer>& Players = XIPlayers();
 	if (BowlSide == HumanTeam && !bAutoPlay)
 	{
 		// The user picks the opening bowler too: same panel as every over change.
-		IPLAwaitingCandidates = IPLMatchAdapter::EligibleBowlers(XI, IPLBowlerBalls[BowlSide], INDEX_NONE, Players);
+		IPLAwaitingCandidates = IPLMatchAdapter::EligibleBowlers(XI, IPLBowlerBalls[BowlSide], INDEX_NONE, Players, IPLMaxBowlerBalls);
 		if (IPLAwaitingCandidates.Num() > 0) bAwaitingBowler = true;
 		else ApplyIPLBowler(BowlSide, 0);
 	}
 	else
 	{
-		const int32 Slot = IPLMatchAdapter::ChooseAIBowler(XI, IPLBowlerBalls[BowlSide], INDEX_NONE, Players);
+		const int32 Slot = IPLMatchAdapter::ChooseAIBowler(XI, IPLBowlerBalls[BowlSide], INDEX_NONE, Players, IPLMaxBowlerBalls);
 		ApplyIPLBowler(BowlSide, Slot != INDEX_NONE ? Slot : 0);
 	}
 }
@@ -4410,10 +4465,10 @@ void ASuperOverGameMode::AfterIPLDelivery(const FDeliveryOutcome& Outcome, const
 	{
 		IPLLastBowlerSlot[BowlSide] = IPLBowlerSlot[BowlSide];
 		const FIPLPlayingXI& XI = IPLXIForSide(BowlSide);
-		const TArray<FAuctionPlayer>& Players = AuctionData::Players();
+		const TArray<FAuctionPlayer>& Players = XIPlayers();
 		if (BowlSide == HumanTeam && !bAutoPlay)
 		{
-			IPLAwaitingCandidates = IPLMatchAdapter::EligibleBowlers(XI, IPLBowlerBalls[BowlSide], IPLLastBowlerSlot[BowlSide], Players);
+			IPLAwaitingCandidates = IPLMatchAdapter::EligibleBowlers(XI, IPLBowlerBalls[BowlSide], IPLLastBowlerSlot[BowlSide], Players, IPLMaxBowlerBalls);
 			if (IPLAwaitingCandidates.Num() > 0)
 				bAwaitingBowler = true;
 			else
@@ -4421,7 +4476,7 @@ void ASuperOverGameMode::AfterIPLDelivery(const FDeliveryOutcome& Outcome, const
 		}
 		else
 		{
-			const int32 Slot = IPLMatchAdapter::ChooseAIBowler(XI, IPLBowlerBalls[BowlSide], IPLLastBowlerSlot[BowlSide], Players);
+			const int32 Slot = IPLMatchAdapter::ChooseAIBowler(XI, IPLBowlerBalls[BowlSide], IPLLastBowlerSlot[BowlSide], Players, IPLMaxBowlerBalls);
 			if (Slot != INDEX_NONE) ApplyIPLBowler(BowlSide, Slot);
 		}
 	}
@@ -4456,7 +4511,7 @@ bool ASuperOverGameMode::ChooseNextBowler(int32 Candidate)
 	const int32 BowlSide = Match.BowlingTeam();
 	// State-safe: the pick is re-validated against the live limits (quota, consecutive over).
 	const TArray<int32> Legal = IPLMatchAdapter::EligibleBowlers(IPLXIForSide(BowlSide),
-		IPLBowlerBalls[BowlSide], IPLLastBowlerSlot[BowlSide], AuctionData::Players());
+		IPLBowlerBalls[BowlSide], IPLLastBowlerSlot[BowlSide], XIPlayers(), IPLMaxBowlerBalls);
 	if (!Legal.Contains(Slot)) return false;
 	ApplyIPLBowler(BowlSide, Slot);
 	bAwaitingBowler = false;
@@ -4498,6 +4553,11 @@ TArray<FString> ASuperOverGameMode::IPLPickNames() const
 void ASuperOverGameMode::CommitIPLResult()
 {
 	if (!IsIPLMatch() || bIPLCommitted) return;
+	if (bQuickMatch)
+	{
+		bIPLCommitted = true; // a quick match is decided, with no season to tell
+		return;
+	}
 	UIPLSeasonSave* Save = UIPLSeasonSave::Get();
 	if (!Save || !Save->bHasSeason) return;
 	const int32 Fi = IPLSeason::FixtureIndex(Save->Season, IPLFixtureId);
@@ -4525,11 +4585,18 @@ void ASuperOverGameMode::CommitIPLResult()
 
 void ASuperOverGameMode::ReturnToIPLHub()
 {
-	UFrontendStatics::OpenFrontend(this, EFrontendTab::IPLSeason);
+	UFrontendStatics::OpenFrontend(this, bQuickMatch ? EFrontendTab::Play : EFrontendTab::IPLSeason);
 }
 
 void ASuperOverGameMode::RestartIPLFixture()
 {
+	// A quick match replays with the same teams, XIs and toss.
+	if (bQuickMatch)
+	{
+		UIPLPendingMatch::Get()->SetQuick(uint8(QuickCompetition), QuickTeam[0], QuickTeam[1], IPLHomeXI, IPLAwayXI, SelectedMatchOvers, IPLBatFirst);
+		UFrontendStatics::OpenMatch(this, SelectedMatchOvers);
+		return;
+	}
 	// Only before the result commits: after that the hub owns the fixture and a replay would
 	// double-play it. The staged XIs are this match's own, so the replay is exact.
 	if (!IsIPLMatch() || bIPLCommitted) { ReturnToIPLHub(); return; }

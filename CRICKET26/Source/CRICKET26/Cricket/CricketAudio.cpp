@@ -246,7 +246,7 @@ float BusTrim(EMixBus Bus)
 	{
 	case EMixBus::Master: return 1.f;
 	case EMixBus::Commentary: return 1.f;
-	case EMixBus::Crowd: return 0.9f;
+	case EMixBus::Crowd: return 0.8f; // the background bed, a little under the voice and the play
 	case EMixBus::FieldSfx: return 0.9f;
 	case EMixBus::BatBall: return 1.f;
 	case EMixBus::PlayerVocal: return 0.8f;

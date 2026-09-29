@@ -31,6 +31,7 @@ public class CRICKET26 : ModuleRules
 			"CRICKET26/Frontend",
 			"CRICKET26/Frontend/Widgets",
 			"CRICKET26/IPL",
+			"CRICKET26/Teams",
 			"CRICKET26/Variant_Platforming",
 			"CRICKET26/Variant_Platforming/Animation",
 			"CRICKET26/Variant_Combat",

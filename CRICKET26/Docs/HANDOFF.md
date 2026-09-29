@@ -52,7 +52,7 @@ as a planned, solved motion (2026-09-25); see "Batting" below and `Docs/BATTING_
 | 3 | Ball tracking | LBW tracking and its Hawk-Eye view done (master plan M8, 6.5); pitch map and wagon wheel on the scorecard done (6.4) |
 | 4 | Camera director | First cuts done: boundary, fielder and close-up shots (master plan M8, 6.1) |
 | 5 | Stadium | Done for master plan M9 (5.1 to 5.7), see below; the big screens' live replay feed was left out |
-| 6 | T20 and ODI formats | Not started |
+| 6 | T20 and ODI formats | T20 formats done: Super Over, 3, 5, 10 and 20 overs with real teams and a toss (see "Play Match" below). ODI not started |
 | 7 | MetaHuman players | Done (master plan M2) |
 | 8 | Audio | Not started |
 
@@ -268,6 +268,34 @@ Stadium scripting notes (UE 5.8):
   or lpoint and tiles a contact sheet into `Saved/AnimQA/`.
 - Test: `CRICKET26.Animation.BatterPlan`. The QA table and what still needs checking are in
   `Docs/BATTING_ANIMATION_QA.md`.
+
+## Play Match: real teams and the toss (2026-09-29)
+
+The owner asked for quick matches between real sides, with a toss, replacing the placeholder Home XI and Away XI.
+
+- Flow: Play Match, then the format (Super Over, 3, 5, 10 or 20 overs), then International or IPL, then the user's team
+  and the opponent (never the same team). The user can edit their own XI: tap 11 in batting order, or REAL XI to put it
+  back. After that come AI difficulty, venue and the toss. The user calls heads or tails. The winner bats or bowls; a
+  computer captain bats with the stronger batting side, otherwise chases, and a fifth of the time does the opposite.
+  The choices persist in `UFrontendSettingsSave` (`Quick*`). REMATCH goes back to match setup with the same teams, so
+  each match has its own toss; the pause menu's RESTART replays the same match, toss included.
+- Data: `Source/CRICKET26/Teams/RealTeams.h/.cpp`.
+  - International: the twelve ICC full members. Their current T20I squads and XIs are compiled in from
+    `Scripts/teams/International.csv` by `Scripts/teams/international.py`. Sources, rules and doubtful rows are in
+    `Scripts/teams/SOURCES.md`.
+  - IPL: only the original 2026 squads (`Team2026`), never the auction's; the XI is the best XI from the real squad.
+- Match: the menu stages the teams, XIs, overs and toss in `UIPLPendingMatch` (`SetQuick`). `SetupQuickMatch` plays it on
+  the IPL fixture machinery: XIs, bowler changes and the user's batter and bowler picks. `IsIPLMatch()` now means "an
+  eleven-a-side match" and `IsSeasonMatch()` means a season fixture, the only kind that commits a result. A bowler may
+  bowl a fifth of the overs, rounded up (`RealTeams::MaxBallsPerBowler`: one over in a 3- or 5-over match, two in 10,
+  four in 20). A match started without staging (automation, `-CricketAutoPlay`) keeps the placeholder squads.
+- IPL season fixtures also get the toss now: TEAM SELECTION's TOSS button leads to it, and the result sets the fixture's
+  `BatFirst` before the match loads.
+- The same pass took the batter and bowler cards out from under the pause button, and moved the bowler's-end umpire
+  2.4 m behind the stumps and 0.45 m to the side away from the bowler's arm (`UmpireBack`, `UmpireSide`). It also lifted
+  the commentary x1.2 (`CricketAudio::CommentaryLift`) and applied the crowd bus trim, now 0.8, to the crowd bed.
+- Tests: `CRICKET26.Teams.*` (the squads, XIs, rules and toss) and the extended `CRICKET26.Frontend.ShellNavigation`.
+  They are written but not yet run: the cloud session that wrote them has no Unreal Engine. Build, test and capture on the Mac.
 
 ## Blocked on the owner
 
