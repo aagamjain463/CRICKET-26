@@ -16,11 +16,12 @@ class ASuperOverHUD : public AHUD
 public:
 	virtual void BeginPlay() override;
 	virtual void DrawHUD() override;
-
-private:
 	FString Banner;
 	int32 BannerPriority = 0;
 	double BannerAt = -100.0;
+	ECricketEvent BannerEvent = ECricketEvent::Wicket;
+
+private:
 
 	void OnEvent(ECricketEvent Event);
 	void Text(const FString& S, float X, float Y, const FLinearColor& Colour = FLinearColor::White, float Scale = 1.f, bool bCentre = false);

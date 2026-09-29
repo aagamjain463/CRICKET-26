@@ -16,7 +16,12 @@ struct FFielder
 	bool bBowler = false;
 };
 
-enum class EFieldPreset : uint8 { PaceDeath, SpinDefensive };
+/** Fields a captain can load. The first two are the AI's stock fields (PresetFor); every one is legal to either hand. */
+enum class EFieldPreset : uint8
+{
+	PaceDeath, SpinDefensive, Balanced, Attacking, PaceAttack, SpinAttack, BoundaryRiders, OffSideHeavy, LegSideHeavy,
+	YorkerDefence, ShortBall, Count
+};
 
 enum class EFieldRole : uint8 { Primary, Backup, Chase, CoverStumps, Relay };
 
@@ -62,6 +67,19 @@ struct FFieldingOutcome
 	float CoverTime[2] = { 0.f, 0.f }; // [0] striker's end (keeper), [1] bowler's end (bowler)
 };
 
+/**
+ * The player calling the runs instead of the batters' own judgement. Times are seconds after contact: Go holds when
+ * each run was called (a call made before the batters ground their bats at the end of the last run is a running
+ * turn), Back when they were sent back (-1: never). A turn back is refused once TurnBackLimit of the leg is run.
+ */
+struct FRunCalls
+{
+	bool bManual = false;
+	TArray<float> Go;
+	float Back = -1.f;
+	static constexpr float TurnBackLimit = 0.72f;
+};
+
 struct FRunningOutcome
 {
 	int32 Attempted = 0;            // runs set off for
@@ -77,6 +95,7 @@ struct FRunningOutcome
 	float ThrowArrive = 0.f;
 	float BreakTime = 0.f;          // when the stumps can be broken
 	TArray<float> RunTimes;         // completion time of each run carried through (the last may be run out)
+	TArray<float> Leaves;           // when the batters set off on each run attempted, including one sent back
 	bool bSentBack = false;         // the last run was called off once the ball was gathered
 	float SentBackAt = 0.f;         // when they turned back
 	float SentBackFrom = 0.f;       // how far along that run they were (0..1)
@@ -90,7 +109,27 @@ struct FRunningOutcome
 namespace CricketField
 {
 	EFieldPreset PresetFor(EBowlerType Type);
+	/** Short label for the field editor's preset buttons. */
+	const TCHAR* PresetName(EFieldPreset Preset);
 	TArray<FFielder> Make(EFieldPreset Preset, ECricketHand BatHand, ECricketHand BowlHand);
+
+	// Field placement rules. The laws: at the instant of delivery no fielder on the pitch (28.5) and no more than
+	// two besides the keeper behind the popping crease on the leg side (28.4); Super Over playing conditions: at
+	// most five outside the 30-yard circle. The game adds: inside the rope, and no two fielders on the same spot.
+	constexpr float InnerRing = 27.43f;   // the 30-yard circle: this far from either middle stump, joined along the pitch
+	constexpr int32 MaxOutside = 5;
+	constexpr int32 MaxBehindSquareLeg = 2;
+	constexpr float RopeMargin = 3.f;     // a fielder stands at least this far inside the boundary
+	constexpr float MinSpacing = 3.f;
+	/** Distance from the pitch's centre line segment: over InnerRing is outside the circle. */
+	float RingDistance(const FVector2D& Home);
+	/** The two counted rules' tests, shared by Validate and the field editor's counters. */
+	bool IsOutsideCircle(const FVector2D& Home);
+	bool IsBehindSquareLeg(const FVector2D& Home, ECricketHand BatHand);
+	/** Why this field is illegal (empty: legal); Offender is the fielder it is about, when there is one. Keeper and bowler are never moved. */
+	FString Validate(const TArray<FFielder>& Field, ECricketHand BatHand, int32* Offender = nullptr);
+	/** The fielding position for a spot, for this batter; bConfident false when it sits on a boundary between two names. */
+	FString PositionName(const FVector2D& Home, ECricketHand BatHand, bool* bConfident = nullptr);
 
 	/** Seconds to cover Dist metres from standing, accelerating at 6 m/s^2 up to TopSpeed. */
 	float TimeToCover(float Dist, float TopSpeed);
@@ -122,7 +161,8 @@ namespace CricketField
 	 * fielder when that is quicker; the relay needs Field.
 	 */
 	FRunningOutcome SolveRunning(const FFieldingOutcome& Fielding, const FCricketPlayer& Striker, const FCricketPlayer& NonStriker,
-		const FCricketPlayer& FieldingSkill, bool bKeeperFielded, float Margin, FRandomStream& Rng, const TArray<FFielder>* Field = nullptr);
+		const FCricketPlayer& FieldingSkill, bool bKeeperFielded, float Margin, FRandomStream& Rng, const TArray<FFielder>* Field = nullptr,
+		const FRunCalls* Calls = nullptr);
 	/** Flight time (s) of a throw over Dist metres: long throws have to be lobbed and lose pace. */
 	float ThrowFlight(float Dist, float Throwing);
 	const TCHAR* ActionName(EFieldAction Action);

@@ -103,7 +103,7 @@ measured on a machine under heavy background load (hung crash reporters), so tre
 | Bat flat across the chest just after contact | The through key, 0.12 s after contact, already turned the bat 80° from the contact, so it lay flat with the hands still at the contact's height. In the reference drive the hands lead up while the bat stays nearly upright. | The through key turns the bat 50° (55° on a loft), with the hands 0.35 m above the contact and 0.25 m along the shot. | `arms_drive_close` sheet. | PASS on my eye. |
 | Defence: hands at the chin, both elbows winged | The 36° chest bend brought the head down to the hands, and the grip sat about 25 cm in front of the chest, so both arms folded and the solver could only put the elbows out sideways. | The chest bends 24° and the knees drop 4 cm more. The bat is angled further, with the handle forward, and the pelvis sits further back between the feet, so the hands are well out in front. | `arms_defend_close`: head over the hands, top arm long with its elbow forward. No raised-hand samples (138 of 138 before). | PASS on my eye. |
 | Recovery ran the hands through the front shoulder (found by the test after the higher finish) | The recovery moved the grip in a straight line from the finish to the grounded bat. From a high finish that line passes through the front shoulder: the flick's hands came within 0.01 m of it and jumped at 26 m/s. | The hands come down in an arc 0.3 m out in front of the chest, and every frame is kept within reach, off the chest and uncramped. | BatterPlan test: all ten strokes pass the cramp, reach and jump checks. The full suite passes, 60 of 60. | PASS |
-| Hook | The spinner the AI uses bowls no bouncers, so a forced hook falls back to the pull. | Not applicable. | The test covers the hook's plan. It has not been seen in game. | UNVERIFIED |
+| Hook | The spinner the AI uses bowls no bouncers, so a forced hook falls back to the pull. | `-CricketPace` makes the AI bowler quick, so `-CricketPace -CricketAiShot=3,-60 -CricketLength=10` forces a hook. | `pull4_ref`: hook played, 0 arm-in-torso, 0 elbow bowed up. The run starts before the finish can be seen. | PASS on metrics; finish unseen |
 | A second body size | The planner uses one nominal adult, and the solver adapts to the actual skeleton's arm and leg lengths. | Not applicable. | No second MetaHuman body has been captured. | OPEN |
 | Parity with Cricket 24 | Not applicable. | Not applicable. | Reference frames of one drive and one defensive swing were viewed next to our close sheets. There has been no frame-by-frame or timing comparison. | UNVERIFIED |
 
@@ -171,3 +171,54 @@ Still open:
 - Then acceptance of the golden drive at 0.25x, by your eye.
 - Left-handers: the clip is authored right-handed, and a left-hander plays it mirrored through an Unreal mirror data table. The mirror is anatomically identical, so the validator's result carries over. The bone mapping still has to be checked in game. (author_stroke.py had a `--mirror` flag that was never read and silently produced a right-hander; it is removed.)
 - The other eleven shots are not started, by design: the library does not grow until the drive passes.
+
+## Elbow direction and reference matching, 2026-09-26
+
+The reference is `~/Downloads/SHOT.mp4`: Cricket 26 broadcast gameplay, 640x360 at 30 fps. It is used to judge poses and
+timing only. Big Ant's animation is not copied, because it is not ours to copy and a 2D video holds no skeleton data.
+These are the clips used:
+
+- straight drive, front view: 256.3–258.3 s;
+- slog sweep, side view: 399–403 s;
+- pull against pace: 620.5–621.2 s.
+
+The lofted clips at 531 s and 610 s cut to the ball in flight at contact, so they show no finish.
+
+- **Elbow bowed up (the reported bug).** Before the fix the elbow lifted off the shoulder-to-wrist line: the upper arm
+  went up and the forearm dropped to the handle. The swivel preference in `SolveBatter` pointed the top elbow out
+  sideways (`Outward - Up * 0.3`), and it pointed the elbow "deep" once the hand was raised. Now both elbows hang
+  below the shoulder-to-wrist line. A steep cost punishes any upward bow. The new metric
+  `Pose: striker elbow bowed up` shows these before/after counts:
+
+  | Shot | Before | After |
+  |---|---|---|
+  | Drive | 7/74 | 1/70 |
+  | Cover | 9/78 | 0/82 |
+  | Loft | 112/344 | 2/320 |
+  | Defend | 181/310 | 2/234 |
+  | Pull | 67/224 | 0/196 |
+  | Slog sweep | – | 5/740 |
+
+- **Finish held.** The finish is reached 0.5 s after contact. The recovery used to start 0.9 s after contact and
+  dragged the hands across the face almost at once. It now starts 1.5 s after contact. The finish is held about a
+  second, as in the reference.
+- **Slog sweep finish.** The slog sweep used to finish like a sweep, with the hands rolled round at chest height.
+  In the reference the arms swing up high. The slog sweep's finish is now 0.3 m higher and slightly closer in.
+  The BatterPlan test now includes the slog sweep and checks that its hands finish at least 0.2 m above the sweep's.
+  Without the change that check fails, with both finishing at 0.95 m.
+- **Loft high finish.** The winged-elbow metric counts about 40% of raised samples. Two grip changes were tried:
+  - moving the hands forward covered the face;
+  - moving them over the shoulder put the arm inside the torso.
+
+  Neither reduced the count, so both were reverted. Close up (`loft4_ref`, `pull3_ref`), the pose matches a real
+  high finish: the front elbow is up at shoulder height and the back arm crosses under the chin. The 12 cm
+  threshold is too strict for that pose, so this is left for your eye rather than tuned to the metric.
+- **Tooling.**
+  - The `ref` camera in `stroke_qa.sh` frames the batter like the broadcast front view. Use it with
+    `CROP=240,0,1040,720`.
+  - The `-CricketPace` flag makes the AI bowler quick for pull and hook captures.
+- Full suite: 78 pass, 0 fail.
+
+Still open: every stroke is still the runtime planner. None has been matched frame by frame to the reference. It
+would take authored source motion (see the pipeline section above) to get close to Big Ant's quality.
+

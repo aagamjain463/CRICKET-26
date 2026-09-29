@@ -52,6 +52,9 @@ namespace CricketBatter
 		FVector Contact = FVector::ZeroVector; // the sweet spot at Impact
 		FVector ShotDir = FVector::ForwardVector; // the ball's way off the bat
 		float Settle = 1e9f;                   // s after release: back into the stance from here
+		EBatterStyle Style = EBatterStyle::Classical; // signature stance and kinetic style
+		bool bMiss = false;                    // ball beat the bat; play-and-miss reaction
+		float ContactQuality = 1.f;            // 1.0 middle, 0.5 edge, 0.0 miss
 	};
 
 	constexpr float RecoverSeconds = 0.7f;

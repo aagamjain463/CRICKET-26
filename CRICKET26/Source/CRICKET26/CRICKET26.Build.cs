@@ -18,14 +18,19 @@ public class CRICKET26 : ModuleRules
 			"StateTreeModule",
 			"GameplayStateTreeModule",
 			"UMG",
-			"Slate"
+			"Slate",
+			"SlateCore"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { "AudioMixer", "ApplicationCore", "RenderCore", "RHI", "AnimationCore", "MeshDescription", "StaticMeshDescription" });
 
 		PublicIncludePaths.AddRange(new string[] {
 			"CRICKET26",
+			"CRICKET26/Auction",
 			"CRICKET26/Cricket",
+			"CRICKET26/Frontend",
+			"CRICKET26/Frontend/Widgets",
+			"CRICKET26/IPL",
 			"CRICKET26/Variant_Platforming",
 			"CRICKET26/Variant_Platforming/Animation",
 			"CRICKET26/Variant_Combat",

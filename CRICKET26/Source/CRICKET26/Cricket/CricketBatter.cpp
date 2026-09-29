@@ -96,7 +96,9 @@ namespace
 		}
 	}
 
-	FPoseL Evaluate(const FPoseL& Start, TConstArrayView<FPhase> Phases, float T, float (&Lift)[2])
+	// Ride: how much (0 to 1) the hips are carried Offset (m) past the middle of the feet, rather than where the
+	// phases put them: charging, the feet's shuffle sets the pace.
+	FPoseL Evaluate(const FPoseL& Start, TConstArrayView<FPhase> Phases, float T, float (&Lift)[2], float Ride = 0.f, float Offset = 0.f)
 	{
 		FPoseL P = Start;
 		Lift[0] = Lift[1] = 0.f;
@@ -113,6 +115,13 @@ namespace
 			if (T >= Ph.Feet0) Walk(P.Foot, Lift, Prev->Foot, Ph.To.Foot, T, Ph.Feet0, Ph.Feet1, Ph.Steps, Ph.First, Ph.Height);
 			Prev = &Ph.To;
 		}
+		// The hips ride between the feet: never out past the leading one, nor far back of the middle (a body walking
+		// down the track moves on its feet, neither ahead of them nor left behind them).
+		const float Behind = FMath::Min(P.Foot[0].Ball.X, P.Foot[1].Ball.X), Ahead = FMath::Max(P.Foot[0].Ball.X, P.Foot[1].Ball.X);
+		// Nor more than 0.8 m past either foot, so neither leg is stretched out flat behind a stride.
+		const float Mid = 0.5f * (Behind + Ahead), Low = FMath::Max3(Behind, Mid - 0.2f, Ahead - 0.8f);
+		P.Pelvis.X = FMath::Lerp(P.Pelvis.X, Mid + Offset, Ride);
+		P.Pelvis.X = FMath::Clamp(P.Pelvis.X, Low, FMath::Max(Low, FMath::Min(Ahead - 0.05f, Behind + 0.8f)));
 		// Sit as low as a long stride needs: each hip within a slightly bent leg of its ankle, which is behind and
 		// above the ball of the foot, higher as the heel comes up.
 		for (int32 F = 0; F < 2; ++F)
@@ -198,17 +207,31 @@ namespace
 		float Top = -140.f, Loop = -70.f, Through = 50.f, Finish = 190.f; // through the ball the hands lead up, the bat still near upright
 	};
 
-	FArc ArcOf(EShotType Shot)
+	FArc ArcOf(EShotType Shot, EBatterStyle Style = EBatterStyle::Classical, bool bMiss = false)
 	{
+		if (bMiss)
+		{
+			if (Shot == EShotType::Defend) return { -55.f, -25.f, 4.f, 6.f };
+			return { -120.f, -60.f, 35.f, 65.f }; // checked swing, natural deceleration
+		}
 		switch (Shot)
 		{
 		case EShotType::Defend: return { -60.f, -28.f, 6.f, 8.f };         // short backlift, the bat checked at the ball
 		case EShotType::Punch: return { -100.f, -50.f, 45.f, 80.f };
-		case EShotType::Loft: return { -150.f, -75.f, 55.f, 210.f };
-		case EShotType::Flick: return { -120.f, -60.f, 80.f, 160.f };
+		case EShotType::Loft:
+			if (Style == EBatterStyle::PowerHitter) return { -155.f, -80.f, 60.f, 220.f };
+			return { -150.f, -75.f, 55.f, 210.f };
+		case EShotType::Flick:
+			if (Style == EBatterStyle::Unorthodox) return { -125.f, -65.f, 85.f, 180.f };
+			return { -120.f, -60.f, 80.f, 160.f };
 		case EShotType::Cut: return { -140.f, -70.f, 45.f, 68.f };           // a tilted plane: further round lifts the toe
-		case EShotType::Pull: case EShotType::Hook: return { -150.f, -75.f, 90.f, 165.f };
-		case EShotType::Sweep: case EShotType::SlogSweep: case EShotType::ReverseSweep: case EShotType::Scoop: return { -130.f, -65.f, 80.f, 150.f };
+		case EShotType::Pull: case EShotType::Hook:
+			if (Style == EBatterStyle::ExpressPuller) return { -155.f, -75.f, 95.f, 175.f };
+			return { -150.f, -75.f, 90.f, 165.f };
+		case EShotType::Sweep: case EShotType::ReverseSweep: case EShotType::Scoop: return { -130.f, -65.f, 80.f, 150.f };
+		case EShotType::SlogSweep:
+			if (Style == EBatterStyle::PowerHitter) return { -140.f, -70.f, 90.f, 170.f };
+			return { -130.f, -65.f, 80.f, 150.f };
 		default: return {};
 		}
 	}
@@ -219,7 +242,7 @@ namespace
 	}
 
 	// The body at the moment of contact, from where the ball is met (batter frame).
-	FPoseL ContactPose(const FPoseL& Ready, EShotType Shot, EFootwork Foot, float Dir, const FVector& C)
+	FPoseL ContactPose(const FPoseL& Ready, EShotType Shot, EFootwork Foot, float Dir, const FVector& C, EBatterStyle Style = EBatterStyle::Classical)
 	{
 		FPoseL P = Ready;
 		FFootL& Front = P.Foot[0];
@@ -244,28 +267,44 @@ namespace
 		{
 			// Back and across: the back foot to the line of the ball, the front drawn back beside it.
 			// A cut goes across to a wide ball, meeting it beside the body at arm's length rather than behind it.
-			Back.Ball = Family == EFamily::Cut ? FVector2D(FMath::Clamp(C.X - 0.42f, -0.55f, -0.15f), FMath::Clamp(C.Y - 0.45f, 0.f, 0.5f))
-				: FVector2D(FMath::Clamp(C.X - 0.62f, -0.55f, -0.15f), FMath::Clamp(C.Y - 0.3f, 0.f, 0.4f));
-			Back.Toe = Family == EFamily::Cut ? -15.f : Family == EFamily::Pull ? 40.f : 0.f;
-			Front.Ball = Back.Ball + (Family == EFamily::Pull ? FVector2D(0.28f, -0.32f) : FVector2D(0.32f, -0.04f));
-			Front.Toe = Family == EFamily::Pull ? 65.f : 15.f;
+			if (Style == EBatterStyle::ExpressPuller && Family == EFamily::Pull)
+			{
+				Back.Ball = FVector2D(FMath::Clamp(C.X - 0.65f, -0.58f, -0.15f), FMath::Clamp(C.Y - 0.32f, -0.05f, 0.4f));
+				Back.Toe = 42.f;
+				Front.Ball = Back.Ball + FVector2D(0.26f, -0.34f);
+				Front.Toe = 68.f;
+				P.Hips = 68.f;
+				P.Chest = 98.f;
+				P.Flex = 8.f;
+				P.Side = -6.5f;
+			}
+			else
+			{
+				Back.Ball = Family == EFamily::Cut ? FVector2D(FMath::Clamp(C.X - 0.42f, -0.55f, -0.15f), FMath::Clamp(C.Y - 0.45f, 0.f, 0.5f))
+					: FVector2D(FMath::Clamp(C.X - 0.62f, -0.55f, -0.15f), FMath::Clamp(C.Y - 0.3f, 0.f, 0.4f));
+				Back.Toe = Family == EFamily::Cut ? -15.f : Family == EFamily::Pull ? 40.f : 0.f;
+				Front.Ball = Back.Ball + (Family == EFamily::Pull ? FVector2D(0.28f, -0.32f) : FVector2D(0.32f, -0.04f));
+				Front.Toe = Family == EFamily::Pull ? 65.f : 15.f;
+				switch (Family)
+				{
+				case EFamily::Pull: P.Hips = 65.f; P.Chest = 95.f; P.Flex = 8.f; P.Side = -6.f; break;
+				case EFamily::Cut: P.Hips = 0.f; P.Chest = 5.f; P.Flex = 20.f; P.Side = 4.f; break;
+				default: P.Hips = 12.f; P.Chest = 24.f; P.Flex = 14.f; P.Side = 2.f; break;
+				}
+			}
 			P.Pelvis = FMath::Lerp(Back.Ball, Front.Ball, 0.35f) + FVector2D(0.f, -0.08f);
 			P.Drop = 0.05f;
 			const float OnToes = FMath::Clamp((C.Z - 0.95f) * 60.f, 0.f, 18.f); // up on the toes to a high ball
 			Back.Heel = Front.Heel = OnToes;
 			P.Drop -= 0.2f * FMath::Sin(FMath::DegreesToRadians(OnToes));
-			switch (Family)
-			{
-			case EFamily::Pull: P.Hips = 65.f; P.Chest = 95.f; P.Flex = 8.f; P.Side = -6.f; break;
-			case EFamily::Cut: P.Hips = 0.f; P.Chest = 5.f; P.Flex = 20.f; P.Side = 4.f; break;
-			default: P.Hips = 12.f; P.Chest = 24.f; P.Flex = 14.f; P.Side = 2.f; break;
-			}
 		}
 		else
 		{
 			// Front foot: a stride out to beside the pitch of the ball, the toe opening toward the shot, the weight
-			// going through onto it with the head over the ball.
-			Front.Ball = FVector2D(FMath::Clamp(C.X - 0.3f, 0.35f, 1.25f), FMath::Clamp(C.Y - 0.3f, -0.15f, 0.45f));
+			// going through onto it with the head over the ball. Down the track the feet carry the body all the way
+			// to the ball, rather than stopping at a stride and leaving the hips to chase it.
+			const float Stride = Foot == EFootwork::Advance ? 4.f : 1.25f;
+			Front.Ball = FVector2D(FMath::Clamp(C.X - 0.3f, 0.35f, Stride), FMath::Clamp(C.Y - 0.3f, -0.15f, 0.45f));
 			Front.Toe = FMath::Clamp(35.f - 0.25f * Dir, 10.f, 55.f);
 			// Most of the weight over the front foot: the hips well forward, so the front knee bends over the
 			// toes and the back leg trails from a raised heel.
@@ -279,13 +318,14 @@ namespace
 			P.Side = 6.f;
 			if (Family == EFamily::Cut) { P.Chest = 5.f; P.Hips = 5.f; }
 			if (Family == EFamily::Pull) { P.Hips = 55.f; P.Chest = 85.f; P.Flex = 10.f; }
+			if (Style == EBatterStyle::PowerHitter) { P.Drop += 0.02f; P.Hips += 4.f; }
 			// A forward defence meets the ball beside the front pad, under the eyes: the front foot to the ball and
 			// the chest bent over the knee, so the hands reach ahead of the ball and the bat angles down from them.
 			// The head stays well above the hands (the knee bends, not just the back), leaving the top elbow room to
 			// sit high and forward rather than winging out beside a chin-high grip.
 			if (Shot == EShotType::Defend)
 			{
-				Front.Ball.X = FMath::Clamp(C.X - 0.08f, 0.35f, 1.25f);
+				Front.Ball.X = FMath::Clamp(C.X - 0.08f, 0.35f, Stride);
 				P.Hips = 15.f; P.Chest = 20.f; P.Flex = 24.f; P.Drop += 0.04f; Back.Heel = 30.f;
 				P.Pelvis = FMath::Lerp(Back.Ball, Front.Ball, 0.66f) + FVector2D(0.f, -0.1f);
 			}
@@ -294,18 +334,33 @@ namespace
 	}
 
 	// The follow-through: hips and chest carry on turning, the weight settles, and the back heel comes up.
-	FPoseL FinishPose(const FPoseL& C, EShotType Shot, EFootwork Foot)
+	FPoseL FinishPose(const FPoseL& C, EShotType Shot, EFootwork Foot, EBatterStyle Style = EBatterStyle::Classical, bool bMiss = false)
 	{
 		FPoseL P = C;
+		if (bMiss)
+		{
+			// Play-and-miss: checked swing, head tracks ball past edge, slight recoil
+			P.Chest += 8.f;
+			P.Hips += 4.f;
+			P.Flex += 4.f;
+			P.Pelvis.X -= 0.02f;
+			return P;
+		}
 		switch (FamilyOf(Shot))
 		{
-		case EFamily::Pull: P.Hips += 30.f; P.Chest += 45.f; break;
+		case EFamily::Pull:
+			P.Hips += (Style == EBatterStyle::ExpressPuller ? 35.f : 30.f);
+			P.Chest += (Style == EBatterStyle::ExpressPuller ? 50.f : 45.f);
+			break;
 		case EFamily::Cut: P.Chest += 10.f; break;
-		case EFamily::Sweep: P.Chest += 25.f; P.Hips += 10.f; break;
+		case EFamily::Sweep:
+			P.Chest += (Style == EBatterStyle::PowerHitter ? 30.f : 25.f);
+			P.Hips += 10.f;
+			break;
 		default:
 			if (Shot == EShotType::Defend) break;
-			P.Hips += 15.f;
-			P.Chest += Shot == EShotType::Punch ? 10.f : 25.f;
+			P.Hips += (Style == EBatterStyle::PowerHitter ? 20.f : 15.f);
+			P.Chest += (Shot == EShotType::Punch ? 10.f : Style == EBatterStyle::PowerHitter ? 30.f : 25.f);
 			P.Flex -= 8.f;
 			if (Foot != EFootwork::Back) { P.Foot[1].Heel = 65.f; P.Foot[1].Toe = 30.f; }
 			break;
@@ -365,18 +420,82 @@ FBody Plan(const FInput& In)
 	// Stance: side-on, feet a little wider than the hips, knees flexed, the bat grounded by the back toe and the
 	// hands resting by the front thigh. Backlift as the bowler gathers; the trigger (back foot back and across, a
 	// small press forward) as the ball is released.
-	const FPoseL Stance;
+	FPoseL Stance;
+	if (In.Style == EBatterStyle::ExpressPuller)
+	{
+		Stance.Foot[0] = { FVector2D(0.24f, 0.06f), 18.f, 0.f };
+		Stance.Foot[1] = { FVector2D(-0.24f, 0.08f), 0.f, 0.f };
+		Stance.Pelvis = FVector2D(-0.01f, -0.04f);
+		Stance.Drop = 0.065f;
+		Stance.Hips = 12.f;
+		Stance.Chest = 24.f;
+		Stance.Flex = 15.f;
+	}
+	else if (In.Style == EBatterStyle::Unorthodox)
+	{
+		Stance.Foot[0] = { FVector2D(0.27f, 0.06f), 20.f, 0.f };
+		Stance.Foot[1] = { FVector2D(-0.27f, 0.06f), 0.f, 0.f };
+		Stance.Pelvis = FVector2D(-0.02f, -0.04f);
+		Stance.Drop = 0.085f;
+		Stance.Hips = 12.f;
+		Stance.Chest = 25.f;
+		Stance.Flex = 18.f;
+	}
+	else if (In.Style == EBatterStyle::PowerHitter)
+	{
+		Stance.Foot[0] = { FVector2D(0.26f, 0.05f), 16.f, 0.f };
+		Stance.Foot[1] = { FVector2D(-0.26f, 0.06f), 0.f, 0.f };
+		Stance.Pelvis = FVector2D(-0.01f, -0.05f);
+		Stance.Drop = 0.09f;
+		Stance.Hips = 10.f;
+		Stance.Chest = 22.f;
+		Stance.Flex = 19.f;
+	}
+
 	FPoseL Lifted = Stance;
-	Lifted.Chest = 17.f;
-	Lifted.Drop = 0.08f;
-	Lifted.Flex = 17.f;
+	Lifted.Chest = In.Style == EBatterStyle::ExpressPuller ? 19.f : In.Style == EBatterStyle::Unorthodox ? 20.f : 17.f;
+	Lifted.Drop = In.Style == EBatterStyle::PowerHitter ? 0.10f : 0.08f;
+	Lifted.Flex = In.Style == EBatterStyle::ExpressPuller ? 16.f : 17.f;
 	FPoseL Ready = Lifted;
-	Ready.Foot[1] = { FVector2D(-0.28f, 0.13f), 0.f, 0.f };
-	Ready.Foot[0] = { FVector2D(0.27f, 0.1f), 18.f, 0.f };
-	Ready.Pelvis = FVector2D(-0.03f, -0.01f);
-	Ready.Drop = 0.09f;
-	Ready.Hips = 8.f;
-	Ready.Flex = 18.f;
+	if (In.Style == EBatterStyle::Unorthodox)
+	{
+		// Steve Smith: back foot shuffles across outside off-stump, chest open
+		Ready.Foot[1] = { FVector2D(-0.25f, 0.20f), 5.f, 0.f };
+		Ready.Foot[0] = { FVector2D(0.28f, 0.14f), 20.f, 0.f };
+		Ready.Pelvis = FVector2D(-0.01f, 0.05f);
+		Ready.Drop = 0.09f;
+		Ready.Hips = 14.f;
+		Ready.Chest = 26.f;
+		Ready.Flex = 18.f;
+	}
+	else if (In.Style == EBatterStyle::ExpressPuller)
+	{
+		// Rohit Sharma: back-and-across shuffle
+		Ready.Foot[1] = { FVector2D(-0.29f, 0.14f), 0.f, 0.f };
+		Ready.Foot[0] = { FVector2D(0.26f, 0.09f), 18.f, 0.f };
+		Ready.Pelvis = FVector2D(-0.04f, 0.01f);
+		Ready.Drop = 0.085f;
+		Ready.Hips = 10.f;
+		Ready.Flex = 17.f;
+	}
+	else if (In.Style == EBatterStyle::PowerHitter)
+	{
+		Ready.Foot[1] = { FVector2D(-0.28f, 0.12f), 0.f, 0.f };
+		Ready.Foot[0] = { FVector2D(0.28f, 0.09f), 18.f, 0.f };
+		Ready.Pelvis = FVector2D(-0.02f, -0.02f);
+		Ready.Drop = 0.10f;
+		Ready.Hips = 9.f;
+		Ready.Flex = 19.f;
+	}
+	else
+	{
+		Ready.Foot[1] = { FVector2D(-0.28f, 0.13f), 0.f, 0.f };
+		Ready.Foot[0] = { FVector2D(0.27f, 0.1f), 18.f, 0.f };
+		Ready.Pelvis = FVector2D(-0.03f, -0.01f);
+		Ready.Drop = 0.09f;
+		Ready.Hips = 8.f;
+		Ready.Flex = 18.f;
+	}
 
 	TArray<FPhase, TInlineAllocator<5>> Phases;
 	Phases.Add({ Lifted, -0.6f, -0.05f, -0.6f, -0.05f, -0.6f, -0.05f, -0.6f, -0.05f, 0, 0 });
@@ -391,9 +510,10 @@ FBody Plan(const FInput& In)
 	const float Plant = Press + (bAdvance ? 0.8f : bBackFoot ? 0.45f : 0.55f) * Dur;
 	FPoseL AtContact = Ready, Finish = Ready;
 	FBatL Contact;
+	int32 Strides = 4; // down the track and back
 	if (In.bStroke)
 	{
-		AtContact = ContactPose(Ready, In.Shot, In.Foot, In.DirectionDeg, C);
+		AtContact = ContactPose(Ready, In.Shot, In.Foot, In.DirectionDeg, C, In.Style);
 		FPhase Stroke;
 		Stroke.To = AtContact;
 		Stroke.Weight0 = Press;
@@ -404,9 +524,12 @@ FBody Plan(const FInput& In)
 		Stroke.Chest1 = Impact + 0.07f;
 		Stroke.Feet0 = Press;
 		Stroke.Feet1 = bAdvance ? Impact - 0.04f : bBackFoot ? Impact - 0.02f : Plant;
-		Stroke.Steps = bAdvance ? 4 : bBackFoot ? 2 : 1;
+		// Down the track in chassé steps of at most 0.55 m a foot, so the legs never splay and the hips barely dip.
+		const float Travel = FVector2D::Distance(Ready.Foot[0].Ball, AtContact.Foot[0].Ball);
+		Strides = FMath::Clamp(2 * FMath::CeilToInt(Travel / 0.55f), 4, 8);
+		Stroke.Steps = bAdvance ? Strides : bBackFoot ? 2 : 1;
 		Stroke.First = bBackFoot ? 1 : 0;
-		Stroke.Height = bBackFoot ? 0.04f : 0.07f;
+		Stroke.Height = bBackFoot ? 0.04f : bAdvance ? 0.1f : 0.07f;
 		if (bAdvance)
 		{
 			// Down the track: the back foot finishes a stride behind the front one.
@@ -454,13 +577,16 @@ FBody Plan(const FInput& In)
 			const FVector2D ToBall = (FVector2D(C) - Lean.Pelvis).GetSafeNormal();
 			if (Short > 0.f)
 			{
+				// The hips lean in but stay behind the front foot, the chest bending the rest: hips past the front
+				// foot leave the legs trailing and the knees sunk to the turf.
 				Lean.Pelvis += ToBall * FMath::Min(Short, 0.15f);
+				Lean.Pelvis.X = FMath::Min(Lean.Pelvis.X, Lean.Foot[0].Ball.X - 0.1f);
 				Lean.Flex = FMath::Min(Lean.Flex + Short * 60.f, 50.f);
 			}
 			else Lean.Pelvis -= ToBall * FMath::Min(Cramped + 0.01f, 0.15f);
 		}
 		AtContact = Lean;
-		Finish = FinishPose(AtContact, In.Shot, In.Foot);
+		Finish = FinishPose(AtContact, In.Shot, In.Foot, In.Style, In.bMiss);
 		Phases.Add({ Finish, Impact, Impact + 0.45f, Impact, Impact + 0.4f, Impact + 0.02f, Impact + 0.5f, Impact - 0.02f, Impact + 0.45f, 0, 0 });
 	}
 	else if (In.bLeave)
@@ -475,10 +601,19 @@ FBody Plan(const FInput& In)
 	// Recover: step back into the stance (walking back up the pitch from down the track).
 	const float Settle = FMath::Max(In.Settle, In.bStroke ? Impact + 0.5f : Press);
 	Phases.Add({ Stance, Settle, Settle + RecoverSeconds, Settle, Settle + RecoverSeconds, Settle, Settle + RecoverSeconds, Settle,
-		Settle + RecoverSeconds, bAdvance && In.bStroke ? 4 : 2, 0, 0.05f });
+		Settle + RecoverSeconds, bAdvance && In.bStroke ? Strides : 2, 0, 0.05f });
 
 	float Lift[2];
-	FPoseL P = Evaluate(Stance, Phases, T, Lift);
+	// Charging, the hips go with the feet's shuffle, easing from the stance's place between them to the stroke's,
+	// rather than surging out over the front foot and dipping as the back one catches up.
+	auto Between = [](const FPoseL& At) { return At.Pelvis.X - 0.5f * (At.Foot[0].Ball.X + At.Foot[1].Ball.X); };
+	const bool bCharge = bAdvance && In.bStroke;
+	auto Charged = [&](float At, float (&L)[2])
+	{
+		const float Ride = bCharge ? FMath::SmoothStep(Press, Press + 0.08f, At) * (1.f - FMath::SmoothStep(Impact - 0.12f, Impact, At)) : 0.f;
+		return Evaluate(Stance, Phases, At, L, Ride, FMath::Lerp(Between(Ready), Between(AtContact), FMath::SmoothStep(Press, Impact, At)));
+	};
+	FPoseL P = Charged(T, Lift);
 	// Life in the stance: breathing and a slow sway of the weight, gone once the bowler gathers.
 	const float Still = T < -0.6f ? 1.f - FMath::SmoothStep(-1.2f, -0.6f, T) : FMath::SmoothStep(Settle + RecoverSeconds, Settle + RecoverSeconds + 0.5f, T);
 	P.Flex += 1.2f * Still * FMath::Sin(In.Clock * 2.f * PI * 0.23f);
@@ -486,13 +621,22 @@ FBody Plan(const FInput& In)
 
 	// The bat: grounded in the stance, up in the backlift, then the stroke through keys built from the contact.
 	const FBatL Grounded = Bat(FVector(P.Pelvis, -P.Drop) + FVector(0.11f, 0.24f, 0.87f), FVector(-0.15f, 0.18f, -1.f), FVector::ForwardVector);
-	auto Up = [](const FPoseL& At) { return Bat(FVector(At.Pelvis, -At.Drop) + FVector(-0.1f, 0.19f, 1.1f), FVector(-0.45f, 0.4f, 0.8f), FVector(-0.3f, 0.9f, -0.2f)); };
+	auto Up = [&](const FPoseL& At)
+	{
+		if (In.Style == EBatterStyle::Unorthodox)
+			return Bat(FVector(At.Pelvis, -At.Drop) + FVector(-0.06f, 0.18f, 1.25f), FVector(-0.22f, 0.22f, 0.95f), FVector(-0.2f, 0.95f, -0.15f));
+		if (In.Style == EBatterStyle::ExpressPuller)
+			return Bat(FVector(At.Pelvis, -At.Drop) + FVector(-0.12f, 0.22f, 1.08f), FVector(-0.48f, 0.42f, 0.77f), FVector(-0.35f, 0.88f, -0.2f));
+		if (In.Style == EBatterStyle::PowerHitter)
+			return Bat(FVector(At.Pelvis, -At.Drop) + FVector(-0.08f, 0.21f, 1.15f), FVector(-0.42f, 0.38f, 0.82f), FVector(-0.28f, 0.92f, -0.22f));
+		return Bat(FVector(At.Pelvis, -At.Drop) + FVector(-0.1f, 0.19f, 1.1f), FVector(-0.45f, 0.4f, 0.8f), FVector(-0.3f, 0.9f, -0.2f));
+	};
 	FBatL B = Lerp(Grounded, Up(P), Ease(-0.6f, -0.05f, T));
 	if (In.bStroke && T > Press)
 	{
 		float NoLift[2];
-		auto BodyAt = [&](float At) { return Evaluate(Stance, Phases, At, NoLift); };
-		const FArc Arc = ArcOf(In.Shot);
+		auto BodyAt = [&](float At) { return Charged(At, NoLift); };
+		const FArc Arc = ArcOf(In.Shot, In.Style, In.bMiss);
 		// The swing's axis: square to the bat and to its path through the ball, turning so the bat runs along the shot.
 		const FVector Along = Contact.Face();
 		FVector Spin = FVector::CrossProduct(Contact.Axis(), Along).GetSafeNormal();
@@ -518,24 +662,42 @@ FBody Plan(const FInput& In)
 		// loft), just outside it rather than in front of the face, the elbows forward under them.
 		const FVector FrontOut = FVector(FVector2D(FinishSh[0] - FinishSh[1]).GetSafeNormal(), 0.f);
 		FVector FinishGrip = FinishSh[0] + FrontOut * 0.05f + Facing(AtFinish.Chest) * 0.05f + FVector(0.f, 0.f, In.Shot == EShotType::Loft ? 0.46f : 0.4f);
-		switch (Family)
+		if (In.bMiss)
 		{
-		case EFamily::Pull:
-		{
-			// The hands come round in front of the chest at the contact's height, then finish by the front shoulder:
-			// ahead of the turning chest all the way, never through the shoulder it sweeps round.
-			FVector ThroughSh[2];
-			Shoulders(AtThrough, ThroughSh);
-			ThroughGrip = FVector(FVector2D(0.5f * (ThroughSh[0] + ThroughSh[1]) + Facing(AtThrough.Chest) * 0.42f), Contact.Grip.Z + 0.08f);
-			FinishGrip = FinishSh[0] + Facing(AtFinish.Chest) * 0.3f;
-			break;
+			ThroughGrip = Contact.Grip + ShotFlat * 0.14f + FVector(0.f, 0.f, 0.12f);
+			FinishGrip = Contact.Grip + ShotFlat * 0.18f + FVector(0.f, 0.f, 0.18f);
 		}
-		case EFamily::Cut: ThroughGrip = Contact.Grip + FVector(0.05f, 0.05f, -0.12f); FinishGrip = Contact.Grip + FVector(0.12f, -0.05f, -0.2f); break;
-		case EFamily::Sweep: ThroughGrip = Contact.Grip + FVector(0.05f, -0.3f, 0.1f); FinishGrip = FinishSh[0] + Facing(AtFinish.Chest) * 0.25f; break;
-		default:
-			if (In.Shot == EShotType::Defend) ThroughGrip = FinishGrip = Contact.Grip + FVector(0.02f, 0.f, 0.02f);
-			else if (In.Shot == EShotType::Punch) FinishGrip = Contact.Grip + ShotFlat * 0.15f + FVector(0.f, 0.f, 0.3f);
-			break;
+		else
+		{
+			switch (Family)
+			{
+			case EFamily::Pull:
+			{
+				// The hands come round in front of the chest at the contact's height, then finish by the front shoulder:
+				// ahead of the turning chest all the way, never through the shoulder it sweeps round.
+				FVector ThroughSh[2];
+				Shoulders(AtThrough, ThroughSh);
+				ThroughGrip = FVector(FVector2D(0.5f * (ThroughSh[0] + ThroughSh[1]) + Facing(AtThrough.Chest) * 0.42f), Contact.Grip.Z + 0.08f);
+				FinishGrip = FinishSh[0] + Facing(AtFinish.Chest) * (In.Style == EBatterStyle::ExpressPuller ? 0.34f : 0.3f);
+				break;
+			}
+			case EFamily::Cut: ThroughGrip = Contact.Grip + FVector(0.05f, 0.05f, -0.12f); FinishGrip = Contact.Grip + FVector(0.12f, -0.05f, -0.2f); break;
+			case EFamily::Sweep:
+				ThroughGrip = Contact.Grip + FVector(0.05f, -0.3f, 0.1f);
+				FinishGrip = FinishSh[0] + Facing(AtFinish.Chest) * 0.25f;
+				// A slog sweep's arms swing on up to a high finish, long, the hands up and forward over the front shoulder,
+				// rather than rolling round at chest height.
+				if (In.Shot == EShotType::SlogSweep) FinishGrip += FVector(0.f, 0.f, 0.3f) - Facing(AtFinish.Chest) * 0.05f;
+				break;
+			default:
+				if (In.Shot == EShotType::Defend) ThroughGrip = FinishGrip = Contact.Grip + FVector(0.02f, 0.f, 0.02f);
+				else if (In.Shot == EShotType::Punch) FinishGrip = Contact.Grip + ShotFlat * 0.15f + FVector(0.f, 0.f, 0.3f);
+				else if (In.Style == EBatterStyle::Classical)
+				{
+					FinishGrip = FinishSh[0] + FrontOut * 0.06f + Facing(AtFinish.Chest) * 0.05f + FVector(0.f, 0.f, In.Shot == EShotType::Loft ? 0.48f : 0.42f);
+				}
+				break;
+			}
 		}
 		const FKey Keys[] = {
 			{ Press, Up(BodyAt(Press)) },
@@ -548,6 +710,21 @@ FBody Plan(const FInput& In)
 		// Only the keys are checked for reach; between them the spline can bow out of it, so after the contact
 		// (which must stay on the ball) the hands are kept within reach every frame, and never folded up.
 		B = Spline(Keys, T);
+		if (bAdvance && T < Impact)
+		{
+			// Down the track the body covers metres between keys: the hands ride with it, keyed from the pelvis,
+			// rather than trailing on a path drawn through where it was.
+			auto Anchor = [](const FPoseL& At) { return FVector(At.Pelvis, 0.f); }; // not the drop: the hands ride over each stride's dip
+			FKey Carried[UE_ARRAY_COUNT(Keys)];
+			for (int32 K = 0; K < UE_ARRAY_COUNT(Keys); ++K)
+			{
+				Carried[K] = Keys[K];
+				Carried[K].Bat.Grip -= Anchor(BodyAt(Keys[K].T));
+			}
+			B = Spline(Carried, T);
+			B.Grip += Anchor(P);
+			B = Reachable(B, P); // within reach between the keys, and never through the chest as the body closes on the hands
+		}
 		B = T > Impact ? Reachable(B, P) : Uncramped(B, P); // the contact is never cramped: no push there
 		// Recovering, the hands carry the finished bat with the body as it walks back into the stance, rather than
 		// leaving it where the stroke ended while the body steps away from it.

@@ -37,6 +37,35 @@ arm = next(o for o in bpy.data.objects if o.type == 'ARMATURE')
 body = next(o for o in bpy.data.objects if o.type == 'MESH')
 to_local = body.matrix_world.inverted() @ arm.matrix_world
 
+# MetaHuman's face owns the neck and shoulder skin. A shirt cut from the body alone
+# ends below the collarbones. Include that skin when fitting the premium kit.
+if os.environ.get('KIT_ONLY') and FACE:
+    before = set(bpy.data.objects)
+    bpy.ops.import_scene.fbx(filepath=FACE)
+    face = next(o for o in set(bpy.data.objects) - before if o.type == 'MESH')
+    face_arm = next(o for o in set(bpy.data.objects) - before if o.type == 'ARMATURE')
+    cutoff = (to_local @ arm.data.bones['neck_01'].head_local).z
+    bm = bmesh.new()
+    bm.from_mesh(face.data)
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z > cutoff], context='VERTS')
+    bm.to_mesh(face.data)
+    bm.free()
+    # Facial rig joints do not exist on the body skeleton; neck skin follows neck_01.
+    neck = face.vertex_groups.get('neck_01') or face.vertex_groups.new(name='neck_01')
+    for v in face.data.vertices:
+        missing = sum(g.weight for g in v.groups if face.vertex_groups[g.group].name not in arm.data.bones)
+        if missing:
+            neck.add([v.index], missing, 'ADD')
+    for g in list(face.vertex_groups):
+        if g.name not in arm.data.bones:
+            face.vertex_groups.remove(g)
+    bpy.ops.object.select_all(action='DESELECT')
+    face.select_set(True)
+    body.select_set(True)
+    bpy.context.view_layer.objects.active = body
+    bpy.ops.object.join()
+    bpy.data.objects.remove(face_arm, do_unlink=True)
+
 
 def joint(name):
     return to_local @ arm.data.bones[name].head_local
@@ -131,6 +160,7 @@ def finish(o, bm, material, thickness=THICKNESS):
     o.data.materials.append(bpy.data.materials.get(material) or bpy.data.materials.new(material))
     for p in o.data.polygons:
         p.material_index = 0
+        p.use_smooth = True
     return o
 
 
@@ -150,6 +180,14 @@ if neck:
     made = bmesh.ops.extrude_edge_only(bm, edges=neck)
     for v in (g for g in made["geom"] if isinstance(g, bmesh.types.BMVert)):
         v.co += Vector((0.0, 0.0, COLLAR)) - flat(v).normalized() * 0.4
+    if os.environ.get('KIT_ONLY'):
+        # Turned collar, with a lower front opening; same skin weights as its neckline.
+        top = [g for g in made['geom'] if isinstance(g, bmesh.types.BMEdge) and g.is_boundary]
+        fold = bmesh.ops.extrude_edge_only(bm, edges=top)
+        for v in (g for g in fold['geom'] if isinstance(g, bmesh.types.BMVert)):
+            v.co += flat(v).normalized() * 2.2 - Vector((0.0, 0.0, 2.6))
+            if v.co.y < neck_joint.y and abs(v.co.x) < 3.5:
+                v.co.z -= 1.8
 shirt = finish(o, bm, "Kit_Shirt")
 
 
@@ -188,6 +226,9 @@ def export(parts, name, path):
 
 
 export([shirt, trousers, shoes], "Kit", KIT)
+if os.environ.get('KIT_ONLY'):
+    # Equipment is already fitted separately; do not rebuild it during apparel iteration.
+    sys.exit(0)
 
 # Batting pads, modelled round each leg rather than cut from it: a grid over the front of the leg, from the top of the
 # shoe to the thigh, following the leg's measured width and depth. Seven rounded vertical canes run down the shin, a knee

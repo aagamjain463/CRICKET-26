@@ -87,6 +87,10 @@ struct FDeliveryPlan
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) EDeliveryType Type = EDeliveryType::Stock;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) float Line = 0.1f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) float Length = 6.f; // pitching distance from the striker's stumps
+	/** 0..1: how hard the bowler runs in. 0.5 is their stock pace; flat out is quicker but sprays it. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) float Effort = 0.5f;
+	/** 0..1: how much of the bowler's swing, seam or turn they try to put on it. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) float Movement = 1.f;
 };
 
 struct FDeliveryRelease
@@ -102,6 +106,14 @@ namespace CricketBowling
 {
 	/** Delivery types available to a bowler style. */
 	TArray<EDeliveryType> Repertoire(EBowlerType Type);
+
+	/** Share of the bowler's stock pace at an effort (0.5: stock, 0: 85%, 1: 105%), and how it widens the scatter. */
+	inline float EffortPace(float Effort)
+	{
+		Effort = FMath::Clamp(Effort, 0.f, 1.f);
+		return Effort < 0.5f ? FMath::Lerp(0.85f, 1.f, 2.f * Effort) : FMath::Lerp(1.f, 1.05f, 2.f * Effort - 1.f);
+	}
+	inline float EffortScatter(float Effort) { return 1.f + 1.5f * FMath::Max(0.f, FMath::Clamp(Effort, 0.f, 1.f) - 0.7f); }
 
 	/**
 	 * Turns intent + execution into a physical release. ReleaseTiming is the signed error of the

@@ -157,6 +157,12 @@ bool FSuperOverMatch::CompleteDelivery(const FDeliveryOutcome& O, TArray<ECricke
 	}
 	else
 	{
+		if (bLegal && In.LegalBalls % 6 == 0)
+		{
+			Swap(In.Striker, In.NonStriker);
+			In.Bouncers = 0;
+			In.OverLogStart = In.BallLog.Num();
+		}
 		Phase = EMatchPhase::ReadyForDelivery;
 		if (IsChase())
 		{
@@ -197,7 +203,27 @@ bool FSuperOverMatch::StartSecondInnings()
 bool FSuperOverMatch::StartNextSuperOver()
 {
 	if (Phase != EMatchPhase::MatchComplete || !bTied) return false;
+	Rules.MaxLegalBalls = 6;
+	Rules.MaxWickets = 2;
 	Start(Innings[1].BattingTeam);
+	return true;
+}
+
+bool FSuperOverMatch::SetBowlerSlot(int32 Slot)
+{
+	if (Slot < 0) return false;
+	if (Phase != EMatchPhase::ReadyForDelivery && Phase != EMatchPhase::InningsBreak) return false;
+	if (!Innings.IsValidIndex(CurrentInnings)) return false;
+	FInningsState& In = Mut();
+	if (Slot == In.BowlerSlot) return true;
+	if (In.BowlerSlot != INDEX_NONE)
+	{
+		if (!In.BowlerCards.IsValidIndex(In.BowlerSlot)) In.BowlerCards.SetNumZeroed(In.BowlerSlot + 1);
+		In.BowlerCards[In.BowlerSlot] = In.Bowler;
+	}
+	if (!In.BowlerCards.IsValidIndex(Slot)) In.BowlerCards.SetNumZeroed(Slot + 1);
+	In.Bowler = In.BowlerCards[Slot];
+	In.BowlerSlot = Slot;
 	return true;
 }
 

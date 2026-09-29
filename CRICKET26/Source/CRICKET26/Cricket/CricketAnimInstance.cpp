@@ -7,12 +7,15 @@
 void FCricketAnimProxy::PreUpdate(UAnimInstance* Instance, float DeltaSeconds)
 {
 	FAnimInstanceProxy::PreUpdate(Instance, DeltaSeconds);
+	DeltaTime = DeltaSeconds;
 	const UCricketAnimInstance* I = CastChecked<UCricketAnimInstance>(Instance);
 	Idle = I->Idle;
+	Walk = I->Walk;
 	Jog = I->Jog;
 	Sprint = I->Sprint;
 	Pose = I->Pose;
 	if (Idle) IdleTime = FMath::Fmod(IdleTime + DeltaSeconds, double(FMath::Max(Idle->GetPlayLength(), 0.01f)));
+	if (Walk) WalkTime = FMath::Fmod(WalkTime + DeltaSeconds * Pose.WalkRate, double(FMath::Max(Walk->GetPlayLength(), 0.01f)));
 	if (Jog) JogTime = FMath::Fmod(JogTime + DeltaSeconds * Pose.JogRate, double(FMath::Max(Jog->GetPlayLength(), 0.01f)));
 	if (Sprint) SprintTime = FMath::Fmod(SprintTime + DeltaSeconds * Pose.SprintRate, double(FMath::Max(Sprint->GetPlayLength(), 0.01f)));
 	// World to component space, here on the game thread where the component's transform is current.
@@ -25,6 +28,9 @@ void FCricketAnimProxy::PreUpdate(UAnimInstance* Instance, float DeltaSeconds)
 	{
 		Pose.Hand[S] = C.InverseTransformPosition(Pose.Hand[S]);
 		Pose.Elbow[S] = C.InverseTransformPosition(Pose.Elbow[S]);
+		Pose.PalmFacing[S] = C.InverseTransformVectorNoScale(Pose.PalmFacing[S]);
+		Pose.FingerFacing[S] = C.InverseTransformVectorNoScale(Pose.FingerFacing[S]);
+		Pose.Foot[S] = C.InverseTransformPosition(Pose.Foot[S]);
 	}
 	FCricketBatterPose& B = Pose.Batter;
 	B.Pelvis = C.InverseTransformPosition(B.Pelvis);
@@ -42,6 +48,13 @@ bool FCricketAnimProxy::Evaluate(FPoseContext& Output)
 	}
 	FAnimationPoseData Out(Output);
 	Idle->GetAnimationPose(Out, FAnimExtractContext(IdleTime, false));
+	if (Walk && Pose.WalkWeight > 0.01f)
+	{
+		FPoseContext WalkPose(this);
+		FAnimationPoseData WalkData(WalkPose);
+		Walk->GetAnimationPose(WalkData, FAnimExtractContext(WalkTime, false));
+		FAnimationRuntime::BlendTwoPosesTogetherInPlace(Out, WalkData, 1.f - Pose.WalkWeight);
+	}
 	if (Jog && Pose.JogWeight > 0.01f)
 	{
 		FPoseContext JogPose(this);
@@ -98,10 +111,19 @@ namespace CricketIK
 		SetCS(CS, Bone, T);
 	}
 
-	void Reach(FCS& CS, FCompactPoseBoneIndex A, FCompactPoseBoneIndex B, FCompactPoseBoneIndex C, const FVector& Effector, const FVector& Pole)
+	void Reach(FCS& CS, FCompactPoseBoneIndex A, FCompactPoseBoneIndex B, FCompactPoseBoneIndex C, const FVector& InEffector, const FVector& Pole)
 	{
 		if (A == INDEX_NONE || B == INDEX_NONE || C == INDEX_NONE) return;
 		FTransform TA = CS.GetComponentSpaceTransform(A), TB = CS.GetComponentSpaceTransform(B), TC = CS.GetComponentSpaceTransform(C);
+		// Never ask for more arm (or leg) than there is: an effector past full extension snaps the
+		// middle joint straight and pops it side to side frame by frame, which reads as the elbow
+		// coming apart on the auction's seated staff at full paddle reach. Just inside full reach the
+		// solver bends the joint instead, with the hand a millimetre short nobody can see.
+		FVector Effector = InEffector;
+		const float L1 = FVector::Dist(TA.GetLocation(), TB.GetLocation()), L2 = FVector::Dist(TB.GetLocation(), TC.GetLocation());
+		const float MaxReach = 0.995f * (L1 + L2);
+		if (MaxReach > 1.f && FVector::Dist(TA.GetLocation(), Effector) > MaxReach)
+			Effector = TA.GetLocation() + (Effector - TA.GetLocation()).GetSafeNormal() * MaxReach;
 		AnimationCore::SolveTwoBoneIK(TA, TB, TC, Pole, Effector, false, 1.0, 1.0);
 		const FBoneTransform Chain[] = { FBoneTransform(A, TA), FBoneTransform(B, TB), FBoneTransform(C, TC) };
 		CS.SafeSetCSBoneTransforms(Chain);
@@ -111,28 +133,49 @@ namespace CricketIK
 void FCricketAnimProxy::ApplyActions(FPoseContext& Output) const
 {
 	using namespace CricketIK;
-	const bool bPelvis = !Pose.PelvisOffset.IsNearlyZero(0.5f) || Pose.ShouldersWeight > 0.f;
+	const bool bPelvis = !Pose.PelvisOffset.IsNearlyZero(0.5f) || Pose.ShouldersWeight > 0.f || Pose.FootWeight > 0.f;
 	const bool bChest = !Pose.ChestFacing.IsNearlyZero() || Pose.ChestBend != 0.f;
 	const bool bHands = Pose.HandWeight[0] > 0.f || Pose.HandWeight[1] > 0.f;
 	if (!bPelvis && !bChest && !bHands && Pose.LookWeight <= 0.f) return;
 
 	const FBoneContainer& Bones = Output.Pose.GetBoneContainer();
-	auto Bone = [&](const TCHAR* Name)
+	if (!ActionsRig.bValid || ActionsRig.Serial != Bones.GetSerialNumber())
 	{
-		const int32 Mesh = Bones.GetPoseBoneIndexForBoneName(FName(Name));
-		return Mesh == INDEX_NONE ? FCompactPoseBoneIndex(INDEX_NONE) : Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(Mesh));
-	};
-	// ponytail: bone names looked up every evaluation (a map find each); cache per bone container if profiling shows it.
-	const FCompactPoseBoneIndex Pelvis = Bone(TEXT("pelvis")), Spine1 = Bone(TEXT("spine_01")), Spine3 = Bone(TEXT("spine_03")),
-		Neck = Bone(TEXT("neck_01")), Head = Bone(TEXT("head"));
-	const FCompactPoseBoneIndex Thigh[2] = { Bone(TEXT("thigh_l")), Bone(TEXT("thigh_r")) }, Calf[2] = { Bone(TEXT("calf_l")), Bone(TEXT("calf_r")) },
-		Foot[2] = { Bone(TEXT("foot_l")), Bone(TEXT("foot_r")) };
-	const FCompactPoseBoneIndex Upper[2] = { Bone(TEXT("upperarm_l")), Bone(TEXT("upperarm_r")) }, Lower[2] = { Bone(TEXT("lowerarm_l")), Bone(TEXT("lowerarm_r")) },
-		Hand[2] = { Bone(TEXT("hand_l")), Bone(TEXT("hand_r")) };
+		auto Bone = [&](const TCHAR* Name)
+		{
+			const int32 Mesh = Bones.GetPoseBoneIndexForBoneName(FName(Name));
+			return Mesh == INDEX_NONE ? FCompactPoseBoneIndex(INDEX_NONE) : Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(Mesh));
+		};
+		ActionsRig.Pelvis = Bone(TEXT("pelvis"));
+		ActionsRig.Spine1 = Bone(TEXT("spine_01"));
+		ActionsRig.Spine3 = Bone(TEXT("spine_03"));
+		ActionsRig.Neck = Bone(TEXT("neck_01"));
+		ActionsRig.Head = Bone(TEXT("head"));
+		for (int32 S = 0; S < 2; ++S)
+		{
+			const TCHAR* Suffix = S == 0 ? TEXT("_l") : TEXT("_r");
+			ActionsRig.Thigh[S] = Bone(*FString::Printf(TEXT("thigh%s"), Suffix));
+			ActionsRig.Calf[S] = Bone(*FString::Printf(TEXT("calf%s"), Suffix));
+			ActionsRig.Foot[S] = Bone(*FString::Printf(TEXT("foot%s"), Suffix));
+			ActionsRig.Clavicle[S] = Bone(*FString::Printf(TEXT("clavicle%s"), Suffix));
+			ActionsRig.Upper[S] = Bone(*FString::Printf(TEXT("upperarm%s"), Suffix));
+			ActionsRig.Lower[S] = Bone(*FString::Printf(TEXT("lowerarm%s"), Suffix));
+			ActionsRig.Hand[S] = Bone(*FString::Printf(TEXT("hand%s"), Suffix));
+		}
+		ActionsRig.Serial = Bones.GetSerialNumber();
+		ActionsRig.bValid = true;
+	}
+	const FCompactPoseBoneIndex Pelvis = ActionsRig.Pelvis, Spine1 = ActionsRig.Spine1, Spine3 = ActionsRig.Spine3,
+		Neck = ActionsRig.Neck, Head = ActionsRig.Head;
+	const FCompactPoseBoneIndex* Thigh = ActionsRig.Thigh, *Calf = ActionsRig.Calf, *Foot = ActionsRig.Foot;
+	const FCompactPoseBoneIndex* Clavicle = ActionsRig.Clavicle;
+	const FCompactPoseBoneIndex* Upper = ActionsRig.Upper, *Lower = ActionsRig.Lower, *Hand = ActionsRig.Hand;
 	if (Pelvis == INDEX_NONE) return;
 
 	FCS CS;
 	CS.InitPose(Output.Pose);
+	if ((!Pose.PalmFacing[0].IsNearlyZero() || !Pose.PalmFacing[1].IsNearlyZero()) && (!Rig.bValid || Rig.Serial != Bones.GetSerialNumber()))
+		BuildRig(Bones);
 	// The mannequin faces +Y in its own space.
 	const FVector Forward(0.f, 1.f, 0.f);
 
@@ -141,6 +184,8 @@ void FCricketAnimProxy::ApplyActions(FPoseContext& Output) const
 	{
 		FVector FootAt[2];
 		for (int32 S = 0; S < 2; ++S) FootAt[S] = Foot[S] != INDEX_NONE ? CS.GetComponentSpaceTransform(Foot[S]).GetLocation() : FVector::ZeroVector;
+		if (Pose.FootWeight > 0.f)
+			for (int32 S = 0; S < 2; ++S) FootAt[S] = FMath::Lerp(FootAt[S], Pose.Foot[S], FMath::Min(Pose.FootWeight, 1.f));
 		FVector Offset = Pose.PelvisOffset;
 		if (Pose.ShouldersWeight > 0.f && Upper[0] != INDEX_NONE && Upper[1] != INDEX_NONE)
 		{
@@ -156,7 +201,7 @@ void FCricketAnimProxy::ApplyActions(FPoseContext& Output) const
 			const FVector Hip = CS.GetComponentSpaceTransform(Thigh[S]).GetLocation();
 			const FVector Knee = CS.GetComponentSpaceTransform(Calf[S]).GetLocation();
 			// Knees keep bending the way they already do (forward if the leg is straight).
-			const FVector Bend = (Knee - 0.5f * (Hip + FootAt[S])).GetSafeNormal() + 0.5f * Forward;
+			const FVector Bend = Pose.FootWeight > 0.f ? Forward + 0.5f * FVector::UpVector : (Knee - 0.5f * (Hip + FootAt[S])).GetSafeNormal() + 0.5f * Forward;
 			Reach(CS, Thigh[S], Calf[S], Foot[S], FootAt[S], Knee + Bend.GetSafeNormal() * 50.f);
 		}
 	}
@@ -193,8 +238,29 @@ void FCricketAnimProxy::ApplyActions(FPoseContext& Output) const
 	for (int32 S = 0; S < 2; ++S)
 	{
 		if (Pose.HandWeight[S] <= 0.f || Hand[S] == INDEX_NONE) continue;
+		if (Pose.bKeeper && Clavicle[S] != INDEX_NONE)
+		{
+			const FVector Shoulder = CS.GetComponentSpaceTransform(Clavicle[S]).GetLocation();
+			const FVector Current = CS.GetComponentSpaceTransform(Hand[S]).GetLocation() - Shoulder;
+			const FVector Desired = Pose.Hand[S] - Shoulder;
+			if (Current.SizeSquared() > 100.f && Desired.SizeSquared() > 100.f)
+			{
+				const FQuat Shift = FQuat::FindBetweenNormals(Current.GetSafeNormal(), Desired.GetSafeNormal());
+				const float Fraction = FMath::Min(0.45f, FMath::DegreesToRadians(12.f) / FMath::Max(Shift.GetAngle(), 0.001f));
+				Turn(CS, Clavicle[S], FQuat::Slerp(FQuat::Identity, Shift, Fraction * FMath::Min(Pose.HandWeight[S], 1.f)));
+			}
+		}
 		const FVector Now = CS.GetComponentSpaceTransform(Hand[S]).GetLocation();
 		Reach(CS, Upper[S], Lower[S], Hand[S], FMath::Lerp(Now, Pose.Hand[S], FMath::Min(Pose.HandWeight[S], 1.f)), Pose.Elbow[S]);
+		if (!Pose.PalmFacing[S].IsNearlyZero() && !Pose.FingerFacing[S].IsNearlyZero() && Rig.bValid && Rig.Hand[S] != INDEX_NONE)
+		{
+			// Orient only the wrist after the arm reaches its target; neither shoulder nor elbow moves.
+			const FQuat Reference = Rig.Ref[Rig.Hand[S]].GetRotation();
+			const FQuat Wrist = CS.GetComponentSpaceTransform(Hand[S]).GetRotation();
+			const FQuat From = FRotationMatrix::MakeFromXY(Rig.Fingers[S], Rig.Palm[S]).ToQuat();
+			const FQuat To = FRotationMatrix::MakeFromXY(Pose.FingerFacing[S], Pose.PalmFacing[S]).ToQuat();
+			Turn(CS, Hand[S], To * From.Inverse() * Reference * Wrist.Inverse());
+		}
 	}
 
 	FCS::ConvertComponentPosesToLocalPoses(MoveTemp(CS), Output.Pose);
@@ -219,7 +285,7 @@ namespace CricketIK
 	}
 }
 
-void FCricketAnimProxy::BuildRig(const FBoneContainer& Bones)
+void FCricketAnimProxy::BuildRig(const FBoneContainer& Bones) const
 {
 	FBatterRig& R = Rig;
 	R = FBatterRig();
@@ -277,6 +343,8 @@ void FCricketAnimProxy::BuildRig(const FBoneContainer& Bones)
 		R.Across[S] = Across;
 		R.Palm[S] = (Curl | N) >= 0.f ? N : -N;
 		R.GripOffset[S] = 0.5f * (Index + Pinky) + Out * 1.5f + R.Palm[S] * 2.8f - Wrist;
+		R.Fingers[S] = Out;
+		R.PalmOffset[S] = 0.6f * (0.5f * (Index + Pinky) - Wrist) + R.Palm[S] * 3.f; // a keeping glove's padding
 		for (int32 F = 0; F < 5; ++F)
 		{
 			const int32 A = R.Finger[S][F][0], B = R.Finger[S][F][1];
@@ -408,7 +476,7 @@ void FCricketAnimProxy::SolveBatter(FCompactPose& Out)
 		const bool bTop = H == B.TopHand;
 		// Pull the collarbone a little toward the hands, and further (the shoulder reaching forward, as a bottom
 		// hand does through the ball) when the handle is beyond the straight arm.
-		const FVector Handle = B.Grip + Axis * (bTop ? -4.5f : 4.5f);
+		const FVector Handle = B.bGloves ? Pose.Hand[H] : B.Grip + Axis * (bTop ? -4.5f : 4.5f);
 		const float L1 = FVector::Dist(At(R.Upper[H]), At(R.Lower[H])), L2 = FVector::Dist(At(R.Lower[H]), At(R.Hand[H]));
 		if (Posed(R.Clavicle[H]) != INDEX_NONE)
 		{
@@ -426,6 +494,46 @@ void FCricketAnimProxy::SolveBatter(FCompactPose& Out)
 		const FVector RefUpper = (At(R.Lower[H]) - At(R.Upper[H])).GetSafeNormal(), RefLower = (At(R.Hand[H]) - At(R.Lower[H])).GetSafeNormal();
 		const FVector RefHinge = FVector::CrossProduct(RefUpper, RefLower).GetSafeNormal();
 		const FVector Outward = H == 0 ? Wide : -Wide;
+		if (B.bGloves)
+		{
+			// Gloves: palms to the ball, fingers down below the chest and up above it, out to the sides between.
+			// The hand is set first, then the forearm turns and the wrist bends toward it only so far.
+			const FVector Facing = FVector(B.Chest.X, B.Chest.Y, 0.f).GetSafeNormal(UE_SMALL_NUMBER, Hips);
+			const float High = FMath::SmoothStep(95.f * Size, 125.f * Size, float(Handle.Z - B.Pelvis.Z));
+			const float Mid = 1.f - FMath::Abs(2.f * High - 1.f);
+			const FVector Fingers = (FMath::Lerp(-Up + 0.35f * Facing, Up + 0.2f * Facing, High) + Outward * Mid).GetSafeNormal();
+			const FVector Palm = (Facing - Fingers * (Facing | Fingers)).GetSafeNormal(UE_SMALL_NUMBER, Outward);
+			FQuat HandQ = Map(R.Fingers[H], R.Palm[H], Fingers, Palm);
+			const FVector Wrist = Handle - HandQ.RotateVector(R.PalmOffset[H]);
+			const FVector Elbow = Joint(Shoulder, Wrist, L1, L2, Pose.Elbow[H] - Shoulder);
+			const FVector Hinge = FVector::CrossProduct(Elbow - Shoulder, Wrist - Elbow).GetSafeNormal(UE_SMALL_NUMBER, RefHinge);
+			const FQuat QUpper = Map(RefUpper, RefHinge, Elbow - Shoulder, Hinge), QLower = Map(RefLower, RefHinge, Wrist - Elbow, Hinge);
+			FQuat Swing, Spin;
+			(QLower.Inverse() * HandQ).ToSwingTwist(RefLower, Swing, Spin);
+			const float Pronate = FMath::Clamp(FMath::UnwindRadians(Spin.GetTwistAngle(RefLower)), -FMath::DegreesToRadians(MaxTwist - 10.f), FMath::DegreesToRadians(MaxTwist - 10.f));
+			FVector SwingAxis;
+			float SwingAngle;
+			Swing.ToAxisAndAngle(SwingAxis, SwingAngle);
+			HandQ = QLower * FQuat(SwingAxis, FMath::Min(SwingAngle, FMath::DegreesToRadians(MaxBend - 10.f))) * FQuat(RefLower, Pronate);
+			Place(R.Upper[H], QUpper * Rot(R.Upper[H]));
+			Place(R.Lower[H], QLower * Rot(R.Lower[H]));
+			const FVector ForeAxis = (Wrist - Elbow).GetSafeNormal();
+			for (int32 K = 0; K < 2; ++K) Place(R.Twist[H][K], FQuat(ForeAxis, Pronate * (K == 0 ? 2.f / 3.f : 1.f / 3.f)) * QLower * Rot(R.Twist[H][K]));
+			Place(R.Hand[H], HandQ * Rot(R.Hand[H]));
+			// Fingers a little flexed inside the glove, the thumb spread.
+			static const float GloveCurl[5][3] = { { 5.f, 10.f, 10.f }, { 12.f, 15.f, 10.f }, { 12.f, 15.f, 10.f }, { 14.f, 16.f, 10.f }, { 16.f, 18.f, 10.f } };
+			for (int32 F = 0; F < 5; ++F)
+			{
+				const FVector CurlAxis = HandQ.RotateVector(R.CurlAxis[H][F]);
+				float Sum = 0.f;
+				for (int32 K = 0; K < 3; ++K)
+				{
+					Sum += GloveCurl[F][K];
+					if (R.Finger[H][F][K] != INDEX_NONE) Place(R.Finger[H][F][K], FQuat(CurlAxis, FMath::DegreesToRadians(Sum)) * HandQ * Rot(R.Finger[H][F][K]));
+				}
+			}
+			continue;
+		}
 		struct FArm { FQuat Hand; FVector Wrist, Elbow; float Cost; float Twist; };
 		auto Try = [&](float RollAngle, float SwivelAngle)
 		{
@@ -445,22 +553,28 @@ void FCricketAnimProxy::SolveBatter(FCompactPose& Out)
 			FQuat Swing, Spin;
 			(Fore.Inverse() * A.Hand).ToSwingTwist(RefLower, Swing, Spin);
 			A.Twist = FMath::UnwindRadians(Spin.GetTwistAngle(RefLower));
+			// The forearm turns and the wrist bends only so far: past MaxTwist or MaxBend the arm reads as wrung
+			// out, so those are walls, not preferences.
 			const float Bent = FMath::RadiansToDegrees(Swing.GetAngle()), Turned = FMath::Abs(FMath::RadiansToDegrees(A.Twist));
-			A.Cost += FMath::Square(Bent / 40.f) + FMath::Square(FMath::Max(Turned - 70.f, 0.f) / 15.f);
+			A.Cost += FMath::Square(Bent / 40.f) + FMath::Square(FMath::Max(Turned - 55.f, 0.f) / 10.f);
+			if (Turned > MaxTwist) A.Cost += 1000.f + Turned;
+			if (Bent > MaxBend) A.Cost += 1000.f + Bent;
 			for (const float T : { 0.f, 0.35f, 0.7f }) A.Cost += 60.f * FMath::Square(Inside(FMath::Lerp(A.Elbow, A.Wrist, T)));
 			A.Cost += 60.f * FMath::Square(Inside(FMath::Lerp(Shoulder, A.Elbow, 0.7f)));
-			// The top arm's elbow leads, out toward the bowler (the front elbow of the stance and the downswing); the
-			// bottom arm's hangs down, tucked by the back hip. With the hand raised, "out" and "down" would wing the
-			// elbow sideways, so it points forward under the hands instead, as in a high finish.
+			// Both elbows hang under the hands: the upper arm down from the shoulder and the forearm rising to the
+			// grip, never the elbow lifted with the forearm dropping to the handle. The top elbow leans a little out
+			// toward the bowler; with the hand raised it points forward under the hands instead, as in a high finish.
 			const float Raised = FMath::SmoothStep(-20.f * Size, 10.f * Size, float(A.Wrist.Z - Shoulder.Z));
-			const FVector Low = bTop ? Outward - Up * 0.3f : -Up + Outward * 0.3f;
-			const FVector Prefer = (Low.GetSafeNormal() * (1.f - Raised) + Deep * Raised).GetSafeNormal();
-			A.Cost += 1.f - ((A.Elbow - Shoulder - U * ((A.Elbow - Shoulder) | U)).GetSafeNormal() | (Prefer - U * (Prefer | U)).GetSafeNormal());
+			const FVector Prefer = -Up + Outward * ((bTop ? 0.3f : 0.15f) * (1.f - Raised)) + Deep * (0.5f * Raised);
+			const FVector Bow = A.Elbow - Shoulder - U * ((A.Elbow - Shoulder) | U);
+			A.Cost += 2.f * (1.f - (Bow.GetSafeNormal() | (Prefer - U * (Prefer | U)).GetSafeNormal()));
+			A.Cost += 20.f * FMath::Square(FMath::Max(float(Bow.Z), 0.f) / (0.5f * L1));
 			if (bSolved)
 				A.Cost += 3.f * (FMath::Square(FMath::FindDeltaAngleRadians(SwivelAngle, Swivel[H]) / PI) + FMath::Square(FMath::FindDeltaAngleRadians(RollAngle, Roll[H]) / PI));
 			return A;
 		};
-		// ponytail: a 16 x 24 grid then two halving passes (~450 tries an arm, microseconds); a gradient step from last frame if profiling cares.
+		// ponytail: a 12 x 16 grid (plus last frame's answer) then four halving passes (~230 tries an arm); a gradient
+		// step from last frame if profiling cares.
 		float BestRoll = 0.f, BestSwivel = 0.f;
 		FArm Best = Try(0.f, 0.f);
 		auto Consider = [&](float RollAngle, float SwivelAngle)
@@ -468,13 +582,33 @@ void FCricketAnimProxy::SolveBatter(FCompactPose& Out)
 			const FArm A = Try(RollAngle, SwivelAngle);
 			if (A.Cost < Best.Cost) { Best = A; BestRoll = RollAngle; BestSwivel = SwivelAngle; }
 		};
-		for (int32 I = 0; I < 16; ++I)
-			for (int32 J = 0; J < 24; ++J) Consider(2.f * PI * I / 16.f, 2.f * PI * J / 24.f);
-		for (float Step : { PI / 16.f, PI / 32.f, PI / 64.f })
+		if (bSolved) Consider(Roll[H], Swivel[H]);
+		for (int32 I = 0; I < 12; ++I)
+			for (int32 J = 0; J < 16; ++J) Consider(2.f * PI * I / 12.f, 2.f * PI * J / 16.f);
+		for (float Step : { PI / 12.f, PI / 24.f, PI / 48.f, PI / 96.f })
 		{
 			const float R0 = BestRoll, S0 = BestSwivel;
 			for (int32 I = -1; I <= 1; ++I)
 				for (int32 J = -1; J <= 1; ++J) Consider(R0 + I * Step, S0 + J * Step);
+		}
+		// A hand only slides round the handle, and an elbow only swings, so fast: a best answer far from last
+		// frame's is reached over a few frames rather than in one pop. Not across a cut (the grip jumping).
+		if (bSolved && FVector::Dist(B.Grip, LastGrip) < 30.f)
+		{
+			const float Dt = FMath::Clamp(DeltaTime, 1.f / 240.f, 1.f / 15.f);
+			const float R1 = Roll[H] + FMath::Clamp(FMath::FindDeltaAngleRadians(Roll[H], BestRoll), -RollRate * Dt, RollRate * Dt);
+			const float S1 = Swivel[H] + FMath::Clamp(FMath::FindDeltaAngleRadians(Swivel[H], BestSwivel), -SwivelRate * Dt, SwivelRate * Dt);
+			if (!FMath::IsNearlyEqual(R1, BestRoll) || !FMath::IsNearlyEqual(S1, BestSwivel))
+			{
+				// Never through a twisted arm: a pop beats a wrung-out forearm.
+				const FArm Limited = Try(R1, S1);
+				if (Limited.Cost < 1000.f || Best.Cost >= 1000.f)
+				{
+					Best = Limited;
+					BestRoll = R1;
+					BestSwivel = S1;
+				}
+			}
 		}
 		Roll[H] = FMath::UnwindRadians(BestRoll);
 		Swivel[H] = FMath::UnwindRadians(BestSwivel);
@@ -501,5 +635,6 @@ void FCricketAnimProxy::SolveBatter(FCompactPose& Out)
 		}
 	}
 	bSolved = true;
+	LastGrip = B.Grip;
 	FCS::ConvertComponentPosesToLocalPoses(MoveTemp(CS), Out);
 }

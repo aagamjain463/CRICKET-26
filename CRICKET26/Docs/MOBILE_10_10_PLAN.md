@@ -166,16 +166,16 @@ DoD: soaks every build + external playtest + owner premium sign-off side-by-side
 
 | Milestone | Status | Proof |
 |---|---|---|
-| M0 stabilize | DONE 2026-09-27 | build Succeeded, 91/91 |
+| M0 stabilize | IN PROGRESS 2026-09-29: Touch.Controls guard expectation fixed, Auction untracked breakage blocks build | build blocked by AuctionRoom/AuctionCalls unity errors; Cricket files green in isolation |
 | M1 package | DONE config, BLOCKED SDK/signing | cook + package_mobile.sh, SDK fail-fast verified |
 | M2 perf | DONE guards, device profile BLOCKED | VSM off Low, strands off, LOD/crowd/shadow tiers verified in code |
-| M3 touch | DONE | Cancel 0.15, min-size asserts, Touch.Controls green |
-| M4 batting | VERIFIED no change | soak 15.4 runs, 24.6% sixes within bands; physics untouched |
+| M3 touch | DONE + 2026-09-29: phone timing +15%, reticle 24→30 | Cancel 0.15, min-size asserts, Touch.Controls guard fix; timing Perfect 0.017/Good 0.046/EarlyLate 0.092 |
+| M4 batting | VERIFIED no change (retune reverted 2026-09-29: broke ContactQuality smoothness + scenario H without playtest) | soak 15.4 runs, 24.6% sixes within bands; retune needs human playtest first per FINAL_REPORT |
 | M5 bowling/field | VERIFIED no change | TargetMarker Waiting/RunUp exists, radar entry exists |
 | M6 kit | VERIFIED no change | print 1024/512 exists; Blender rebuild + device captures BLOCKED |
 | M7 anim | BLOCKED performer | stroke QA sheets |
 | M8 stadium | TODO | venue captures |
-| M9 broadcast/UI | TODO | UI shots 3 res |
+| M9 broadcast/UI | IN PROGRESS 2026-09-29: replay wipe fullscreen→lower-third, debug gated out of shipping | UI shots 3 res; was: opaque fullscreen wipe + debug rect in captures |
 | M10 audio | BLOCKED voices | BallN.wav A/B |
 | M11 ship | TODO | store build + audit |
 

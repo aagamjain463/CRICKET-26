@@ -70,7 +70,7 @@ for name in os.environ.get("OUTFIT_WEAR", "").split():
 
 for name in os.environ.get("OUTFIT_PRINT", "").split():
     for path in lib.list_assets(f"{BUILD}/{name}/Clothing", recursive=False):
-        if "Tshirt" in path and "/MI_" in path:
+        if ("Tshirt" in path or "Crewneckt" in path) and "/MI_" in path:
             mi = unreal.load_asset(path)
             # Returns False even when it sets the switch, so the value is read back instead.
             mel = unreal.MaterialEditingLibrary

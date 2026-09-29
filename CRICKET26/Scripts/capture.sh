@@ -9,6 +9,7 @@ ENGINE="/Users/Shared/Epic Games/UE_5.8/Engine"
 N="${1:-1}"; shift || true
 SOUND=-nosound; [[ " $* " == *" -CricketRecordAudio "* ]] && SOUND=
 setopt null_glob; rm -f "$ROOT"/Saved/Screenshots/*/Ball${N}_*.png
+python3 "$ROOT/Scripts/link_module.py" "$ROOT"
 "$ENGINE/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor" "$ROOT/CRICKET26.uproject" "/Engine/Maps/Entry?game=/Script/CRICKET26.SuperOverGameMode" \
-  -game -windowed -ResX=1280 -ResY=720 $SOUND -CricketAutoPlay -CricketShotBall="$N" -abslog="$ROOT/Saved/Capture.log" "$@" > /dev/null 2>&1 || true
+  -game -unattended -windowed -ResX=1280 -ResY=720 $SOUND -CricketAutoPlay -CricketShotBall="$N" -abslog="$ROOT/Saved/Capture.log" "$@" > /dev/null 2>&1 || true
 print -l "$ROOT"/Saved/Screenshots/*/Ball${N}_*.png | wc -l

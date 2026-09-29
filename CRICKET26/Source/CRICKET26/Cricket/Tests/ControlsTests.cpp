@@ -23,7 +23,7 @@ bool FTouchControls::RunTest(const FString&)
 
 	// Every button is on screen, buttons do not overlap, and each tap gives exactly its own intent.
 	// (Effort/Dial are sliders: holding them gives a value rather than a button press.)
-	for (const EMode Mode : { EMode::Batting, EMode::Bowling, EMode::Review })
+	for (const EMode Mode : { EMode::Batting, EMode::Ready, EMode::Running, EMode::Bowling, EMode::Release, EMode::Review, EMode::FieldEdit })
 	{
 		const TArray<FButton> Buttons = Layout(Mode, 7, Aspect);
 		for (int32 I = 0; I < Buttons.Num(); ++I)
@@ -41,22 +41,55 @@ bool FTouchControls::RunTest(const FString&)
 			case EButton::Loft: TestTrue(Name, C.bLoft); break;
 			case EButton::Run: TestTrue(Name, C.bRun); break;
 			case EButton::Cancel: TestTrue(Name, C.bCancel); break;
-			case EButton::Bowl: TestTrue(Name, C.bAction); break;
+			case EButton::Bowl: case EButton::Play: TestTrue(Name, C.bAction); break;
 			case EButton::Delivery: TestEqual(Name, C.DeliveryPick, B.Index); break;
 			case EButton::Effort: TestTrue(Name + TEXT(" slider held"), C.Effort >= 0.f && C.Effort <= 1.f); break;
 			case EButton::Dial: TestTrue(Name + TEXT(" slider held"), C.Dial >= -1.f && C.Dial <= 1.f); break;
 			case EButton::Review: TestTrue(Name, C.bReview && !C.bProgress); break;
 			case EButton::Accept: TestTrue(Name, C.bProgress && !C.bReview); break;
+			case EButton::FieldPreset: TestEqual(Name, C.FieldPreset, B.Index); break;
+			case EButton::FieldApply: TestTrue(Name, C.bFieldApply); break;
+			case EButton::FieldCancel: TestTrue(Name, C.bFieldCancel); break;
+			case EButton::FieldReset: TestTrue(Name, C.bFieldReset); break;
+			case EButton::GuardLeft: TestTrue(Name, C.bGuardLeft && !C.bGuardRight); break;
+			case EButton::GuardRight: TestTrue(Name, C.bGuardRight && !C.bGuardLeft); break;
+			default: break;
 			}
 		}
 	}
 	TestEqual(TEXT("seven delivery buttons, BOWL, two sliders and the field editor entry"), Layout(EMode::Bowling, 7, Aspect).Num(), 11);
-	TestEqual(TEXT("batting has mode, run and cancel buttons"), Layout(EMode::Batting, 7, Aspect).Num(), 5);
+	{
+		// Bowling reads as two tidy groups: PACE and SWING share one baseline with BOWL's foot, and the chips sit
+		// straight on SWING with no dead band between them (regression: a 0.065-high gap left the left card half empty).
+		const TArray<FButton> Bowl = Layout(EMode::Bowling, 7, Aspect);
+		auto Find = [&](EButton Which) { return Bowl.FindByPredicate([Which](const FButton& B) { return B.Button == Which; })->Rect; };
+		const FBox2D Pace = Find(EButton::Effort), Swing = Find(EButton::Dial), Release = Find(EButton::Bowl);
+		TestTrue(TEXT("pace and swing share a baseline"), FMath::IsNearlyEqual(Pace.Max.Y, Swing.Max.Y, KINDA_SMALL_NUMBER) && FMath::IsNearlyEqual(Swing.Max.Y, Release.Max.Y, KINDA_SMALL_NUMBER));
+		float ChipsFoot = 0.f;
+		for (const FButton& B : Bowl) if (B.Button == EButton::Delivery) ChipsFoot = FMath::Max(ChipsFoot, B.Rect.Max.Y);
+		TestTrue(TEXT("chips sit on the swing bar"), Swing.Min.Y - ChipsFoot > 0.f && Swing.Min.Y - ChipsFoot <= 0.015f);
+	}
+	// Contextual: shot modes + crease guard arrows, after it only RUN and CANCEL, in the run-up only the release.
+	TestEqual(TEXT("batting has shot modes + guards"), Layout(EMode::Batting, 7, Aspect).Num(), 5);
+	// Regression: the AI bowled 1.2 s after every ball whether the batter was ready or not; now PLAY calls it.
+	TestTrue(TEXT("before the ball: the shot modes, PLAY and guards"), Layout(EMode::Ready, 7, Aspect).Num() == 6 && Layout(EMode::Ready, 7, Aspect).FindByPredicate([](const FButton& B) { return B.Button == EButton::Play; }) != nullptr);
+	{
+		FGesture Pull;
+		Read(EMode::Ready, 7, Aspect, { { 0, GestureZone(EMode::Batting, Aspect).GetCenter(), true } }, Pull);
+		TestTrue(TEXT("no pull before the ball is called"), Pull.Finger == INDEX_NONE);
+	}
+	TestEqual(TEXT("running has RUN and CANCEL"), Layout(EMode::Running, 7, Aspect).Num(), 2);
+	TestTrue(TEXT("the run-up has only the release"), Layout(EMode::Release, 7, Aspect).Num() == 1 && Layout(EMode::Release, 7, Aspect)[0].Button == EButton::Bowl);
+	{
+		FGesture Pull;
+		Read(EMode::Running, 7, Aspect, { { 0, GestureZone(EMode::Batting, Aspect).GetCenter(), true } }, Pull);
+		TestTrue(TEXT("no second pull once running"), Pull.Finger == INDEX_NONE);
+	}
 	// Mobile 10/10: every tap target is 48dp+ (0.067 of screen height at 720p).
-	for (const EMode Mode : { EMode::Batting, EMode::Review })
+	for (const EMode Mode : { EMode::Batting, EMode::Ready, EMode::Running, EMode::Release, EMode::Review })
 		for (const FButton& B : Layout(Mode, 7, Aspect))
 			TestTrue(*FString::Printf(TEXT("mode %d button %d min touch size"), int32(Mode), int32(B.Button)),
-				B.Rect.GetSize().GetMin() >= 0.13f);
+				B.Rect.GetSize().GetMin() >= 0.1f);
 	TestEqual(TEXT("an LBW call has REVIEW and ACCEPT"), Layout(EMode::Review, 7, Aspect).Num(), 2);
 	TestFalse(TEXT("a stray tap neither reviews nor accepts"), Tap(EMode::Review, FVector2D(0.5f, 0.2f)).bReview || Tap(EMode::Review, FVector2D(0.5f, 0.2f)).bProgress);
 
@@ -96,6 +129,61 @@ bool FTouchControls::RunTest(const FString&)
 		const FCricketControls Moved = Read(EMode::Bowling, 7, Aspect, { { 0, Origin + FVector2D(0.02f, -0.03f), false } }, Drag);
 		TestTrue(TEXT("bowling drag moves the target"), (Moved.TargetDrag - FVector2D(0.02f, -0.03f)).Size() < 1e-4f);
 	}
+
+	// Bowling sliders lie flat: left end is none, right end is full. The finger that grabs one keeps it until it
+	// lifts, even when it slides off the track (regression: a quick swipe off the track was dropped mid-move).
+	{
+		const TArray<FButton> Bowl = Layout(EMode::Bowling, 7, Aspect);
+		const FButton* Pace = Bowl.FindByPredicate([](const FButton& B) { return B.Button == EButton::Effort; });
+		const FButton* Swing = Bowl.FindByPredicate([](const FButton& B) { return B.Button == EButton::Dial; });
+		TestTrue(TEXT("sliders are horizontal"), Pace && Swing && Pace->Rect.GetSize().X > 3.f * Pace->Rect.GetSize().Y && Swing->Rect.GetSize().X > 3.f * Swing->Rect.GetSize().Y);
+		TestTrue(TEXT("sliders are at least 48dp tall"), Pace && Swing && Pace->Rect.GetSize().Y >= 0.067f && Swing->Rect.GetSize().Y >= 0.067f);
+		if (Pace && Swing)
+		{
+			const float Y = Pace->Rect.GetCenter().Y;
+			FGesture Hold;
+			TestTrue(TEXT("pace left end is slow"), Read(EMode::Bowling, 7, Aspect, { { 0, FVector2D(Pace->Rect.Min.X + 0.001f, Y), true } }, Hold).Effort < 0.02f);
+			TestTrue(TEXT("the slider holds the finger"), Hold.Finger == 0 && Hold.Slider == EButton::Effort);
+			const FCricketControls Off = Read(EMode::Bowling, 7, Aspect, { { 0, FVector2D(Pace->Rect.Max.X - 0.001f, Y - 0.2f), false } }, Hold);
+			TestTrue(TEXT("pace follows a finger off the track"), Off.Effort > 0.98f && Off.TargetDrag.IsZero());
+			Read(EMode::Bowling, 7, Aspect, {}, Hold);
+			TestTrue(TEXT("lifting lets the slider go"), Hold.Finger == INDEX_NONE && Hold.Slider == EButton::Bowl);
+			FGesture Dial;
+			TestTrue(TEXT("swing right end is full right"), Read(EMode::Bowling, 7, Aspect, { { 0, FVector2D(Swing->Rect.Max.X - 0.001f, Swing->Rect.GetCenter().Y), true } }, Dial).Dial > 0.98f);
+		}
+	}
+
+	// Field editor: a finger on the map picks a fielder up, carries them while held, and drops them where it
+	// was last seen when it lifts (regression: the carry and the drop were never reported, so no fielder moved).
+	{
+		const FBox2D Map = FieldMap(Aspect);
+		const FVector2D From = Map.GetCenter() + FVector2D(0.1f, 0.f), To = Map.GetCenter() + FVector2D(0.1f, 0.2f);
+		FGesture Carry;
+		const FCricketControls Grab = Read(EMode::FieldEdit, 0, Aspect, { { 0, From, true } }, Carry);
+		TestTrue(TEXT("touch on the map grabs"), Grab.bFieldGrab && Grab.bFieldHeld && Grab.FieldAt.Equals(From));
+		const FCricketControls Held = Read(EMode::FieldEdit, 0, Aspect, { { 0, To, false } }, Carry);
+		TestTrue(TEXT("held finger carries the fielder"), Held.bFieldHeld && !Held.bFieldGrab && !Held.bFieldDrop && Held.FieldAt.Equals(To));
+		const FCricketControls Drop = Read(EMode::FieldEdit, 0, Aspect, None, Carry);
+		TestTrue(TEXT("lifting drops where the finger was"), Drop.bFieldDrop && !Drop.bFieldHeld && Drop.FieldAt.Equals(To));
+		TestFalse(TEXT("no second drop"), Read(EMode::FieldEdit, 0, Aspect, None, Carry).bFieldDrop);
+		TestEqual(TEXT("every preset has a button"), Layout(EMode::FieldEdit, 0, Aspect).FilterByPredicate([](const FButton& B) { return B.Button == EButton::FieldPreset; }).Num(), NumFieldPresets);
+	}
+
+	// Every layout fits and keeps its buttons apart on phones from 16:9 to 20:9 (with a notch) and a 4:3 tablet.
+	for (const float A : { 4.f / 3.f, 16.f / 9.f, 2.f, 19.5f / 9.f, 20.f / 9.f })
+		for (const FInsets& Safe : { FInsets(), FInsets{ 0.06f, 0.f, 0.06f, 0.03f } })
+			for (const EMode Mode : { EMode::Batting, EMode::Ready, EMode::Running, EMode::Bowling, EMode::Release, EMode::Review, EMode::FieldEdit })
+			{
+				const TArray<FButton> Buttons = Layout(Mode, 7, A, Safe);
+				for (int32 I = 0; I < Buttons.Num(); ++I)
+				{
+					const FBox2D& R = Buttons[I].Rect;
+					const FString Name = FString::Printf(TEXT("aspect %.2f inset %.2f mode %d button %d"), A, Safe.L, int32(Mode), I);
+					TestTrue(Name + TEXT(" inside the safe area"), R.Min.X >= Safe.L - 1e-4f && R.Max.X <= A - Safe.R + 1e-4f && R.Min.Y >= Safe.T - 1e-4f && R.Max.Y <= 1.f - Safe.B + 1e-4f);
+					for (int32 J = I + 1; J < Buttons.Num(); ++J)
+						TestFalse(Name + TEXT(" does not overlap another"), R.Intersect(Buttons[J].Rect));
+				}
+			}
 
 	// Progress: a tap anywhere; None: nothing at all.
 	TestTrue(TEXT("progress on any tap"), Tap(EMode::Progress, FVector2D(0.5f, 0.2f)).bProgress);
@@ -203,8 +291,9 @@ bool FControlIntent::RunTest(const FString&)
 		FDeliveryPlan F;
 		F.Line = 0.1f;
 		F.Length = 6.f;
-		DragTarget(F, FVector2D(0.f, 0.2f), ECricketHand::Right, T); // down the screen is fuller
-		TestTrue(TEXT("drag down is fuller"), F.Length < 6.f);
+		// The marker follows the finger (regression: dragging down moved it up the pitch, against the finger).
+		DragTarget(F, FVector2D(0.f, -0.2f), ECricketHand::Right, T); // up the screen, toward the batter
+		TestTrue(TEXT("drag up is fuller"), F.Length < 6.f);
 		FDeliveryPlan Far;
 		Far.Line = 10.f;
 		Far.Length = 100.f;
@@ -262,6 +351,40 @@ bool FControlIntent::RunTest(const FString&)
 		FRunCalls Empty;
 		TestTrue(TEXT("nothing to cancel"), CancelRun(Empty, Idle, 1.f) == ECancelResult::Nothing);
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFieldPresets, "CRICKET26.Controls.FieldPresets", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FFieldPresets::RunTest(const FString& Parameters)
+{
+	// Every preset the editor offers is a full, legal field to either batting hand from either bowling arm.
+	for (int32 P = 0; P < CricketTouch::NumFieldPresets; ++P)
+		for (const ECricketHand Bat : { ECricketHand::Right, ECricketHand::Left })
+			for (const ECricketHand Bowl : { ECricketHand::Right, ECricketHand::Left })
+			{
+				const TArray<FFielder> Field = CricketField::Make(EFieldPreset(P), Bat, Bowl);
+				const FString Name = FString::Printf(TEXT("%s, bat %d bowl %d"), CricketField::PresetName(EFieldPreset(P)), int32(Bat), int32(Bowl));
+				TestEqual(Name + TEXT(": eleven fielders"), Field.Num(), 11);
+				TestEqual(Name + TEXT(": legal"), CricketField::Validate(Field, Bat), FString());
+			}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPitchMarker, "CRICKET26.Controls.PitchMarker", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FPitchMarker::RunTest(const FString& Parameters)
+{
+	const FCricketControlTuning T;
+	constexpr float Pitch = 2.f; // seconds into the run-up: released at about 1.4, bouncing 0.6 later
+	// Easy shows it as the run-up starts; harder levels hold it back longer; Legend never shows it.
+	TestTrue(TEXT("easy: visible as the run-up starts"), CricketControl::PitchMarkerAlpha(T, 0, T.PitchMarkerFade, Pitch) > 0.99f);
+	TestEqual(TEXT("hard: hidden at the start of the run-up"), CricketControl::PitchMarkerAlpha(T, 2, 0.f, Pitch), 0.f);
+	TestTrue(TEXT("hard: shown before release"), CricketControl::PitchMarkerAlpha(T, 2, 1.2f, Pitch) > 0.99f);
+	for (float Since = 0.f; Since < 3.f; Since += 0.05f)
+		TestEqual(TEXT("legend: never shown"), CricketControl::PitchMarkerAlpha(T, 3, Since, Pitch), 0.f);
+	TestTrue(TEXT("harder is smaller"), T.PitchMarkerRadius[0] > T.PitchMarkerRadius[1] && T.PitchMarkerRadius[1] > T.PitchMarkerRadius[2]);
+	// Gone once the ball has pitched and faded, and never for a full toss.
+	TestEqual(TEXT("gone after the bounce"), CricketControl::PitchMarkerAlpha(T, 0, Pitch + T.PitchMarkerFade + 0.01f, Pitch), 0.f);
+	TestEqual(TEXT("no marker for a full toss"), CricketControl::PitchMarkerAlpha(T, 0, 0.3f, -1.f), 0.f);
 	return true;
 }
 

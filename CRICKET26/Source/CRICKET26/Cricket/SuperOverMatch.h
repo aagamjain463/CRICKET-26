@@ -93,8 +93,15 @@ struct FInningsState
 	UPROPERTY(BlueprintReadOnly) int32 NonStriker = 1;
 	UPROPERTY(BlueprintReadOnly) int32 NextBatter = 2;
 	UPROPERTY(BlueprintReadOnly) TArray<FBatterCard> Batters;
-	UPROPERTY(BlueprintReadOnly) FBowlerCard Bowler;
+	UPROPERTY(BlueprintReadOnly) FBowlerCard Bowler; // the current bowler's figures this innings
+	/**
+	 * IPL rotation: one card per bowling-side XI slot, BowlerSlot selecting the current one.
+	 * Standalone matches never set a slot and keep the single aggregate card exactly as before.
+	 */
+	UPROPERTY(BlueprintReadOnly) TArray<FBowlerCard> BowlerCards;
+	UPROPERTY(BlueprintReadOnly) int32 BowlerSlot = INDEX_NONE;
 	UPROPERTY(BlueprintReadOnly) TArray<FString> BallLog;
+	UPROPERTY(BlueprintReadOnly) int32 OverLogStart = 0;
 	UPROPERTY(BlueprintReadOnly) bool bComplete = false;
 };
 
@@ -121,6 +128,12 @@ struct FSuperOverMatch
 	bool StartSecondInnings();
 	/** After a tie: the side that batted second bats first (ICC playing conditions). */
 	bool StartNextSuperOver();
+	/**
+	 * IPL bowling change: makes XI slot Slot the current bowler, stashing the outgoing bowler's
+	 * figures into BowlerCards and loading the incoming one's. Refuses calls mid-delivery or with
+	 * a bad slot, so figures can never be attributed to the wrong bowler.
+	 */
+	bool SetBowlerSlot(int32 Slot);
 
 	const FInningsState& Cur() const { return Innings[CurrentInnings]; }
 	int32 BattingTeam() const { return Cur().BattingTeam; }

@@ -93,6 +93,109 @@ bool FSORulesSixLegalBalls::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMatchLengths, "CRICKET26.Rules.MatchLengths", CricketTestFlags)
+bool FMatchLengths::RunTest(const FString&)
+{
+	for (int32 Overs : {1, 3, 5, 10, 20})
+	{
+		FSuperOverMatch M;
+		M.Rules.MaxLegalBalls = Overs * 6;
+		M.Start(0);
+		FDeliveryOutcome Bouncer = Runs(1);
+		Bouncer.bBouncer = true;
+		for (int32 Ball = 0; Ball < Overs * 6; ++Ball)
+		{
+			const int32 Striker = M.Cur().Striker;
+			TestTrue(TEXT("first innings delivery"), Bowl(M, Ball == 0 ? Bouncer : Runs(0)));
+			TestEqual(TEXT("first innings legal balls"), M.Cur().LegalBalls, Ball + 1);
+			if (Ball == 5 && Overs > 1)
+			{
+				TestEqual(TEXT("over changes strike"), M.Cur().Striker, 1 - Striker);
+				TestTrue(TEXT("bouncer allowance resets"), M.BouncerAllowed());
+				TestEqual(TEXT("new over starts empty"), M.Cur().OverLogStart, M.Cur().BallLog.Num());
+				TestEqual(TEXT("next over ready"), M.Phase, EMatchPhase::ReadyForDelivery);
+			}
+		}
+		TestEqual(TEXT("first innings ends at selected length"), M.Phase, EMatchPhase::InningsBreak);
+		TestTrue(TEXT("second innings starts"), M.StartSecondInnings());
+		for (int32 Ball = 0; Ball < Overs * 6; ++Ball)
+			TestTrue(TEXT("second innings delivery"), Bowl(M, Runs(0)));
+		TestEqual(TEXT("second innings ends at selected length"), M.Phase, EMatchPhase::MatchComplete);
+		TestEqual(TEXT("second innings legal balls"), M.Cur().LegalBalls, Overs * 6);
+		TestEqual(TEXT("defending team wins"), M.Winner, 0);
+		FString Error;
+		TestTrue(TEXT("match invariants"), M.CheckInvariants(Error));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMatchTenWickets, "CRICKET26.Rules.MatchTenWickets", CricketTestFlags)
+bool FMatchTenWickets::RunTest(const FString&)
+{
+	for (const int32 Overs : {3, 5, 10, 20})
+	{
+		FSuperOverMatch M;
+		M.Rules.MaxLegalBalls = Overs * 6;
+		M.Rules.MaxWickets = 10;
+		M.Start(0);
+		TestEqual(TEXT("eleven batting slots"), M.Cur().Batters.Num(), 11);
+		for (int32 Wicket = 1; Wicket < 10; ++Wicket)
+		{
+			TestTrue(TEXT("wicket delivered"), Bowl(M, Out(EDismissal::Bowled)));
+			TestEqual(TEXT("innings continues"), M.Phase, EMatchPhase::ReadyForDelivery);
+		}
+		TestTrue(TEXT("tenth wicket delivered"), Bowl(M, Out(EDismissal::Bowled)));
+		TestEqual(TEXT("ten wickets end innings"), M.Phase, EMatchPhase::InningsBreak);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMatchLengthsEarlyChase, "CRICKET26.Rules.MatchLengthsEarlyChase", CricketTestFlags)
+bool FMatchLengthsEarlyChase::RunTest(const FString&)
+{
+	for (int32 Overs : {3, 5, 10, 20})
+	{
+		FSuperOverMatch M;
+		M.Rules.MaxLegalBalls = Overs * 6;
+		M.Start(0);
+		Bowl(M, Runs(4));
+		Bowl(M, Runs(6));
+		for (int32 Ball = 2; Ball < Overs * 6; ++Ball) Bowl(M, Runs(0));
+		TestEqual(TEXT("target"), M.Target, 11);
+		TestTrue(TEXT("chase starts"), M.StartSecondInnings());
+		Bowl(M, Runs(4));
+		Bowl(M, Runs(4));
+		Bowl(M, Runs(3));
+		TestEqual(TEXT("chase ends early"), M.Phase, EMatchPhase::MatchComplete);
+		TestEqual(TEXT("chase length"), M.Cur().LegalBalls, 3);
+		TestEqual(TEXT("chaser wins"), M.Winner, 1);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMatchLengthsTieBreak, "CRICKET26.Rules.MatchLengthsTieBreak", CricketTestFlags)
+bool FMatchLengthsTieBreak::RunTest(const FString&)
+{
+	for (int32 Overs : {3, 5, 10, 20})
+	{
+		FSuperOverMatch M;
+		M.Rules.MaxLegalBalls = Overs * 6;
+		M.Rules.MaxWickets = 10;
+		M.Start(0);
+		for (int32 Ball = 0; Ball < Overs * 6; ++Ball) Bowl(M, Runs(0));
+		M.StartSecondInnings();
+		for (int32 Ball = 0; Ball < Overs * 6; ++Ball) Bowl(M, Runs(0));
+		TestTrue(TEXT("match tied"), M.bTied);
+		TestTrue(TEXT("existing tie break starts"), M.StartNextSuperOver());
+		TestEqual(TEXT("tie break uses one over"), M.Rules.MaxLegalBalls, 6);
+		TestEqual(TEXT("tie break returns to two wickets"), M.Rules.MaxWickets, 2);
+		TestEqual(TEXT("tie break number"), M.SuperOverNumber, 2);
+		for (int32 Ball = 0; Ball < 6; ++Ball) Bowl(M, Runs(0));
+		TestEqual(TEXT("tie break first innings ends after six"), M.Phase, EMatchPhase::InningsBreak);
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSORulesExtras, "CRICKET26.Rules.WidesAndNoBallsAreNotLegal", CricketTestFlags)
 bool FSORulesExtras::RunTest(const FString&)
 {
@@ -1115,6 +1218,10 @@ bool FSOStumping::RunTest(const FString&)
 
 	// Same charge against pace: no advance (keeper back, nobody charges 140 kph).
 	TestTrue(TEXT("no charging the quicks"), CricketBatting::ChooseShot(EBatIntent::Loft, 0.f, 4.f, 0.5f, EBowlerType::Pace, 0.7f).Foot != EFootwork::Advance);
+	// A late charge gets as far as a run in the time left; an early one reaches ~2.5 m out of the crease.
+	const float Late = CricketBatting::ChooseShot(EBatIntent::Loft, 0.f, 6.f, 0.5f, EBowlerType::LegSpin, 0.52f).AdvanceX;
+	const float Early = CricketBatting::ChooseShot(EBatIntent::Loft, 0.f, 6.f, 0.5f, EBowlerType::LegSpin, 0.85f).AdvanceX;
+	TestTrue(*FString::Printf(TEXT("charge length follows the commitment (late %.2f, early %.2f)"), Late, Early), Late <= 3.5f && Early >= 4.3f);
 
 	// A well-timed charge at a stock leg break on a good length goes to the pitch and smothers the turn.
 	const FDeliveryRelease Stock = Release(EDeliveryType::LegBreak, 4.6f, 0.05f, 0.f, EBowlerType::LegSpin);
@@ -1482,7 +1589,8 @@ bool FSOAIMatch::RunTest(const FString&)
 	Band(TEXT("twos"), Ran[2], 0.005f, 0.12f);
 	Band(TEXT("wickets"), Wickets, 0.06f, 0.18f);
 	Band(TEXT("run outs"), RunOuts, 0.f, 0.02f);
-	TestTrue(*FString::Printf(TEXT("catching efficiency %d/%d"), Taken, Chances), Chances > 0 && Taken >= 0.65f * Chances && Taken <= 0.92f * Chances);
+	// ~40 chances: one standard error is ~7 points, so the floor sits two below the ~70% the catchers hold.
+	TestTrue(*FString::Printf(TEXT("catching efficiency %d/%d"), Taken, Chances), Chances > 0 && Taken >= 0.55f * Chances && Taken <= 0.92f * Chances);
 	TestTrue(TEXT("not everything is middled"), Middled < 0.8f * Contacts);
 	TestTrue(*FString::Printf(TEXT("batters use their feet to spin (%d advances)"), Advances), Advances >= Deliveries / 50 && Advances <= Deliveries / 6);
 	TestTrue(*FString::Printf(TEXT("keeper stops balls that beat the bat (%d byes to the boundary)"), ByeBoundaries), ByeBoundaries <= Deliveries / 100);
@@ -1611,6 +1719,14 @@ bool FSOKeeper::RunTest(const FString&)
 			if (D.Fielding.Fielder < 0 || !C.Field[D.Fielding.Fielder].bKeeper || D.Dismissal != EDismissal::None) continue;
 			++Takes;
 			Fumbles += D.Fielding.Action == EFieldAction::Fumble;
+			// Taken in front of the body, gloves out toward the stumps: a spin take at X -1.63 had a keeper standing
+			// at -0.9 reach back past their own hips for a ball that had already gone by.
+			const FFielder& K = C.Field[D.Fielding.Fielder];
+			if (D.Fielding.FieldPos.X < K.Home.X - 0.1f && !D.Fielding.bDive)
+				TestTrue(*FString::Printf(TEXT("take in front of the keeper (take %s, home %s, t %.2f)"), *D.Fielding.FieldPos.ToCompactString(), *K.Home.ToString(), D.Fielding.FieldTime), false);
+			// Standing back, a stock ball comes into the gloves knee to waist high, not off the grass.
+			if (Style == EBowlerType::Pace && (D.Fielding.FieldPos.Z < 0.3f || D.Fielding.FieldPos.Z > 1.1f))
+				TestTrue(*FString::Printf(TEXT("pace take at the gloves' height (take %s)"), *D.Fielding.FieldPos.ToCompactString()), false);
 		}
 		return float(Fumbles) / FMath::Max(1, Takes);
 	};
@@ -1647,6 +1763,29 @@ bool FSOKeeper::RunTest(const FString&)
 	TestTrue(*FString::Printf(TEXT("poor technique stumped %d of %d beaten"), Poor, B1), B1 > 50 && Poor > 0 && Poor < B1 / 3);
 	TestEqual(*FString::Printf(TEXT("sound technique never overbalances (%d beaten)"), B2), Sound, 0);
 	TestEqual(*FString::Printf(TEXT("not against pace (%d beaten)"), B3), Quick, 0);
+	// A wide the keeper takes with no run keeps the ball in the gloves: no throw planned, so none is animated.
+	int32 Kept = 0, Thrown = 0;
+	for (const float Line : { 1.3f, -1.3f })
+		for (int32 Seed = 1; Seed <= 100; ++Seed)
+		{
+			const FResolveContext C = Ctx(EBowlerType::Pace, Seed);
+			const FDeliveryResult D = CricketDelivery::Resolve(Release(EDeliveryType::Stock, 7.f, Line, 0.f), FBatInput(), C);
+			if (D.Fielding.Fielder < 0 || !C.Field[D.Fielding.Fielder].bKeeper || D.Running.Attempted > 0) continue;
+			++Kept;
+			Thrown += D.Running.ThrowRelease > 0.f || D.Running.ThrowType != EThrowType::None;
+		}
+	TestTrue(*FString::Printf(TEXT("wides kept with no run (%d)"), Kept), Kept > 50);
+	TestEqual(TEXT("no throw from the gloves without a run"), Thrown, 0);
+	// Byes with the keeper beside the stumps: flicked underarm out of the gloves, not wound up overarm.
+	FFieldingOutcome Bye;
+	Bye.Fielder = 0;
+	Bye.FieldTime = 1.f;
+	Bye.FieldPos = FVector(-3.f, 1.f, 0.3f);
+	Bye.FielderFrom = FVector2D(-3.f, 0.f);
+	Bye.Action = EFieldAction::PickupClean;
+	FRandomStream ByeRng(5);
+	const FRunningOutcome ByeRun = CricketField::SolveRunning(Bye, FCricketPlayer(), FCricketPlayer(), FCricketPlayer(), true, 0.3f, ByeRng);
+	TestEqual(TEXT("keeper flicks underarm from 3 m"), ByeRun.ThrowType, EThrowType::Underarm);
 	UE_LOG(LogTemp, Display, TEXT("Keeper: fumbles pace back %.1f%%, spin up %.1f%%, down leg %.1f%%; overbalanced stumpings %d/%d"),
 		100.f * Pace, 100.f * SpinOff, 100.f * SpinLeg, Poor, B1);
 	return true;

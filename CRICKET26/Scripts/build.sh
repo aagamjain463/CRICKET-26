@@ -6,7 +6,10 @@ ROOT="${0:A:h:h}"
 OUT=$("/Users/Shared/Epic Games/UE_5.8/Engine/Build/BatchFiles/Mac/Build.sh" CRICKET26Editor Mac Development -Project="$ROOT/CRICKET26.uproject" -WaitMutex -DisableAdaptiveUnity 2>&1)
 print -r -- "$OUT" | grep -E " error|Result"
 [[ "$OUT" == *"Result: Succeeded"* ]] || exit 1
+python3 "$ROOT/Scripts/link_module.py" "$ROOT"
 # While an editor or the game is open, UBT writes a numbered copy of the module (hot reload) and can leave the
 # manifest naming the old one, so the next launch would run stale code. Point the manifest at the newest.
-NEWEST=$(ls -t "$ROOT"/Binaries/Mac/libUnrealEditor-CRICKET26*.dylib | head -1)
-sed -i '' -E "s/libUnrealEditor-CRICKET26[-0-9]*\.dylib/${NEWEST:t}/" "$ROOT/Binaries/Mac/UnrealEditor.modules"
+NEWEST=$(ls -t "$ROOT"/Binaries/Mac/libUnrealEditor-CRICKET26*.dylib 2>/dev/null | head -1)
+if [[ -n "$NEWEST" ]]; then
+	sed -i '' -E "s/libUnrealEditor-CRICKET26[-0-9]*\.dylib/${NEWEST:t}/" "$ROOT/Binaries/Mac/UnrealEditor.modules"
+fi

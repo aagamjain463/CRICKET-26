@@ -92,6 +92,16 @@ as a planned, solved motion (2026-09-25); see "Batting" below and `Docs/BATTING_
   from `make_kit.sh`. `Paint` tints the outfit: shirt in the team colour, trousers darker, shoes white. The only free
   trousers are jeans, so `Paint` swaps their faded-denim colour map for white, sets `div_fabric` to white and turns off
   the twill overlay. That leaves plain team-coloured cloth, with the seams and folds still in the normal and AO maps.
+  `TintOutfit` also turns the jeans into cricket trousers: the leather back-pocket label (the blue channel of the jeans'
+  mask, tinted by `Leather Tint`) gives way to piping down the outside of each leg in the team's second colour, and the
+  brass rivets take the cloth's colour. The masks `T_TrouserMask` (slim cut) and `T_TrouserMask_Broad` (the `ovw` cut)
+  are baked by `Scripts/metahuman/trouser_stripe.py` from the trousers as built; the auction staff's jeans keep theirs.
+- Jersey panels: `Scripts/metahuman/make_jersey.sh` bakes the crew-neck shirt's panels (`jersey_panels.py`: raglan
+  sleeves, side panels, a gold collar, cuffs and faint pinstripes) onto the UVs of the shirt as built, for both cuts
+  (`T_JerseyPanels` slim, `T_JerseyPanels_Broad` for `ovw`), and then the trouser masks. `ShirtPrint` lays the panels
+  under the name, number and sponsor, with a lettering layout per cut. Rerun it after `make_players.sh` rebuilds the
+  outfits, since the fitted meshes' UVs are what the textures are drawn on. `jersey_ue.py` writes the garment as an
+  OBJ through Geometry Script, because FBX export of the outfit meshes crashes the editor.
 - Shirt print: the shirt material's print graphic (`MF_PrintGraphic`) carries the team sponsor across the chest in
   gold and the player's name and number on the back in white. `bDoPrintGraphic` is a static switch, so
   `OUTFIT_PRINT="MH_Home_Opener ..."` in `outfit_ue.py` turns it on in the editor; it is on for the 8 players, not the
@@ -103,6 +113,9 @@ as a planned, solved motion (2026-09-25); see "Batting" below and `Docs/BATTING_
   top mip, so `UpdateResourceImmediate(false)` rebuilds the rest; without it the print fades out at a distance. The
   automation tests run without a renderer, so check a change with `Scripts/capture.sh 1 -CricketDevCam=face`. In
   shade the white reads cream, lit by the sunlit grass; a green test colour came through green, so the mapping is right.
+- Sky light: captured once (`RecaptureSky()` after the sky is up), never in real time, on every platform and tier. A
+  real-time capture lights nothing without Lumen, so below the Epic tier every shadow and every player's shaded side
+  went black; `CRICKET26.Presentation.SkyLightsShade` guards it. Turning off distance-field AO does not fix that.
 - Helmet: when `Saved/Kit/cricket_helmet.glb` is there (`HELMET_GLB` overrides the path), `make_kit.py` uses
   "Cricket Helmet" by Helindu (Sketchfab, CC-BY 4.0; the credit must ship with the game). The script decimates it to
   about 8000 faces and fits it where the modelled shell sat. The shell and ear guards get `Gear_Helmet` (dark team
@@ -137,7 +150,12 @@ MetaHuman scripting notes (UE 5.8 Python):
   textures first and asks for the rig only while the check still fails, with 3 attempts.
 - The cloud auto-rig takes about 4 to 5 minutes per character. The commandlet uses about 1.2 GB RAM.
 - To rebuild one character: `MHMAKE_ONLY=<Name> Scripts/metahuman/make_players.sh`. Already-built characters
-  are skipped. Progress is logged: `grep MHMAKE Saved/MHMake.log`.
+  are skipped unless their tone or hair in `make_players.py` changed, or the source is newer than the baked
+  textures. Progress is logged: `grep MHMAKE Saved/MHMake.log`.
+- Everyone is Indian-looking: `make_players.py` sets each character's skin tone (U 0.46 to 0.56, medium brown) and
+  hair groom. A tone change drops the textures, so the rebuild fetches them again from Epic's cloud (about one to
+  two minutes each, using the saved Epic login). A player rebuild resets the shirt print switch, so rerun
+  `OUTFIT_PRINT` (item 7) for the 8 players afterwards.
 
 ## Item 3: ball tracking
 
@@ -231,6 +249,9 @@ Stadium scripting notes (UE 5.8):
   `2,0` drives, `1,0` defences; add `-CricketLength=8.5` (metres from the striker's stumps) for the short ball
   that cuts (`2,70`) and pulls (`2,-70`) need. `-CricketLeftHanded` makes every striker bat left-handed.
 - Tests: `CRICKET26.Animation.FieldingClips`, `BallInHand`. Capture recipes are in `ANIM_HANDOFF.md`.
+- Fielding overhaul (2026-09-28): low full-stretch catches dive, the dive lands its hands on the ball on MetaHumans,
+  the ball rides the hand socket, takers run upright and crouch only into the take. Details and the next Mixamo clips
+  to add are in `ANIM_HANDOFF.md` under "Fielding overhaul".
 
 ## Batting
 

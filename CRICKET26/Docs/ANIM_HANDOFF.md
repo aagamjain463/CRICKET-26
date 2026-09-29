@@ -235,8 +235,9 @@ Run: `/Applications/Blender.app/Contents/MacOS/Blender -b -P mix.py -- <file.fbx
   `CRICKET26.Animation.FieldingClips`). `FCricketBodyPose` has two clip layers: [0] a stroke or dive, [1] a throw.
 - Dive (`UpdatePresentation`): the side whose facing looks back at the incoming ball is picked, the actor is turned
   so the clip's hands reach toward the take, and stood where the dive launches. `ClipBoneAt` reads bones from the
-  clip. The actor takes over the clip's travel as the clip fades out. Known gap (a `ponytail:` note): the clip's dive
-  is about 3.6 m to the hands, longer than `DiveReach` (2.3 m).
+  clip. The actor takes over the clip's travel as the clip fades out. The clip's dive is about 3.6 m to the hands,
+  longer than `DiveReach` (2.3 m): the fielder pushes off where they ran to and the actor glides from there to the
+  clip's launch point over the flight (`DiveClipLaunch` to `DiveClipStretch`), so feet never slide on the grass.
 - Throw: the thrower turns to the relay fielder or the stumps through the wind-up. The procedural `ArmCircle` throw
   is left only for underarm throws (and when the clip is missing). A diver's throw starts from when they land.
 - `FFigureState::bHeld` stops `UpdateFigures` turning a figure toward its velocity while a clip owns its facing.
@@ -248,5 +249,30 @@ Run: `/Applications/Blender.app/Contents/MacOS/Blender -b -P mix.py -- <file.fbx
   - Batters' sprint side-on: `Scripts/capture.sh 4 -CricketDifficulty=1 -CricketDevCam=0,-9,1.2,0,0,1,60`.
   - Diving catch: `Scripts/capture.sh 10 -CricketVenue=2 -CricketDifficulty=1 -CricketDevCam=fielder -CricketShotEvery=0.05`.
   - Cut: `Scripts/capture.sh 13 -CricketDifficulty=0 -CricketDevCam=kit`. Loft: `Scripts/capture.sh 2 -CricketDifficulty=2 -CricketDevCam=kit`.
+
+## Fielding overhaul (2026-09-28)
+
+Compared against the Cricket 24 reference footage in Downloads. Fixed, each with a test in `AnimationTests.cpp`:
+
+- **Low diving catches never dived.** `UseDiveClip` refused takes under 0.25 m, so a full-stretch low catch stayed on
+  its feet with arms flung out. It now has no lower limit; only takes above 2.1 m stay on the feet.
+- **The dive was placed 90 degrees off, hands 4.8 m from the ball.** A MetaHuman's body sits inside its own blueprint
+  actor, so `GetRelativeRotation()` is not its turn from the figure. `CricketPose::ClipInActor` uses
+  `ActorQuat.Inverse() * BodyQuat` (and the body's scale) instead.
+- **The dive started with the keeper's shuffle.** `DiveClipIn` brings the clip in over the end of the captured
+  shuffle, all in by `DiveClipLaunch` (0.4 s), so a running fielder goes straight into the launch.
+- **Sprint legs popped in as the dive faded out.** `FFigureState::bCarried` zeroes the measured speed while a clip
+  moves the body, so the jog and sprint weights stay out.
+- **The ball trailed the hand by a frame.** Bodies tick after the game mode, so a socket read there is last frame's.
+  The held ball is attached to the `hand_r` socket instead and detached when thrown or for replays.
+- **Gloves hugged up at the chin after a take.** `CatchSecureOffset` gathers the cup in front of the belt, elbows
+  down, and the chest straightens after the take rather than staying folded.
+- **The long barrier knelt from the moment of contact, then ran crouched.** `TakeCrouchWeight` brings the taker's
+  crouch in over the last strides into the take and out as they come up; running posture is near upright.
+
+Still procedural: the slide stop tilts the whole actor toward the ball. Replace it with Mixamo "Running To Slide And
+Back To Running" once downloaded (see the clip list in HANDOFF.md), along with one-handed pickups on the run, low and
+medium goalkeeper catches and the boundary-line catch.
+
 - Still open: mirror the takes for left-handers; check Flick; a thrown ball starts from the take, not the hand
   (`ponytail:` note by the ball code).

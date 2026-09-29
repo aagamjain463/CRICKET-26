@@ -66,10 +66,12 @@ namespace CricketBatting
 
 	/**
 	 * Resolves contact of the actual ball (state at the shot's contact plane) with a bat placed at
-	 * AimPos (the read). DirectionDeg is the intended direction, TimingError is + late.
+	 * AimPos (the read). DirectionDeg is the intended direction, TimingError is + late. PowerScale scales
+	 * the bat speed the player asked for (1: the batter's natural swing). Guard shifts the batter's
+	 * reach window laterally (batter-relative metres, + off side) with their stance.
 	 */
 	FContactResult ResolveContact(const FBallState& BallAtPlane, const FVector& AimPos, const FShotProfile& Shot,
-		float DirectionDeg, float TimingError, const FCricketPlayer& Batter, bool bAerial);
+		float DirectionDeg, float TimingError, const FCricketPlayer& Batter, bool bAerial, float PowerScale = 1.f, float Guard = 0.f);
 
 	/** Batter-relative direction (deg) to world-frame unit vector on the ground. */
 	FVector DirectionToWorld(float DirectionDeg, ECricketHand BatHand);

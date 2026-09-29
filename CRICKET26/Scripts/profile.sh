@@ -8,6 +8,7 @@ set -e
 ROOT="${0:A:h:h}"
 ENGINE="/Users/Shared/Epic Games/UE_5.8/Engine"
 N="${1:-12}"; shift || true
+python3 "$ROOT/Scripts/link_module.py" "$ROOT"
 "$ENGINE/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor" "$ROOT/CRICKET26.uproject" "/Engine/Maps/Entry?game=/Script/CRICKET26.SuperOverGameMode" \
-  -game -windowed -ResX=1280 -ResY=720 -nosound -CricketAutoPlay -CricketQuitAfter="$N" -abslog="$ROOT/Saved/Profile.log" "$@" > /dev/null 2>&1 || true
+  -game -unattended -windowed -ResX=1280 -ResY=720 -nosound -CricketAutoPlay -CricketQuitAfter="$N" -abslog="$ROOT/Saved/Profile.log" "$@" > /dev/null 2>&1 || true
 grep -h "Perf (" "$ROOT/Saved/Profile.log" | sed 's/^.*Display: //'

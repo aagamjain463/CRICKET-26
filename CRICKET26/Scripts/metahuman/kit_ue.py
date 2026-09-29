@@ -96,7 +96,9 @@ def kit_material(rebuild=False):
 
     colour = node(unreal.MaterialExpressionVectorParameter, -400, 0, parameter_name="Color",
                   default_value=unreal.LinearColor(0.2, 0.3, 0.8, 1.0))
-    out(colour, "BaseColor")
+    # The sporty kit's second colour: sleeves, shoulder yoke, side panels, trouser stripes and pad trim.
+    accent = node(unreal.MaterialExpressionVectorParameter, -400, 100, parameter_name="Accent",
+                  default_value=unreal.LinearColor(0.9, 0.9, 0.9, 1.0))
     fabric, ribs = param("Fabric", 1.0, 400), param("Ribs", 0.0, 500)
     uv = node(unreal.MaterialExpressionTextureCoordinate, -1400, 100)
 
@@ -139,6 +141,117 @@ def kit_material(rebuild=False):
     mel.connect_material_expressions(across, "", groove, "P")
     mel.connect_material_expressions(ribs, "", groove, "Ribs")
     out(groove, "AmbientOcclusion")
+    # The sporty kit's base colour, from the pre-skinned position (cm) and normal in the body's local
+    # space (the character faces +X, so the chest faces +X and the back -X; lateral is Y): accent sleeves
+    # and shoulder yoke, tonal side panels and a shading gradient on the shirt, the name/number/sponsor
+    # print projected onto the back and chest, and an accent stripe down the trousers. KitPrint's back
+    # block is the canvas top (v 0.04-0.47, z 105-150 cm) and its front block below it (v 0.56-0.95,
+    # z 108-150 cm), matching SuperOverGameMode::KitPrint. PrintStrength is 0 except on the shirt, so
+    # one material serves every slot.
+    def zone(code_str, out_type, y, *ins):
+        e = node(unreal.MaterialExpressionCustom, -900, y, code=code_str, output_type=out_type)
+        inputs = []
+        for n in ins:
+            i = unreal.CustomInput()
+            i.set_editor_property("input_name", n)
+            inputs.append(i)
+        e.set_editor_property("inputs", inputs)
+        return e
+
+    preskinned_n = node(unreal.MaterialExpressionPreSkinnedNormal, -1200, 650)
+    across_n = node(unreal.MaterialExpressionVertexInterpolator, -1000, 650)
+    mel.connect_material_expressions(preskinned_n, "", across_n, "")
+    sleeve = zone("float lat = abs(P.y);\n"
+                  "float shirt = step(95.0, P.z);\n"
+                  "float gate = 1.0 - smoothstep(148.0, 154.0, P.z);\n"
+                  "float arm = smoothstep(18.0, 26.0, lat) * gate;\n"
+                  "float yoke = (1.0 - smoothstep(18.0, 22.0, lat)) * smoothstep(140.0, 146.0, P.z) * gate;\n"
+                  "return shirt * max(arm, yoke * 0.9);",
+                  unreal.CustomMaterialOutputType.CMOT_FLOAT1, 900, "P")
+    mel.connect_material_expressions(across, "", sleeve, "P")
+    side_shade = zone("float lat = abs(P.y);\n"
+                      "float shirt = step(95.0, P.z);\n"
+                      "float torsoZ = smoothstep(100.0, 108.0, P.z) * (1.0 - smoothstep(148.0, 154.0, P.z));\n"
+                      "float side = shirt * torsoZ * smoothstep(12.0, 16.0, lat) * (1.0 - smoothstep(19.0, 23.0, lat));\n"
+                      "float shade = lerp(0.9, 1.03, clamp((P.z - 95.0) / 60.0, 0.0, 1.0));\n"
+                      "return float3(side, shade, 0.0);",
+                      unreal.CustomMaterialOutputType.CMOT_FLOAT3, 1000, "P")
+    mel.connect_material_expressions(across, "", side_shade, "P")
+    back = zone("float lat = abs(P.y);\n"
+                "float torso = step(95.0, P.z) * (1.0 - smoothstep(18.0, 22.0, lat))\n"
+                "    * smoothstep(100.0, 108.0, P.z) * (1.0 - smoothstep(150.0, 156.0, P.z));\n"
+                "float mask = torso * smoothstep(0.25, 0.55, -N.x);\n"
+                "float u = clamp((20.0 - P.y) / 40.0, 0.0, 1.0);\n"
+                "float v = 0.04 + (1.0 - clamp((P.z - 105.0) / 45.0, 0.0, 1.0)) * 0.43;\n"
+                "return float3(mask, u, v);",
+                unreal.CustomMaterialOutputType.CMOT_FLOAT3, 1100, "P", "N")
+    mel.connect_material_expressions(across, "", back, "P")
+    mel.connect_material_expressions(across_n, "", back, "N")
+    front = zone("float lat = abs(P.y);\n"
+                 "float torso = step(95.0, P.z) * (1.0 - smoothstep(18.0, 22.0, lat))\n"
+                 "    * smoothstep(100.0, 108.0, P.z) * (1.0 - smoothstep(150.0, 156.0, P.z));\n"
+                 "float mask = torso * smoothstep(0.25, 0.55, N.x);\n"
+                 "float u = clamp((P.y + 20.0) / 40.0, 0.0, 1.0);\n"
+                 "float v = 0.56 + (1.0 - clamp((P.z - 108.0) / 42.0, 0.0, 1.0)) * 0.39;\n"
+                 "return float3(mask, u, v);",
+                unreal.CustomMaterialOutputType.CMOT_FLOAT3, 1200, "P", "N")
+    mel.connect_material_expressions(across, "", front, "P")
+    mel.connect_material_expressions(across_n, "", front, "N")
+    stripe = zone("float lat = abs(P.y);\n"
+                  "float legs = smoothstep(6.0, 12.0, P.z) * (1.0 - smoothstep(92.0, 98.0, P.z))\n"
+                  "    * smoothstep(2.0, 5.0, lat) * (1.0 - smoothstep(18.0, 22.0, lat));\n"
+                  "float outer = smoothstep(0.55, 0.8, abs(N.y)) * step(0.0, P.y * N.y);\n"
+                  "return legs * outer;",
+                  unreal.CustomMaterialOutputType.CMOT_FLOAT1, 1300, "P", "N")
+    mel.connect_material_expressions(across, "", stripe, "P")
+    mel.connect_material_expressions(across_n, "", stripe, "N")
+
+    def mask(e, r, g, b, a, x, y):
+        m = node(unreal.MaterialExpressionComponentMask, x, y, r=r or a, g=g, b=b, a=False)
+        # Texture samples default to RGB; select their scalar alpha output explicitly.
+        assert mel.connect_material_expressions(e, "A" if a else "", m, "")
+        return m
+
+    strength = node(unreal.MaterialExpressionScalarParameter, -1200, 750, parameter_name="PrintStrength",
+                    default_value=0.0)
+    white = unreal.load_asset("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture")
+    print_back = node(unreal.MaterialExpressionTextureSampleParameter2D, -700, 1100, parameter_name="KitPrint",
+                      texture=white)
+    mel.connect_material_expressions(mask(back, False, True, True, False, -700, 1000), "", print_back, "UVs")
+    print_front = node(unreal.MaterialExpressionTextureSampleParameter2D, -700, 1250, parameter_name="KitPrint",
+                       texture=white)
+    mel.connect_material_expressions(mask(front, False, True, True, False, -700, 1200), "", print_front, "UVs")
+
+    def mul(a, b, x, y):
+        e = node(unreal.MaterialExpressionMultiply, x, y)
+        mel.connect_material_expressions(a, "", e, "A")
+        mel.connect_material_expressions(b, "", e, "B")
+        return e
+
+    def lerp3(a, b, t, x, y):
+        e = node(unreal.MaterialExpressionLinearInterpolate, x, y)
+        mel.connect_material_expressions(a, "", e, "A")
+        mel.connect_material_expressions(b, "", e, "B")
+        mel.connect_material_expressions(t, "", e, "Alpha")
+        return e
+
+    dye = mask(colour, True, True, True, False, -500, 900)
+    trim = mask(accent, True, True, True, False, -500, 950)
+    shaded = mul(dye, mask(side_shade, False, True, False, False, -400, 1000), -300, 900)
+    shirt = lerp3(shaded, trim, sleeve, -100, 900)
+    side_soft = node(unreal.MaterialExpressionMultiply, -100, 1000, const_b=0.35)
+    mel.connect_material_expressions(mask(side_shade, True, False, False, False, -200, 1000), "", side_soft, "A")
+    shirt = lerp3(shirt, trim, side_soft, 100, 900)
+    back_alpha = mul(mul(mask(print_back, False, False, False, True, -300, 1100), strength, -100, 1100),
+                     mask(back, True, False, False, False, -300, 1050), 100, 1100)
+    shirt = lerp3(shirt, mask(print_back, True, True, True, False, -100, 1150), back_alpha, 300, 1100)
+    front_alpha = mul(mul(mask(print_front, False, False, False, True, -300, 1250), strength, 100, 1250),
+                      mask(front, True, False, False, False, -100, 1220), 300, 1250)
+    shirt = lerp3(shirt, mask(print_front, True, True, True, False, 100, 1300), front_alpha, 500, 1250)
+    stripe_soft = node(unreal.MaterialExpressionMultiply, 400, 1300, const_b=0.9)
+    mel.connect_material_expressions(stripe, "", stripe_soft, "A")
+    shirt = lerp3(shirt, trim, stripe_soft, 500, 1100)
+    out(shirt, "BaseColor")
     # Cloth : a soft sheen at grazing angles, lighter than the dye; none on the helmet's shell.
     fuzz = node(unreal.MaterialExpressionAdd, -300, 100, const_b=0.08)
     mel.connect_material_expressions(colour, "", fuzz, "A")

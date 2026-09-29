@@ -1,4 +1,5 @@
 #include "FieldingModel.h"
+#include "CricketKeeper.h"
 
 namespace
 {
@@ -33,16 +34,49 @@ EFieldPreset CricketField::PresetFor(EBowlerType Type)
 	return Type == EBowlerType::Pace ? EFieldPreset::PaceDeath : EFieldPreset::SpinDefensive;
 }
 
+const TCHAR* CricketField::PresetName(EFieldPreset Preset)
+{
+	switch (Preset)
+	{
+	case EFieldPreset::PaceDeath: return TEXT("DEATH OVERS");
+	case EFieldPreset::SpinDefensive: return TEXT("SPIN, SAFE");
+	case EFieldPreset::Balanced: return TEXT("BALANCED");
+	case EFieldPreset::Attacking: return TEXT("ATTACKING");
+	case EFieldPreset::PaceAttack: return TEXT("PACE ATTACK");
+	case EFieldPreset::SpinAttack: return TEXT("SPIN ATTACK");
+	case EFieldPreset::BoundaryRiders: return TEXT("BOUNDARY");
+	case EFieldPreset::OffSideHeavy: return TEXT("OFF SIDE");
+	case EFieldPreset::LegSideHeavy: return TEXT("LEG SIDE");
+	case EFieldPreset::YorkerDefence: return TEXT("YORKERS");
+	case EFieldPreset::ShortBall: return TEXT("SHORT BALL");
+	default: return TEXT("-");
+	}
+}
+
 TArray<FFielder> CricketField::Make(EFieldPreset Preset, ECricketHand BatHand, ECricketHand BowlHand)
 {
 	const float Off = OffSideSign(BatHand);
 	const float Arm = BowlHand == ECricketHand::Right ? 1.f : -1.f;
 	TArray<FFielder> F;
 	// Super Over playing conditions: at most five fielders outside the 30-yard circle.
-	if (Preset == EFieldPreset::PaceDeath)
+	// Keeper depth lives in CricketKeeper (isolated): pace stands back, spin
+	// stands up. Stock paces here; the game mode nudges a pace keeper by the
+	// actual bowler's stock pace (medium vs express) after Make.
+	const bool bSpin = Preset == EFieldPreset::SpinDefensive || Preset == EFieldPreset::SpinAttack;
+	if (bSpin)
 	{
-		F.Add({ TEXT("Wicketkeeper"), FVector2D(-16.f, 0.5f * Off), true });
+		F.Add({ TEXT("Wicketkeeper"), CricketKeeper::KeeperHome(EBowlerType::OffSpin, 88.f, BatHand), true });
+		F.Add({ TEXT("Bowler"), FVector2D(17.5f, 0.8f * Arm), false, true });
+	}
+	else
+	{
+		F.Add({ TEXT("Wicketkeeper"), CricketKeeper::KeeperHome(EBowlerType::Pace, 135.f, BatHand), true });
 		F.Add({ TEXT("Bowler"), FVector2D(15.f, 1.2f * Arm), false, true });
+	}
+	// Nine outfielders each (the editor swaps them by index); angles from straight (0) to fine (180), + off side.
+	switch (Preset)
+	{
+	case EFieldPreset::PaceDeath:
 		F.Add(Deep(TEXT("Deep point"), 100.f, 58.f, Off));
 		F.Add(Deep(TEXT("Long off"), 12.f, 60.f, Off));
 		F.Add(Deep(TEXT("Long on"), -12.f, 60.f, Off));
@@ -52,11 +86,8 @@ TArray<FFielder> CricketField::Make(EFieldPreset Preset, ECricketHand BatHand, E
 		F.Add(Ring(TEXT("Extra cover"), 48.f, 26.f, Off));
 		F.Add(Ring(TEXT("Midwicket"), -50.f, 26.f, Off));
 		F.Add(Ring(TEXT("Short fine leg"), -145.f, 22.f, Off));
-	}
-	else
-	{
-		F.Add({ TEXT("Wicketkeeper"), FVector2D(-0.8f, 0.3f * Off), true });
-		F.Add({ TEXT("Bowler"), FVector2D(17.5f, 0.8f * Arm), false, true });
+		break;
+	case EFieldPreset::SpinDefensive:
 		F.Add(Deep(TEXT("Deep cover"), 58.f, 60.f, Off));
 		F.Add(Deep(TEXT("Long off"), 12.f, 60.f, Off));
 		F.Add(Deep(TEXT("Long on"), -12.f, 60.f, Off));
@@ -66,8 +97,186 @@ TArray<FFielder> CricketField::Make(EFieldPreset Preset, ECricketHand BatHand, E
 		F.Add(Ring(TEXT("Mid off"), 20.f, 24.f, Off));
 		F.Add(Ring(TEXT("Midwicket"), -55.f, 24.f, Off));
 		F.Add(Ring(TEXT("Short fine leg"), -150.f, 22.f, Off));
+		break;
+	case EFieldPreset::Balanced:
+		F.Add(Deep(TEXT("Third man"), 130.f, 58.f, Off));
+		F.Add(Deep(TEXT("Deep midwicket"), -58.f, 60.f, Off));
+		F.Add(Deep(TEXT("Deep square leg"), -100.f, 58.f, Off));
+		F.Add(Ring(TEXT("Point"), 95.f, 22.f, Off));
+		F.Add(Ring(TEXT("Cover"), 65.f, 25.f, Off));
+		F.Add(Ring(TEXT("Mid off"), 18.f, 25.f, Off));
+		F.Add(Ring(TEXT("Mid on"), -18.f, 25.f, Off));
+		F.Add(Ring(TEXT("Midwicket"), -55.f, 25.f, Off));
+		F.Add(Ring(TEXT("Short fine leg"), -145.f, 22.f, Off));
+		break;
+	case EFieldPreset::Attacking:
+		F.Add(Ring(TEXT("Slip"), 165.f, 20.f, Off));
+		F.Add(Ring(TEXT("Gully"), 135.f, 20.f, Off));
+		F.Add(Ring(TEXT("Point"), 95.f, 22.f, Off));
+		F.Add(Ring(TEXT("Cover"), 65.f, 25.f, Off));
+		F.Add(Ring(TEXT("Mid off"), 18.f, 25.f, Off));
+		F.Add(Ring(TEXT("Mid on"), -18.f, 25.f, Off));
+		F.Add(Ring(TEXT("Midwicket"), -60.f, 25.f, Off));
+		F.Add(Deep(TEXT("Fine leg"), -150.f, 58.f, Off));
+		F.Add(Deep(TEXT("Long on"), -12.f, 60.f, Off));
+		break;
+	case EFieldPreset::PaceAttack:
+		F.Add(Ring(TEXT("First slip"), 165.f, 20.f, Off));
+		F.Add(Ring(TEXT("Second slip"), 155.f, 21.f, Off));
+		F.Add(Ring(TEXT("Gully"), 130.f, 20.f, Off));
+		F.Add(Ring(TEXT("Point"), 95.f, 22.f, Off));
+		F.Add(Ring(TEXT("Cover"), 65.f, 25.f, Off));
+		F.Add(Ring(TEXT("Mid off"), 18.f, 25.f, Off));
+		F.Add(Ring(TEXT("Mid on"), -18.f, 25.f, Off));
+		F.Add(Ring(TEXT("Square leg"), -80.f, 24.f, Off));
+		F.Add(Deep(TEXT("Fine leg"), -150.f, 58.f, Off));
+		break;
+	case EFieldPreset::SpinAttack:
+		F.Add(Ring(TEXT("Slip"), 150.f, 10.f, Off));
+		F.Add(Ring(TEXT("Short leg"), -100.f, 6.f, Off));
+		F.Add(Ring(TEXT("Point"), 95.f, 22.f, Off));
+		F.Add(Ring(TEXT("Cover"), 65.f, 25.f, Off));
+		F.Add(Ring(TEXT("Mid off"), 18.f, 25.f, Off));
+		F.Add(Ring(TEXT("Mid on"), -18.f, 25.f, Off));
+		F.Add(Ring(TEXT("Midwicket"), -60.f, 25.f, Off));
+		F.Add(Deep(TEXT("Long on"), -12.f, 60.f, Off));
+		F.Add(Deep(TEXT("Deep midwicket"), -58.f, 60.f, Off));
+		break;
+	case EFieldPreset::BoundaryRiders:
+		F.Add(Deep(TEXT("Deep point"), 100.f, 58.f, Off));
+		F.Add(Deep(TEXT("Long off"), 12.f, 60.f, Off));
+		F.Add(Deep(TEXT("Long on"), -12.f, 60.f, Off));
+		F.Add(Deep(TEXT("Deep midwicket"), -58.f, 60.f, Off));
+		F.Add(Deep(TEXT("Deep square leg"), -100.f, 58.f, Off));
+		F.Add(Ring(TEXT("Cover"), 70.f, 25.f, Off));
+		F.Add(Ring(TEXT("Mid off"), 20.f, 25.f, Off));
+		F.Add(Ring(TEXT("Midwicket"), -50.f, 25.f, Off));
+		F.Add(Ring(TEXT("Short fine leg"), -145.f, 22.f, Off));
+		break;
+	case EFieldPreset::OffSideHeavy:
+		F.Add(Deep(TEXT("Deep cover"), 58.f, 60.f, Off));
+		F.Add(Deep(TEXT("Deep point"), 100.f, 58.f, Off));
+		F.Add(Deep(TEXT("Third man"), 135.f, 58.f, Off));
+		F.Add(Deep(TEXT("Long off"), 12.f, 60.f, Off));
+		F.Add(Deep(TEXT("Long on"), -12.f, 60.f, Off));
+		F.Add(Ring(TEXT("Point"), 95.f, 22.f, Off));
+		F.Add(Ring(TEXT("Cover"), 65.f, 25.f, Off));
+		F.Add(Ring(TEXT("Mid off"), 20.f, 25.f, Off));
+		F.Add(Ring(TEXT("Midwicket"), -50.f, 25.f, Off));
+		break;
+	case EFieldPreset::LegSideHeavy:
+		F.Add(Deep(TEXT("Deep midwicket"), -58.f, 60.f, Off));
+		F.Add(Deep(TEXT("Deep square leg"), -85.f, 58.f, Off));
+		F.Add(Deep(TEXT("Fine leg"), -150.f, 58.f, Off));
+		F.Add(Deep(TEXT("Long on"), -12.f, 60.f, Off));
+		F.Add(Deep(TEXT("Long off"), 12.f, 60.f, Off));
+		F.Add(Ring(TEXT("Mid on"), -20.f, 25.f, Off));
+		F.Add(Ring(TEXT("Midwicket"), -50.f, 25.f, Off));
+		F.Add(Ring(TEXT("Square leg"), -80.f, 24.f, Off));
+		F.Add(Ring(TEXT("Cover"), 60.f, 25.f, Off));
+		break;
+	case EFieldPreset::YorkerDefence:
+		F.Add(Deep(TEXT("Long off"), 12.f, 60.f, Off));
+		F.Add(Deep(TEXT("Long on"), -12.f, 60.f, Off));
+		F.Add(Deep(TEXT("Deep midwicket"), -58.f, 60.f, Off));
+		F.Add(Deep(TEXT("Deep point"), 100.f, 58.f, Off));
+		F.Add(Deep(TEXT("Third man"), 135.f, 58.f, Off));
+		F.Add(Ring(TEXT("Short fine leg"), -145.f, 22.f, Off));
+		F.Add(Ring(TEXT("Midwicket"), -50.f, 26.f, Off));
+		F.Add(Ring(TEXT("Extra cover"), 48.f, 26.f, Off));
+		F.Add(Ring(TEXT("Mid off"), 15.f, 24.f, Off));
+		break;
+	case EFieldPreset::ShortBall:
+	default:
+		F.Add(Deep(TEXT("Deep square leg"), -100.f, 58.f, Off));
+		F.Add(Deep(TEXT("Fine leg"), -150.f, 58.f, Off));
+		F.Add(Deep(TEXT("Deep midwicket"), -58.f, 60.f, Off));
+		F.Add(Deep(TEXT("Deep point"), 100.f, 58.f, Off));
+		F.Add(Deep(TEXT("Long off"), 12.f, 60.f, Off));
+		F.Add(Ring(TEXT("Gully"), 135.f, 20.f, Off));
+		F.Add(Ring(TEXT("Cover"), 65.f, 25.f, Off));
+		F.Add(Ring(TEXT("Mid off"), 20.f, 25.f, Off));
+		F.Add(Ring(TEXT("Mid on"), -20.f, 25.f, Off));
+		break;
 	}
 	return F;
+}
+
+float CricketField::RingDistance(const FVector2D& Home)
+{
+	return FVector2D::Distance(Home, FVector2D(FMath::Clamp(Home.X, 0.f, CricketGeo::PitchLength), 0.f));
+}
+
+bool CricketField::IsOutsideCircle(const FVector2D& Home)
+{
+	return RingDistance(Home) > InnerRing;
+}
+
+bool CricketField::IsBehindSquareLeg(const FVector2D& Home, ECricketHand BatHand)
+{
+	return Home.X < CricketGeo::PoppingCrease && Home.Y * OffSideSign(BatHand) < 0.f;
+}
+
+FString CricketField::Validate(const TArray<FFielder>& Field, ECricketHand BatHand, int32* Offender)
+{
+	using namespace CricketGeo;
+	int32 Outside = 0, BehindLeg = 0;
+	auto Fail = [Offender](int32 I, const TCHAR* Why) { if (Offender) *Offender = I; return FString(Why); };
+	if (Offender) *Offender = INDEX_NONE;
+	for (int32 I = 0; I < Field.Num(); ++I)
+	{
+		const FFielder& F = Field[I];
+		if (F.bKeeper || F.bBowler) continue;
+		const FVector2D P = F.Home;
+		if (P.X >= 0.f && P.X <= PitchLength && FMath::Abs(P.Y) <= PitchHalfWidth) return Fail(I, TEXT("No fielder may stand on the pitch"));
+		if (FVector2D::Distance(P, FVector2D(PitchCentre())) > BoundaryRadius - RopeMargin) return Fail(I, TEXT("Too close to the boundary rope"));
+		for (int32 J = 0; J < Field.Num(); ++J)
+			if (J != I && !Field[J].bBowler && FVector2D::Distance(P, Field[J].Home) < MinSpacing) return Fail(I, TEXT("Too close to another fielder"));
+		if (IsOutsideCircle(P) && ++Outside > MaxOutside) return Fail(I, TEXT("Only five fielders may be outside the circle"));
+		if (IsBehindSquareLeg(P, BatHand) && ++BehindLeg > MaxBehindSquareLeg) return Fail(I, TEXT("Only two fielders may be behind square on the leg side"));
+	}
+	return FString();
+}
+
+FString CricketField::PositionName(const FVector2D& Home, ECricketHand BatHand, bool* bConfident)
+{
+	// Sectors by the angle from the striker's stumps (0 straight down the ground, 180 fine), for close
+	// catchers, the ring and the deep. A spot within 4 degrees of a sector edge, or near a band's edge, is not
+	// confidently one or the other.
+	struct FSector { float To; const TCHAR* Name; };
+	static const FSector CloseOff[] = { { 45.f, TEXT("Silly mid off") }, { 110.f, TEXT("Silly point") }, { 150.f, TEXT("Gully") }, { 181.f, TEXT("Slip") } };
+	static const FSector CloseLeg[] = { { 45.f, TEXT("Silly mid on") }, { 120.f, TEXT("Short leg") }, { 181.f, TEXT("Leg slip") } };
+	static const FSector RingOff[] = { { 32.f, TEXT("Mid off") }, { 58.f, TEXT("Extra cover") }, { 78.f, TEXT("Cover") }, { 102.f, TEXT("Point") },
+		{ 120.f, TEXT("Backward point") }, { 181.f, TEXT("Short third man") } };
+	static const FSector RingLeg[] = { { 30.f, TEXT("Mid on") }, { 75.f, TEXT("Midwicket") }, { 105.f, TEXT("Square leg") },
+		{ 135.f, TEXT("Backward square leg") }, { 181.f, TEXT("Short fine leg") } };
+	static const FSector DeepOff[] = { { 25.f, TEXT("Long off") }, { 42.f, TEXT("Deep extra cover") }, { 70.f, TEXT("Deep cover") },
+		{ 110.f, TEXT("Deep point") }, { 125.f, TEXT("Deep backward point") }, { 181.f, TEXT("Third man") } };
+	static const FSector DeepLeg[] = { { 25.f, TEXT("Long on") }, { 70.f, TEXT("Deep midwicket") }, { 110.f, TEXT("Deep square leg") },
+		{ 145.f, TEXT("Deep backward square") }, { 181.f, TEXT("Fine leg") } };
+	constexpr float CloseIn = 12.f, Edge = 4.f, BandEdge = 2.f;
+
+	const float Deg = FMath::RadiansToDegrees(FMath::Atan2(Home.Y * OffSideSign(BatHand), Home.X));
+	const float A = FMath::Abs(Deg);
+	const bool bOff = Deg >= 0.f;
+	const float Near = Home.Size(), Ring = RingDistance(Home);
+	TArrayView<const FSector> Band = Near < CloseIn ? (bOff ? TArrayView<const FSector>(CloseOff) : TArrayView<const FSector>(CloseLeg))
+		: Ring <= InnerRing ? (bOff ? TArrayView<const FSector>(RingOff) : TArrayView<const FSector>(RingLeg))
+		: (bOff ? TArrayView<const FSector>(DeepOff) : TArrayView<const FSector>(DeepLeg));
+	bool bSure = A > Edge && A < 180.f - Edge && FMath::Abs(Near - CloseIn) > BandEdge && FMath::Abs(Ring - InnerRing) > BandEdge;
+	float From = 0.f;
+	for (const FSector& S : Band)
+	{
+		if (A < S.To)
+		{
+			bSure = bSure && (From == 0.f || A - From > Edge) && (S.To > 180.f || S.To - A > Edge);
+			if (bConfident) *bConfident = bSure;
+			return S.Name;
+		}
+		From = S.To;
+	}
+	if (bConfident) *bConfident = false;
+	return TEXT("Fielder");
 }
 
 float CricketField::TimeToCover(float Dist, float Top)
@@ -147,7 +356,8 @@ namespace
 	/** Seconds from reaching the ball to having it in hand, set to throw. */
 	float GatherTime(const FFieldingOutcome& Fd, bool bKeeper, float Throw)
 	{
-		if (bKeeper) return Fd.Action == EFieldAction::Fumble ? 0.9f : 0.25f;
+		// A keeper's overarm throw rises out of the crouch and sets, as any other: 0.25 s left the throw no time.
+		if (bKeeper) return Fd.Action == EFieldAction::Fumble ? 0.9f : 0.6f;
 		switch (Fd.Action)
 		{
 		case EFieldAction::PickupOnRun: return 0.45f - 0.15f * Throw; // stride and set for an overarm throw
@@ -239,6 +449,9 @@ FFieldingOutcome CricketField::Intercept(const TArray<FBallState>& Samples, floa
 			const FFielder& F = Field[I];
 			const float MaxZ = bAir ? (F.bKeeper ? 2.2f : 2.5f) : (!bContact && F.bKeeper ? 2.2f : 0.9f);
 			if (S.Pos.Z > MaxZ || (bAir && S.Pos.Z < 0.05f)) continue;
+			// A beaten ball comes to the keeper's gloves, out in front of the body: taken as it reaches them, never
+			// while still short of them (arms 1.5 m long) nor once it has gone past the hips.
+			if (F.bKeeper && !bContact && S.Pos.X > F.Home.X + CricketKeeper::ReadyFor(CricketKeeper::IsStandingUp(F.Home)).GloveForward) continue;
 			// Judging a ball in the air off the bat takes longer than reacting to one along the ground.
 			const float Reaction = F.bKeeper ? 0.15f : bAir ? 0.5f : 0.25f;
 			const float Reach = F.bKeeper ? 1.5f : 1.0f;
@@ -272,7 +485,7 @@ FFieldingOutcome CricketField::Intercept(const TArray<FBallState>& Samples, floa
 			O.BoundaryTime = T;
 			return O;
 		}
-		if (T < 0.06f) continue;
+		if (T < 0.06f && bContact) continue; // off the bat it surprises everyone; a beaten ball the keeper has watched since it pitched
 
 		const bool bAir = bContact && SP->Bounces == 0;
 		FTake Take = TakeAt(*SP, T, bAir, true);
@@ -296,7 +509,8 @@ FFieldingOutcome CricketField::Intercept(const TArray<FBallState>& Samples, floa
 		const bool bBestDive = Take.bDive;
 
 		O.Fielder = Best;
-		O.ChaseStart = Field[Best].bKeeper ? 0.15f : bAir ? 0.5f : 0.25f;
+		// A keeper who read a beaten ball off the pitch set off that much before it passed the bat, as timed above.
+		O.ChaseStart = Field[Best].bKeeper ? 0.15f - KeeperLead : bAir ? 0.5f : 0.25f;
 		O.FieldTime = T;
 		O.FieldPos = S.Pos;
 		O.FielderFrom = Field[Best].Home;
@@ -347,7 +561,8 @@ FFieldingOutcome CricketField::Intercept(const TArray<FBallState>& Samples, floa
 }
 
 FRunningOutcome CricketField::SolveRunning(const FFieldingOutcome& Fd, const FCricketPlayer& Striker, const FCricketPlayer& NonStriker,
-	const FCricketPlayer& Skill, bool bKeeperFielded, float Margin, FRandomStream& Rng, const TArray<FFielder>* Field)
+	const FCricketPlayer& Skill, bool bKeeperFielded, float Margin, FRandomStream& Rng, const TArray<FFielder>* Field,
+	const FRunCalls* Calls)
 {
 	FRunningOutcome R;
 	if (Fd.bCaught || Fd.Boundary != 0 || Fd.Fielder < 0) return R;
@@ -383,12 +598,13 @@ FRunningOutcome CricketField::SolveRunning(const FFieldingOutcome& Fd, const FCr
 		Best.Arrive = Best.Release + ThrowFlight(Dist, Throw);
 		Best.PDirect = PDirectAt(Dist);
 		Score(Best);
-		if (Fd.Action == EFieldAction::PickupOnRun && Dist <= 12.f)
+		if ((Fd.Action == EFieldAction::PickupOnRun || bKeeperFielded) && Dist <= 12.f)
 		{
 			// Flicked underarm in the same movement as the pickup: no set and no turn, slower but accurate close in.
+			// A keeper flicks it out of the gloves the same way.
 			FEnd Under = Best;
 			Under.Type = EThrowType::Underarm;
-			Under.Release = Fd.FieldTime + 0.1f;
+			Under.Release = Fd.FieldTime + (bKeeperFielded ? 0.25f : 0.1f);
 			Under.Arrive = Under.Release + Dist / 16.f;
 			Under.PDirect = FMath::Clamp(0.45f + 0.3f * Throw - Dist / 25.f, 0.05f, 0.7f);
 			Score(Under);
@@ -447,11 +663,43 @@ FRunningOutcome CricketField::SolveRunning(const FFieldingOutcome& Fd, const FCr
 		return Now >= Fd.FieldTime ? Expected : FMath::Max(Fd.FieldTime + Misjudge, Now) + (Expected - Fd.FieldTime);
 	};
 
-	for (int32 N = 1; N <= 4; ++N)
+	if (Calls && Calls->bManual)
+	{
+		// The player's calls, taken as made: no read of the throw, so a bad call is run out. A call once the stumps
+		// can be broken comes too late to run.
+		float Home = 0.f;
+		for (int32 N = 1; N <= Calls->Go.Num(); ++N)
+		{
+			const float Call = FMath::Max(0.f, Calls->Go[N - 1]);
+			if (Call >= R.BreakTime) break;
+			const bool bTurn = N > 1 && Call <= Home;
+			const float Depart = bTurn ? Home + 0.5f * TurnTime : FMath::Max(Call, Home) + SetOff;
+			const float There = bTurn ? Depart + LegLength / V + 0.5f * TurnTime : Depart + TimeToCover(LegLength, V);
+			if (Calls->Back >= 0.f && Calls->Back < Depart) break; // called off before they left
+			R.Attempted = N;
+			R.Leaves.Add(Depart);
+			if (Calls->Back >= Depart && Calls->Back < There)
+			{
+				const float Along = bTurn ? (Calls->Back - Depart) / (There - Depart) : DistanceCovered(Calls->Back - Depart, V) / LegLength;
+				if (Along < FRunCalls::TurnBackLimit)
+				{
+					R.bSentBack = true;
+					R.SentBackAt = Calls->Back;
+					R.SentBackFrom = Along;
+					R.BackIn = R.SentBackAt + 0.5f * TurnTime + R.SentBackFrom * LegLength / V;
+					break;
+				}
+			}
+			R.RunTimes.Add(There);
+			Home = There;
+		}
+	}
+	else for (int32 N = 1; N <= 4; ++N)
 	{
 		const float CallAt = RunTime(N - 1); // at the stroke, then at each turn
 		if (RunTime(N) + Margin > Believed(CallAt)) break;
 		R.Attempted = N;
+		R.Leaves.Add(Leave(N));
 		// The ball is gathered with this run on and the run is lost: "No! Get back!" - if not yet halfway.
 		const float Along = (Fd.FieldTime - Leave(N)) / (RunTime(N) - Leave(N));
 		if (Fd.FieldTime > CallAt && Along < 0.5f && RunTime(N) + 0.5f * Margin > Expected)

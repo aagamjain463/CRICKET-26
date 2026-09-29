@@ -82,6 +82,15 @@ enum class EContactZone : uint8
 UENUM(BlueprintType)
 enum class EDismissal : uint8 { None, Bowled, Caught, LBW, RunOut, Stumped, HitWicket };
 
+UENUM(BlueprintType)
+enum class EBatterStyle : uint8
+{
+	Classical,      // Virat Kohli: textbook upright stance, high front elbow, clean vertical arc
+	ExpressPuller,  // Rohit Sharma: relaxed stance, quick back-and-across shuffle, horizontal pull master
+	Unorthodox,     // Steve Smith: wide stance, deep shuffle across off-stump, high bat hold, wristy whip
+	PowerHitter     // Hardik Pandya: wide power base, low center of gravity, bottom-hand torque
+};
+
 USTRUCT(BlueprintType)
 struct FCricketPlayer
 {
@@ -91,6 +100,7 @@ struct FCricketPlayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) ECricketHand BatHand = ECricketHand::Right;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) ECricketHand BowlHand = ECricketHand::Right;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) EBowlerType BowlerType = EBowlerType::Pace;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) EBatterStyle BatterStyle = EBatterStyle::Classical;
 
 	// Attributes are 0..1 unless stated.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) float Timing = 0.6f;    // widens the good-contact window
@@ -102,6 +112,8 @@ struct FCricketPlayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) float Catching = 0.7f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) float Throwing = 0.6f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) float RunSpeed = 7.f;   // m/s top speed
+	/** Shirt number on the back (and small on the front). 0 falls back to a stable hash of the name. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) int32 Number = 0;
 };
 
 USTRUCT(BlueprintType)
@@ -114,5 +126,7 @@ struct FCricketTeam
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FCricketPlayer> Batters; // Super Over batting order (3)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) FCricketPlayer Bowler;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) FLinearColor Colour = FLinearColor::Blue;
+	/** Second kit colour: sleeves, collar, side panels and trouser stripes, and the number's outline. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) FLinearColor Accent = FLinearColor::White;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) FString Sponsor; // printed across the shirt's chest
 };

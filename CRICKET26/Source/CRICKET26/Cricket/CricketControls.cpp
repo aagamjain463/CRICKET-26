@@ -18,8 +18,9 @@ float PullMagnitude(const FVector2D& Pull, const FCricketControlTuning& T)
 float ShapeMagnitude(float Magnitude)
 {
 	const float M = FMath::Clamp(Magnitude, 0.f, 1.f);
-	// Concave power curve: fine control over short pulls, the top end saved for the full stretch.
-	return FMath::Pow(M, 1.5f);
+	// Gentle power curve: fine control over short pulls, the top end reachable without a full stretch,
+	// so the pull feels smooth and immediate rather than stiff or laggy.
+	return FMath::Pow(M, 1.3f);
 }
 
 float AimFromPull(const FVector2D& Pull, ECricketHand BatHand, const FCricketControlTuning& T)
@@ -138,14 +139,24 @@ const TCHAR* ReleaseGradeName(EReleaseGrade Grade)
 	}
 }
 
+float PitchMarkerAlpha(const FCricketControlTuning& T, int32 Difficulty, float Since, float PitchAt)
+{
+	const int32 D = FMath::Clamp(Difficulty, 0, 3);
+	if (PitchAt <= 0.f || T.PitchMarkerRadius[D] <= 0.f) return 0.f;
+	const float Fade = FMath::Max(T.PitchMarkerFade, 1e-3f);
+	const float In = FMath::Clamp((Since - T.PitchMarkerDelay[D]) / Fade, 0.f, 1.f);
+	const float Out = FMath::Clamp(1.f - (Since - PitchAt) / Fade, 0.f, 1.f);
+	return FMath::Min(In, Out);
+}
+
 void DragTarget(FDeliveryPlan& Plan, const FVector2D& Drag, ECricketHand BatHand, const FCricketControlTuning& T)
 {
-	// Across the screen is line, down the screen is fuller (shorter Length).
+	// The target follows the finger: across the screen is line, up the screen (toward the batter) is fuller.
 	// The camera looks down the pitch from behind the bowler: screen left is world +Y,
 	// which is the off side for a right-hander, mirrored for a left-hander.
 	const float Off = OffSideSign(BatHand);
 	Plan.Line += -Drag.X * T.LineDragScale * Off;
-	Plan.Length += -Drag.Y * T.LengthDragScale;
+	Plan.Length += Drag.Y * T.LengthDragScale;
 	ClampTarget(Plan);
 }
 
@@ -261,6 +272,28 @@ const TCHAR* RunStateName(ERunState State)
 	default: return TEXT("-");
 	}
 }
+
+float ClampGuard(float Guard, const FCricketControlTuning& T)
+{
+	return FMath::Clamp(Guard, -FMath::Max(T.GuardMax, 0.f), FMath::Max(T.GuardMax, 0.f));
+}
+
+float MoveGuard(float Guard, bool bLeft, bool bRight, ECricketHand BatHand, const FCricketControlTuning& T)
+{
+	if (bLeft == bRight) return ClampGuard(Guard, T);
+	// Screen-left is world +Y; batter-relative guard is world Y times the off-side sign.
+	const float Off = OffSideSign(BatHand);
+	const float Step = FMath::Max(T.GuardStep, 0.01f) * Off;
+	Guard += bLeft ? Step : -Step;
+	return ClampGuard(Guard, T);
+}
+
+const TCHAR* GuardName(float Guard)
+{
+	const float A = FMath::Abs(Guard);
+	if (A < 0.03f) return TEXT("MIDDLE");
+	return Guard > 0.f ? TEXT("OFF SIDE") : TEXT("LEG SIDE");
+}
 } // namespace CricketControl
 
 namespace CricketTouch
@@ -272,10 +305,37 @@ namespace
 	FBox2D Box(float X0, float Y0, float X1, float Y1) { return FBox2D(FVector2D(X0, Y0), FVector2D(X1, Y1)); }
 	FBox2D Square(const FVector2D& C, float Side) { return FBox2D(C - 0.5f * Side, C + 0.5f * Side); }
 	float Right(float Aspect, const FInsets& Safe) { return Aspect - Margin - Safe.R; }
-	float Bottom(const FInsets& Safe) { return 1.f - Margin - Safe.B; }
-	// Sliders stand at the left of the bowling cluster, level with BOWL's foot so the thumb works them without reaching.
-	FBox2D EffortRect(float Aspect, const FInsets& Safe) { const float R = Right(Aspect, Safe), B = Bottom(Safe); return Box(R - 0.60f, B - 0.586f, R - 0.51f, B); }
-	FBox2D DialRect(float Aspect, const FInsets& Safe) { const float R = Right(Aspect, Safe), B = Bottom(Safe); return Box(R - 0.49f, B - 0.586f, R - 0.40f, B); }
+	float Left(const FInsets& Safe) { return Margin + Safe.L; }
+	// The score strip runs the full safe width along the foot; the controls stand on a line just above it.
+	constexpr float StripH = 0.095f, StripGap = 0.025f;
+	float StripFoot(const FInsets& Safe) { return 1.f - Margin - Safe.B; }
+	float Bottom(const FInsets& Safe) { return StripFoot(Safe) - StripH - StripGap; }
+	// The bowling setup is split for two thumbs: delivery chips stacked straight onto the SWING/SPIN bar on the left,
+	// PACE + the BOWL hero on the right. The two bars share one baseline so the foot reads as a single row;
+	// the middle stays open for the target drag.
+	constexpr float BowlPrimary = 0.16f, SliderH = 0.068f, ClusterGap = 0.02f, MidGap = 0.06f;
+	constexpr float ChipRowH = 0.06f, ChipGap = 0.01f;
+	float SideWidth(float Aspect, const FInsets& Safe)
+	{
+		const float Usable = Right(Aspect, Safe) - Left(Safe);
+		return FMath::Clamp(0.5f * (Usable - MidGap), 0.30f, 0.46f);
+	}
+	FBox2D EffortRect(float Aspect, const FInsets& Safe)
+	{
+		// PACE lives left of BOWL on the bottom line, level with SWING/SPIN.
+		const float R = Right(Aspect, Safe), B = Bottom(Safe), Side = SideWidth(Aspect, Safe);
+		const float X1 = R - BowlPrimary - ClusterGap, X0 = X1 - (Side - BowlPrimary - ClusterGap);
+		return Box(X0, B - SliderH, X1, B);
+	}
+	FBox2D DialRect(float Aspect, const FInsets& Safe)
+	{
+		// SWING/SPIN spans the left cluster on the bottom line.
+		const float B = Bottom(Safe), X0 = Left(Safe);
+		return Box(X0, B - SliderH, X0 + SideWidth(Aspect, Safe), B);
+	}
+	// Top of the left cluster: the bar plus Rows chip rows.
+	float ChipsTop(int32 Rows, const FInsets& Safe) { return Bottom(Safe) - SliderH - Rows * (ChipRowH + ChipGap); }
+	float SliderAt(const FBox2D& Rect, float X) { return FMath::Clamp((X - Rect.Min.X) / FMath::Max(Rect.GetSize().X, 1e-4f), 0.f, 1.f); }
 	bool InsideAnyButton(const TArray<FButton>& Buttons, const FVector2D& P)
 	{
 		for (const FButton& B : Buttons) if (B.Rect.IsInside(P)) return true;
@@ -289,37 +349,56 @@ TArray<FButton> Layout(EMode Mode, int32 NumDeliveries, float Aspect, const FIns
 {
 	// Hit areas are larger than what the HUD draws inside them. The primary action (RUN, BOWL, REVIEW) sits in the
 	// bottom-right corner under the right thumb; the rest fan out from it. Everything keeps clear of the score strip
-	// (bottom left), the radar (top right) and the gesture zones (the middle).
+	// (along the foot), the radar (top right) and the gesture zones (the middle).
 	const float R = Right(Aspect, Safe), B = Bottom(Safe);
-	constexpr float Primary = 0.22f, Shot = 0.15f, Arc = 0.27f;
+	constexpr float Primary = 0.16f, Shot = 0.11f, Arc = 0.2f;
 	const FVector2D Corner(R - 0.5f * Primary, B - 0.5f * Primary);
 	TArray<FButton> Out;
-	if (Mode == EMode::Batting)
+	if (Mode == EMode::Batting || Mode == EMode::Ready)
 	{
-		// Shot modes on an arc round RUN: DEFEND to the left, GROUND on the diagonal, LOFT above. CANCEL above LOFT.
+		// Shot modes on an arc round the corner, where RUN appears once the shot is played: DEFEND to the left,
+		// GROUND on the diagonal, LOFT above.
 		auto OnArc = [&](float Deg) { const float T = FMath::DegreesToRadians(Deg); return Corner + Arc * FVector2D(FMath::Cos(T), -FMath::Sin(T)); };
 		Out.Add({ EButton::Defend, 0, Square(OnArc(180.f), Shot) });
 		Out.Add({ EButton::Ground, 0, Square(OnArc(135.f), Shot) });
 		Out.Add({ EButton::Loft, 0, Square(OnArc(90.f), Shot) });
+		// Before the ball, PLAY takes the corner: the bowler runs in only when the batter is ready.
+		if (Mode == EMode::Ready) Out.Add({ EButton::Play, 0, Square(Corner, Primary) });
+		// Crease shuffle under the left thumb: two arrows above the strip, clear of the pull pad.
+		// Screen-left (◀) is world +Y, screen-right (▶) world -Y; the game converts to batter-relative guard.
+		constexpr float GuardSize = 0.11f, GuardGap = 0.015f;
+		const float GX = Left(Safe);
+		Out.Add({ EButton::GuardLeft, 0, Box(GX, B - GuardSize, GX + GuardSize, B) });
+		Out.Add({ EButton::GuardRight, 0, Box(GX + GuardSize + GuardGap, B - GuardSize, GX + 2.f * GuardSize + GuardGap, B) });
+	}
+	else if (Mode == EMode::Running)
+	{
 		Out.Add({ EButton::Run, 0, Square(Corner, Primary) });
-		Out.Add({ EButton::Cancel, 0, Square(Corner - FVector2D(0.f, 0.46f), 0.15f) }); // 48dp+ on phones
+		Out.Add({ EButton::Cancel, 0, Square(Corner - FVector2D(0.f, 0.2f), Shot) }); // 48dp+ on phones
+	}
+	else if (Mode == EMode::Release)
+	{
+		Out.Add({ EButton::Bowl, 0, Square(Corner, Primary) });
 	}
 	else if (Mode == EMode::Review)
 	{
-		Out.Add({ EButton::Accept, 0, Box(R - 0.50f, B - 0.13f, R - 0.27f, B) });
-		Out.Add({ EButton::Review, 0, Box(R - 0.25f, B - 0.13f, R, B) });
+		Out.Add({ EButton::Accept, 0, Box(R - 0.37f, B - 0.1f, R - 0.19f, B) });
+		Out.Add({ EButton::Review, 0, Box(R - 0.17f, B - 0.1f, R, B) });
 	}
 	else if (Mode == EMode::Bowling)
 	{
-		Out.Add({ EButton::Bowl, 0, Square(Corner, Primary) });
-		// The repertoire as a two-column grid above BOWL, filled from the top left, its last row just over BOWL.
-		constexpr float ColW = 0.17f, RowH = 0.075f, Gap = 0.012f;
-		const int32 Rows = (NumDeliveries + 1) / 2;
+		Out.Add({ EButton::Bowl, 0, Square(Corner, BowlPrimary) });
+		// The repertoire as compact chips over the left cluster only, four to a row, the last row straight on the
+		// dial. Right stays PACE + BOWL so each thumb owns one group.
+		const float LX = Left(Safe), Side = SideWidth(Aspect, Safe);
+		constexpr int32 Cols = 4;
+		const float ColW = (Side - (Cols - 1) * ChipGap) / Cols;
+		const int32 Rows = (NumDeliveries + Cols - 1) / Cols;
 		for (int32 I = 0; I < NumDeliveries; ++I)
 		{
-			const int32 Row = I / 2, Col = I % 2;
-			const float X1 = R - (1 - Col) * (ColW + Gap), Y1 = B - 0.25f - (Rows - 1 - Row) * (RowH + Gap);
-			Out.Add({ EButton::Delivery, I, Box(X1 - ColW, Y1 - RowH, X1, Y1) });
+			const int32 Row = I / Cols, Col = I % Cols;
+			const float X0 = LX + Col * (ColW + ChipGap), Y1 = ChipsTop(Rows - Row, Safe) + ChipRowH;
+			Out.Add({ EButton::Delivery, I, Box(X0, Y1 - ChipRowH, X0 + ColW, Y1) });
 		}
 		Out.Add({ EButton::Effort, 0, EffortRect(Aspect, Safe) });
 		Out.Add({ EButton::Dial, 0, DialRect(Aspect, Safe) });
@@ -328,14 +407,33 @@ TArray<FButton> Layout(EMode Mode, int32 NumDeliveries, float Aspect, const FIns
 	}
 	else if (Mode == EMode::FieldEdit)
 	{
-		// Beside the map: the presets at the top, then RESET, CANCEL and APPLY down to where the thumb rests.
+		// Beside the map: the title, the presets as a two-column grid, then RESET and CANCEL side by side and APPLY
+		// at the foot, where the thumb rests. (The rule counters sit in the map's empty corners.)
 		const FBox2D Map = FieldMap(Aspect, Safe);
-		const float X0 = Map.Max.X + EditGap, X1 = X0 + EditPanelW, Row = 0.1f, Gap = 0.015f;
+		const float X0 = Map.Max.X + EditGap, X1 = X0 + EditPanelW, XM = 0.5f * (X0 + X1), Row = 0.085f, Gap = 0.015f, Cell = 0.01f;
+		const float Top = Map.Min.Y + 0.07f, Foot = Map.Max.Y - 2 * Row - Gap - 0.02f;
+		const int32 Rows = (NumFieldPresets + 1) / 2;
+		const float PresetRow = (Foot - Top - (Rows - 1) * Cell) / Rows;
 		for (int32 I = 0; I < NumFieldPresets; ++I)
-			Out.Add({ EButton::FieldPreset, I, Box(X0, Map.Min.Y + 0.1f + I * (Row + Gap), X1, Map.Min.Y + 0.1f + I * (Row + Gap) + Row) });
-		Out.Add({ EButton::FieldReset, 0, Box(X0, Map.Max.Y - 3 * Row - 2 * Gap, X1, Map.Max.Y - 2 * Row - 2 * Gap) });
-		Out.Add({ EButton::FieldCancel, 0, Box(X0, Map.Max.Y - 2 * Row - Gap, X1, Map.Max.Y - Row - Gap) });
+		{
+			const float PX = I % 2 ? XM + 0.5f * Cell : X0, PY = Top + (I / 2) * (PresetRow + Cell);
+			Out.Add({ EButton::FieldPreset, I, Box(PX, PY, PX + 0.5f * (EditPanelW - Cell), PY + PresetRow) });
+		}
+		Out.Add({ EButton::FieldReset, 0, Box(X0, Map.Max.Y - 2 * Row - Gap, XM - 0.5f * Cell, Map.Max.Y - Row - Gap) });
+		Out.Add({ EButton::FieldCancel, 0, Box(XM + 0.5f * Cell, Map.Max.Y - 2 * Row - Gap, X1, Map.Max.Y - Row - Gap) });
 		Out.Add({ EButton::FieldApply, 0, Box(X0, Map.Max.Y - Row, X1, Map.Max.Y) });
+	}
+	else if (Mode == EMode::Pick)
+	{
+		// IPL selector: NumDeliveries carries the candidate count. A right-hand column of tall
+		// rows under the radar, clear of the score strip: the HUD paints each candidate's name
+		// inside its row, in the same order. Rows shrink to fit eleven candidates on screen.
+		const float T = Margin + Safe.T + 0.28f, X0 = R - 0.46f;
+		const float Foot = Bottom(Safe) - 0.12f;
+		constexpr float Gap = 0.008f;
+		const float RowH = FMath::Max(0.03f, FMath::Min(0.075f, (Foot - T) / FMath::Max(1, NumDeliveries) - Gap));
+		for (int32 I = 0; I < NumDeliveries; ++I)
+			Out.Add({ EButton::Pick, I, Box(X0, T + I * (RowH + Gap), R, T + I * (RowH + Gap) + RowH) });
 	}
 	return Out;
 }
@@ -343,9 +441,18 @@ TArray<FButton> Layout(EMode Mode, int32 NumDeliveries, float Aspect, const FIns
 FBox2D GestureZone(EMode Mode, float Aspect, const FInsets& Safe)
 {
 	if (Mode == EMode::Batting)
-		return Box(0.02f + Safe.L, 0.08f + Safe.T, Aspect - 0.62f - Safe.R, 0.72f);
+		// Left-thumb pad mirroring the right-thumb shot cluster: tucked left of the middle so the two hands feel
+		// symmetric, tall enough to grab anywhere without reaching, and always clear of the buttons and the strip.
+		return Box(0.02f + Safe.L, 0.10f + Safe.T, Aspect - 0.78f - Safe.R, 0.78f);
+	// The target drag starts anywhere clear of the two bottom clusters: the buttons (and the radar)
+	// take their own touches first, and the strip below the clusters stays control-only.
 	if (Mode == EMode::Bowling)
-		return Box(0.05f + Safe.L, 0.05f + Safe.T, Aspect - 0.65f - Safe.R, 0.68f);
+	{
+		// Worst case the left cluster holds two chip rows (7 deliveries at 4 across).
+		constexpr int32 MaxRows = 2;
+		const float Top = FMath::Min(ChipsTop(MaxRows, Safe), Bottom(Safe) - BowlPrimary) - ClusterGap;
+		return Box(Left(Safe), Margin + Safe.T, Right(Aspect, Safe), Top);
+	}
 	if (Mode == EMode::FieldEdit)
 		return FieldMap(Aspect, Safe);
 	return Box(0.f, 0.f, 0.f, 0.f);
@@ -353,8 +460,8 @@ FBox2D GestureZone(EMode Mode, float Aspect, const FInsets& Safe)
 
 FBox2D ScoreStrip(float Aspect, const FInsets& Safe)
 {
-	const float B = Bottom(Safe);
-	return Box(Margin + Safe.L, B - 0.085f, Right(Aspect, Safe) - 0.63f, B);
+	const float B = StripFoot(Safe);
+	return Box(Margin + Safe.L, B - StripH, Right(Aspect, Safe), B);
 }
 
 FBox2D Radar(float Aspect, const FInsets& Safe)
@@ -385,14 +492,28 @@ FVector2D FieldToMap(const FBox2D& Map, const FVector2D& Home)
 	return Map.GetCenter() + K * FVector2D(-Home.Y, Home.X - CricketGeo::PitchLength * 0.5f);
 }
 
-FCricketControls Read(EMode Mode, int32 NumDeliveries, float Aspect, TArrayView<const FFinger> Fingers, FGesture& Gesture, const FInsets& Safe)
+	FCricketControls Read(EMode Mode, int32 NumDeliveries, float Aspect, TArrayView<const FFinger> Fingers, FGesture& Gesture, const FInsets& Safe)
 {
 	FCricketControls C;
-	if (Mode == EMode::None) { Gesture.Finger = INDEX_NONE; return C; }
+	if (Mode == EMode::None) { Gesture = FGesture(); return C; }
 	if (Mode == EMode::Progress)
 	{
 		for (const FFinger& F : Fingers) if (F.bNew) { C.bProgress = true; break; }
-		Gesture.Finger = INDEX_NONE;
+		Gesture = FGesture();
+		return C;
+	}
+	if (Mode == EMode::Pick)
+	{
+		// A tap picks a candidate; anything else is ignored (never a gesture, never progress).
+		const TArray<FButton> Buttons = Layout(Mode, NumDeliveries, Aspect, Safe);
+		for (const FFinger& F : Fingers)
+		{
+			if (!F.bNew) continue;
+			for (const FButton& Btn : Buttons)
+				if (Btn.Button == EButton::Pick && Btn.Rect.IsInside(F.Pos)) { C.PickIndex = Btn.Index; break; }
+			if (C.PickIndex != -1) break;
+		}
+		Gesture = FGesture();
 		return C;
 	}
 	const TArray<FButton> Buttons = Layout(Mode, NumDeliveries, Aspect, Safe);
@@ -413,7 +534,7 @@ FCricketControls Read(EMode Mode, int32 NumDeliveries, float Aspect, TArrayView<
 			case EButton::Loft: C.bLoft = true; break;
 			case EButton::Run: C.bRun = true; break;
 			case EButton::Cancel: C.bCancel = true; break;
-			case EButton::Bowl: C.bAction = true; break;
+			case EButton::Bowl: case EButton::Play: C.bAction = true; break;
 			case EButton::Delivery: C.DeliveryPick = Btn.Index; break;
 			case EButton::Review: C.bReview = true; break;
 			case EButton::Accept: C.bProgress = true; break;
@@ -422,31 +543,21 @@ FCricketControls Read(EMode Mode, int32 NumDeliveries, float Aspect, TArrayView<
 			case EButton::FieldCancel: C.bFieldCancel = true; break;
 			case EButton::FieldReset: C.bFieldReset = true; break;
 			case EButton::FieldPreset: C.FieldPreset = Btn.Index; break;
+			case EButton::GuardLeft: C.bGuardLeft = true; break;
+			case EButton::GuardRight: C.bGuardRight = true; break;
 			default: break;
 			}
 		}
 	}
 
-	// Sliders follow any finger held on them (bowling only).
-	if (Mode == EMode::Bowling)
+	// One finger at a time owns the gesture: batting pull, bowling target drag, or a bowling slider. A slider keeps
+	// the finger that grabbed it until it lifts, wherever it wanders, so a quick sideways swipe is never dropped.
+	const FBox2D Effort = EffortRect(Aspect, Safe), Dial = DialRect(Aspect, Safe);
+	auto Slide = [&](EButton Which, float X)
 	{
-		const FBox2D Effort = EffortRect(Aspect, Safe), Dial = DialRect(Aspect, Safe);
-		for (const FFinger& F : Fingers)
-		{
-			if (Effort.IsInside(F.Pos))
-			{
-				const float H = FMath::Max(Effort.Max.Y - Effort.Min.Y, 1e-4f);
-				C.Effort = FMath::Clamp(1.f - (F.Pos.Y - Effort.Min.Y) / H, 0.f, 1.f);
-			}
-			if (Dial.IsInside(F.Pos))
-			{
-				const float H = FMath::Max(Dial.Max.Y - Dial.Min.Y, 1e-4f);
-				C.Dial = FMath::Clamp(1.f - 2.f * (F.Pos.Y - Dial.Min.Y) / H, -1.f, 1.f);
-			}
-		}
-	}
-
-	// One finger at a time owns the gesture: batting pull, or bowling target drag.
+		if (Which == EButton::Effort) C.Effort = SliderAt(Effort, X);
+		else C.Dial = 2.f * SliderAt(Dial, X) - 1.f;
+	};
 	if (Gesture.Finger != INDEX_NONE)
 	{
 		const FFinger* Held = nullptr;
@@ -460,10 +571,19 @@ FCricketControls Read(EMode Mode, int32 NumDeliveries, float Aspect, TArrayView<
 				C.Pull = Held->Pos - Gesture.Origin;
 				Gesture.Last = Held->Pos;
 			}
+			else if (Mode == EMode::Bowling && Gesture.Slider != EButton::Bowl)
+			{
+				Slide(Gesture.Slider, Held->Pos.X);
+			}
 			else if (Mode == EMode::Bowling)
 			{
 				C.TargetDrag = Held->Pos - Gesture.Last;
 				Gesture.Last = Held->Pos;
+			}
+			else if (Mode == EMode::FieldEdit)
+			{
+				C.bFieldHeld = true;
+				C.FieldAt = Gesture.Last = Held->Pos;
 			}
 		}
 		else
@@ -474,7 +594,14 @@ FCricketControls Read(EMode Mode, int32 NumDeliveries, float Aspect, TArrayView<
 				C.PullOrigin = Gesture.Origin;
 				C.Pull = Gesture.Last - Gesture.Origin;
 			}
+			else if (Mode == EMode::FieldEdit)
+			{
+				// Dropped where the finger was last seen: the frame it lifts carries no position.
+				C.bFieldDrop = true;
+				C.FieldAt = Gesture.Last;
+			}
 			Gesture.Finger = INDEX_NONE;
+			Gesture.Slider = EButton::Bowl;
 		}
 	}
 	else
@@ -482,6 +609,13 @@ FCricketControls Read(EMode Mode, int32 NumDeliveries, float Aspect, TArrayView<
 		for (const FFinger& F : Fingers)
 		{
 			if (!F.bNew) continue;
+			if (Mode == EMode::Bowling && (Effort.IsInside(F.Pos) || Dial.IsInside(F.Pos)))
+			{
+				Gesture.Finger = F.Id;
+				Gesture.Slider = Effort.IsInside(F.Pos) ? EButton::Effort : EButton::Dial;
+				Slide(Gesture.Slider, F.Pos.X);
+				break;
+			}
 			if (!Zone.IsInside(F.Pos) || InsideAnyButton(Buttons, F.Pos)) continue;
 			Gesture.Finger = F.Id;
 			Gesture.Origin = F.Pos;

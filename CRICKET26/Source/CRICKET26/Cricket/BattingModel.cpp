@@ -22,10 +22,13 @@ namespace CricketBatting
 	}
 
 	/** A charging batter goes to meet the ball where they read it pitching, as far as their feet get them. */
-	FShotProfile DownTheTrack(EShotType Shot, float ReadPitchX)
+	FShotProfile DownTheTrack(EShotType Shot, float ReadPitchX, float LeadTime)
 	{
 		FShotProfile P = CricketBatting::Profile(Shot, EFootwork::Advance);
-		P.AdvanceX = FMath::Clamp(ReadPitchX - 0.4f, 2.6f, 4.4f); // ~2.5 m out of the crease, bat ahead of the front pad
+		// Bat ahead of the front pad, up to ~2.5 m out of the crease for an early charge. A late one gets as far as
+		// a brisk run in the time left: further and the feet can't keep up with the body, which overruns into a lunge.
+		const float Reach = FMath::GetMappedRangeValueClamped(FVector2f(AdvanceLead, 0.85f), FVector2f(3.4f, 4.4f), LeadTime);
+		P.AdvanceX = FMath::Clamp(ReadPitchX - 0.4f, 2.6f, Reach);
 		return P;
 	}
 
@@ -111,12 +114,12 @@ FShotProfile CricketBatting::ChooseShot(EBatIntent Intent, float Dir, float Read
 		if (Dir < -60.f && bSweepable) return Profile(EShotType::Sweep);
 		if (Dir > 80.f && bSweepable) return Profile(EShotType::ReverseSweep);
 		if (Dir < -50.f && !bAdvance) return Profile(EShotType::Flick);
-		return bAdvance ? DownTheTrack(EShotType::Drive, ReadPitchX) : Profile(EShotType::Drive);
+		return bAdvance ? DownTheTrack(EShotType::Drive, ReadPitchX, LeadTime) : Profile(EShotType::Drive);
 	case EBatIntent::Loft:
 		if (bShort) return Profile(Dir > 35.f ? EShotType::Cut : ReadHeight > 1.1f && Dir < 0.f ? EShotType::Hook : EShotType::Pull);
 		if (Dir < -135.f && !bAdvance) return Profile(EShotType::Scoop);
 		if (Dir < -45.f && bSweepable) return Profile(EShotType::SlogSweep);
-		return bAdvance ? DownTheTrack(EShotType::Loft, ReadPitchX) : Profile(EShotType::Loft);
+		return bAdvance ? DownTheTrack(EShotType::Loft, ReadPitchX, LeadTime) : Profile(EShotType::Loft);
 	}
 	return Profile(EShotType::Leave);
 }
@@ -127,7 +130,7 @@ FVector CricketBatting::DirectionToWorld(float Deg, ECricketHand Hand)
 }
 
 FContactResult CricketBatting::ResolveContact(const FBallState& Ball, const FVector& Aim, const FShotProfile& P,
-	float Dir, float Timing, const FCricketPlayer& Batter, bool bAerial)
+	float Dir, float Timing, const FCricketPlayer& Batter, bool bAerial, float PowerScale, float Guard)
 {
 	FContactResult R;
 	R.Shot = P.Shot;
@@ -137,12 +140,13 @@ FContactResult CricketBatting::ResolveContact(const FBallState& Ball, const FVec
 	const float Tau = Timing * (1.25f - 0.5f * FMath::Clamp(Batter.Timing, 0.f, 1.f));
 	R.TimingError = Timing;
 	const float Off = OffSideSign(Batter.BatHand);
-	const float AimLat = FMath::Clamp(Aim.Y * Off, P.ReachMin, P.ReachMax);
+	// The stance carries the reach window with it: the batter meets the ball relative to where they stand.
+	const float AimLat = FMath::Clamp(Aim.Y * Off - Guard, P.ReachMin, P.ReachMax);
 	const float AimZ = FMath::Clamp(Aim.Z, P.MinZ, P.MaxZ);
-	if (P.Shot != EShotType::Leave) R.BatPos = FVector(Ball.Pos.X, AimLat * Off, AimZ);
+	if (P.Shot != EShotType::Leave) R.BatPos = FVector(Ball.Pos.X, (AimLat + Guard) * Off, AimZ);
 	if (P.Shot == EShotType::Leave || FMath::Abs(Tau) > MissWindow) return R;
 
-	const float BallLat = Ball.Pos.Y * Off;
+	const float BallLat = Ball.Pos.Y * Off - Guard;
 	// Off-time swings meet the ball with the blade rotated away from square-on.
 	const float CosPhi = FMath::Max(FMath::Cos(FMath::Clamp(Tau * 9.f, -1.2f, 1.2f)), 0.25f);
 
@@ -192,7 +196,7 @@ FContactResult CricketBatting::ResolveContact(const FBallState& Ball, const FVec
 	if (P.bSoftHands) E = FMath::Min(E, 0.3f);
 
 	const float TimingQuality = FMath::Max(0.25f, 1.f - FMath::Square(Tau / TimingWindow));
-	const float Speed = P.BatSpeed * (0.75f + 0.5f * FMath::Clamp(Batter.Power, 0.f, 1.f)) * TimingQuality;
+	const float Speed = P.BatSpeed * (0.75f + 0.5f * FMath::Clamp(Batter.Power, 0.f, 1.f)) * PowerScale * TimingQuality;
 	R.Quality = TimingQuality * M / 0.65f;
 
 	// The batter angles the face so a sweet-spot hit would travel the intended way.

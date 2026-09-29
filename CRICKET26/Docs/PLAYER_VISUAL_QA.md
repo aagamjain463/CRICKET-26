@@ -36,6 +36,8 @@ Method: `-CricketDevLook=all,head,1.5,0,35 -CricketShotEvery=1` steps the camera
 | Shaded faces pitch black below Quality 2 | Screen-space AO radius of 120 cm. A bisect showed faces clear at 30 cm. | `SetAmbientOcclusion`: radius 30 cm, intensity 0.65 | `CRICKET26.Presentation.AmbientOcclusionHeadScale` |
 | Faces black on ES3.1 | The mobile renderer cannot capture the sky light in real time, so the sky contributed nothing | Captured sky below SM5, with `RecaptureSky()` after the sky dome is built | ES3.1 sheet `es31_sky_sheet.jpg` against `es31_sheet.jpg` |
 | Umpire scalp through the hat crown | Fixed crown radii of 10 × 11.5 × 9 cm. Umpire 2's scalp top stood 0.3 cm above the crown. | `make_kit.py` fits the crown to the exported face mesh. Crowns are now 10.4 × 12.0 × 12.5 cm and 10.7 × 12.3 × 12.9 cm. | `KIT hat crown` line in the build output; `hatfit.jpg` |
+| Players' shaded sides and backs black at Quality 0 to 2 | The sky light was captured in real time, which lights nothing without Lumen; at Epic, Lumen hid it. Raising the sky light fivefold changed nothing, and switching distance-field AO off did not help. | `SpawnSky` captures the sky once on every tier, as phones already did | `CRICKET26.Presentation.SkyLightsShade`; bowler sheets at Quality 1, 2 and 3 |
+| Trousers read as jeans: leather back-pocket label, brass rivets | The only free trousers are `WI_OA_Jeans_slm` | `trouser_stripe.py` repaints the jeans' mask: the label gives way to team-accent piping down each outseam, and the rivets take the cloth's colour | `CRICKET26.Presentation.TrouserPiping`; side and back captures |
 | Fielders cloned the active striker, non-striker and bowler | The fielder roster indexed the whole `Players[]` list | Fielders draw only from identities 3 onwards | Contact sheets |
 | Fielder's mouth dragged into a tube down the neck on the first frame of a cut (replay start) | The `Face` component ticked only when rendered, so its bones were stale on the first frame after a camera cut. The body already refreshed off screen. | Face uses `AlwaysTickPoseAndRefreshBones` | `FigureProblems` flags "face bones go stale off screen"; covered by `CRICKET26.Presentation.FigureRoleGear` |
 | No loud failure for missing or misassigned assets | None existed | `FigureProblems` runs at match start and logs `Figure check FAILED: <figure>: <problem>`. It checks for: no body, body not driven by `UCricketAnimInstance`, no face, stale face, empty material slot, gear on the wrong role, missing role gear, and grooms disabled. | `FigureRoleGear` and `HairStaysOn` tests; the live log shows "Figure check passed: 15 bodies" |
@@ -46,7 +48,7 @@ Diagnosed, not changed (needs lighting judgment):
 - The bowler's beard reads as a dark mass at Quality 1.
 - The hat brim casts a jagged shadow on chins at Quality 1.
 
-Open, not attempted in this pass: keeper gloves still read as lumpy mittens. Trousers are MetaHuman `WI_OA_Jeans_slm`, with jeans pockets and rivets. The helmet shell is plain. Long hair falls to a helmet-like card LOD at mid range.
+Open, not attempted in this pass: keeper gloves still read as lumpy mittens. Trousers are still the MetaHuman jeans cut, with front pockets and yoke seams, now plain team cloth with piping. The helmet shell is a plain team colour with no badge. Long hair falls to a helmet-like card LOD at mid range.
 
 ## Baseline evidence
 
@@ -94,6 +96,39 @@ No animation-owned files modified. No skeleton replacement, retargeting, animati
 
 No animation-owned files modified for this visual pass.
 
+## Pass 11: premium face overhaul (no cloud rebuild)
+
+Method: `Scripts/metahuman/premium_faces.py` retunes baked material instances in place (903 tweaks, 0 failures);
+`Scripts/metahuman/premium_faces.sh` reruns it. `Scripts/metahuman/make_players.py` locks short sport cuts and
+boxed/stubble beards (`SPORT_BEARD` + `facial()`) for the next cloud rebuild. No geometry, rig, texture, or
+wardrobe asset replaced; identities and presets unchanged.
+
+| Defect | Root cause (verified) | Fix | Regression check |
+|---|---|---|---|
+| Eyes glowed green/milky in close-ups | `Cloudy Eye Intensity` up to 2.0, `Pupil Dilation` 0.95 (iris hidden), `Iris Global Saturation` 1.7 (neon), `Sclera Transmission Spread` 0.12 bleeding green turf bounce | Cloudy 0.35, dilation 0.45, saturation 1.15, transmission 0.08, sharper cornea 0.05, reflection 0.25, vein detail 0.22 | `CRICKET26.Presentation.FacePremiumFill`; close captures show dark brown irises |
+| Eye whites/hat brims picked up green in shade | Day lower-hemisphere fill `(0.24, 0.28, 0.18)` was green-dominant | Warm neutral `(0.27, 0.245, 0.185)`, same energy | `FacePremiumFill` fails if fill ever goes green-dominant again |
+| Skin read waxy/flat at 1.5 m | Micro normal 0.7 with tiling 44 (pores invisible), flattened normals, weak AO | Micro normal 1.0, tiling 36, flatten 0.25, AO power 1.15 / strength 1.1, SSS 0.9, specular 1.0 | In-engine verify of all 10 identities; `PremiumVerify.log` 10/10 |
+| Lashes looked brown/ginger | Melanin 0.3, redness 0.28 | Near-black 0.85 / 0.12, roughness 0.35 | Same verify |
+| Teeth grey/plastic | Value 0.75, roughness 0.17, micro 0.2 | Value 0.82, roughness 0.22, micro 0.35 | Same verify |
+| Hair read brown/straw | Scalp `hairMelanin` 0.8, roughness 0.61 | Near-black 0.92/0.88, roughness 0.42/0.5 (umpires keep grey) | Same verify; dense cards baked below |
+| Close hair/beard thin | Face LOD mapped to sparse card LOD 3 in blueprints | Baked dense card LOD 2 for Hair/Beard/Mustache/Eyebrows on all 10 blueprints (runtime already did this live) | `FigureRoleGear` + `HairStaysOn` still pass |
+
+Verification: editor build `Result: Succeeded`; `Scripts/run_tests.sh CRICKET26.Presentation.` **9/9 pass, 0 fail**
+(includes new `FacePremiumFill`); close captures (`Saved/Screenshots/MacEditor/Ball1_000.png` opener with full
+sport cut, Ball1_006 keeper-bat with full hair/moustache) show natural dark eyes, pore detail, deep sockets.
+Pre-existing issues reproduced but untouched: `MH_Away_Hitter` has no `Kit/` meshes (non-striker wears no gear);
+non-pitch faces tick only when rendered (`face bones go stale` self-check lines).
+
+Rejected trial: repointing `MH_Away_Hitter` / `MH_Umpire_2` placeholder hair (`GroomAsset_0`, an empty import)
+at Epic's pristine BrushCut groom did not restore any hair (binding/cards built from the empty source), so both
+blueprints were restored to the placeholder. Those two scalps need a genuine cloud rebuild.
+
 ## Remaining gates
 
-Face individuality, skin roughness/microdetail, eye response, lashes, teeth, neck seams, body variety, garment microdetail, umpire close-up, each role's full equipment sweep, deformation across requested actions, and close-camera LOD transitions remain open. Desktop captures cannot establish device performance. No Cricket 24 assets, likenesses, shaders, textures, or code are used.
+Face individuality, neck seams, body variety, garment microdetail, umpire close-up, each role's full equipment sweep
+(including `MH_Away_Hitter`'s missing pads/gloves/helmet), deformation across requested actions, and close-camera LOD
+transitions remain open. `MH_Away_Hitter` and `MH_Umpire_2` scalps need a genuine cloud rebuild (placeholder
+`GroomAsset_0`); long/preset cuts (`PulledBack`, `Layered`, `BobLayered`, `HairLoss`) and thin beards
+(`PencilThin`, `MuttonChops`, `ChinStrap`, `SoulpatchStrip`) retire on the next rebuild via `SPORT_BEARD`.
+Skin roughness/microdetail, eye response, lashes and teeth are now CLOSED for the baked-material tier by Pass 11.
+Desktop captures cannot establish device performance. No Cricket 24 assets, likenesses, shaders, textures, or code are used.

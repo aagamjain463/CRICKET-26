@@ -45,7 +45,7 @@ nothing was compared against Cricket 26 first-hand (see H).
   spectators in block form who jump on boundaries, a mown outfield and sightscreens.
 - **Audio.** Synthesised bat, edge, pitch and stumps cues, a crowd bed that swells with the play, and text
   commentary shown as captions.
-- **Controls and settings.** Keyboard and touch controls feed one intent layer. There are four graphics
+- **Controls and settings.** The touch controls (the mouse on desktop) feed one intent layer. There are four graphics
   quality tiers.
 - **Launch.** A plain `-game` launch (no URL) starts straight into the Super Over.
 
@@ -62,8 +62,8 @@ The slice was extended, not rebuilt. The pure simulation modules (`BallSimulatio
 - **`CricketStadium`:** pure procedural stadium and crowd geometry. It is turned into a few static meshes at
   start-up.
 - **`CricketAudio`:** synthesises cues in code. **`CricketCommentary`:** chooses caption lines from the result.
-- **`CricketControls`:** merges keyboard and touch into one `FCricketControls` intent per frame.
-  `CricketTouch::Layout` is pure, so tests can press the same buttons the HUD draws.
+- **`CricketControls`:** turns the touch UI into one `FCricketControls` intent per frame. It is the only
+  gameplay input on every platform; on desktop the mouse is the finger. `CricketTouch::Layout` is pure, so tests can press the same buttons the HUD draws.
 - **Fielding coordinator:** assigns one job per fielder (primary, backup, boundary rider, keeper to the
   stumps, bowler to the non-striker's end) and chooses which end to throw at.
 - **Graphics quality tiers:** each tier drives the engine scalability level and the crowd density.
@@ -90,18 +90,20 @@ Measured from the baseline commit `1745546` to `e13ec83`: 42 source, config and 
 
 ## D. Controls
 
-Keyboard (desktop and development):
+Desktop and mobile use the same on-screen touch controls. On desktop the mouse is the finger: click a button
+to press it, and click and drag to pull. There are no keyboard gameplay controls.
 
-| Key | Batting | Bowling |
-|---|---|---|
-| W A S D / arrow keys (held) | shot direction | move the target on the pitch |
-| J | play a ground stroke | — |
-| K | play a lofted stroke | — |
-| L | defend | — |
-| R | cycle the running mode (safe / normal / aggressive) | — |
-| 1–7 | — | choose the delivery (pace has 7, spin has 4) |
-| Space | — | start the run-up, then press again to release |
-| Enter | next innings or next match; skips a replay | same |
+- Batting: DEFEND, GROUND and LOFT along the bottom right choose the shot mode, with RUN and CANCEL stacked
+  above LOFT. Press anywhere in the batting zone, pull the way the ball should go (longer is harder) and let
+  go to swing; the release is the shot's timing. A tap or a very short pull is a defensive push.
+- Bowling: pick the delivery from the list, drag in the bowling zone to move the target, set PACE and
+  SWING/SPIN on the two sliders, press BOWL to start the run-up and RELEASE in the green.
+- LBW appeal against you: REVIEW challenges the umpire's call, ACCEPT takes it.
+- Tap anywhere to continue, skip a replay or go to the next innings or match.
+
+Buttons act on touch-down.
+
+Developer keys (not gameplay; Esc returns to the menu):
 
 Debug keys:
 
@@ -116,16 +118,6 @@ Debug keys:
 | F7 | cycle the graphics quality |
 | F8 | toggle AI vs AI |
 
-Touch controls are on by default on iOS and Android; use `-CricketTouch` to enable them on desktop, where the
-mouse acts as a finger. The layout:
-
-- A thumb stick on the left sets the shot direction or the bowling target.
-- DEFEND, GROUND and LOFT are along the bottom right, with RUN above them.
-- When bowling there is a BOWL button (it becomes RELEASE during the run-up) and a delivery list.
-- Tap anywhere to continue or to skip a replay.
-
-Buttons act on touch-down.
-
 Command-line options:
 
 | Option | Effect |
@@ -134,7 +126,6 @@ Command-line options:
 | `-CricketQuitAfter=N` | quit after N deliveries |
 | `-CricketDifficulty=0..3` | Easy, Medium, Hard or Legend |
 | `-CricketQuality=0..3` | Low, Medium, High or Epic |
-| `-CricketTouch` | touch UI on desktop |
 | `-CricketTouchScript` | a scripted human side that plays through injected touch events |
 | `-CricketShotBall=N`, `-CricketShotEvery=S` | capture the game view during delivery N |
 | `-CricketRecordAudio` | record delivery N's mixed audio to a WAV file |
@@ -294,7 +285,7 @@ Scripts/build.sh
 
 - With no map URL, the game opens the Entry map and the Super Over starts. The human side is the home team
   (team 0) and bats first.
-- Add `-CricketAutoPlay` to watch AI vs AI, or `-CricketTouch` to try the touch layout.
+- Add `-CricketAutoPlay` to watch AI vs AI.
 - Opening the editor shows the Third Person template level. That level keeps its own game mode.
 - Tests: `Scripts/run_tests.sh CRICKET26.` (results in `Saved/TestRun.log`).
 - Captures: `Scripts/capture.sh N`.

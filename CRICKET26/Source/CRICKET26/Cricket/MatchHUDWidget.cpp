@@ -1,5 +1,6 @@
 #include "MatchHUDWidget.h"
 #include "CRICKET26.h"
+#include "CricketPresentation.h"
 #include "SuperOverGameMode.h"
 #include "SuperOverHUD.h"
 #include "FrontendStyle.h"
@@ -10,7 +11,6 @@
 #include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
 #include "Engine/GameViewportClient.h"
-#include "Widgets/SWeakWidget.h"
 
 namespace CricketHUD
 {
@@ -25,7 +25,7 @@ namespace MatchHudPrivate
 	using CricketTouch::EMode;
 
 	// The match HUD's own shades of the frontend palette: one dark glass for every panel, amber for extras.
-	FLinearColor Glass(float A = 0.86f) { return Hex(0x0B100D, A); }
+	FLinearColor Glass(float A = 0.86f) { return Hex(0x0B1426, A); }
 	FLinearColor Hair() { return FrontendStyle::Line(); }
 	FLinearColor Amber() { return Hex(0xE39B3A); }
 	FLinearColor Turf() { return Hex(0x1F3524, 0.94f); }
@@ -96,6 +96,20 @@ namespace MatchHudPrivate
 		void Box(const FBox2D& R, const FLinearColor& Fill, float Radius = 0.f, const FLinearColor& Outline = FLinearColor::Transparent, float Width = 1.f)
 		{
 			Box(R.Min, R.GetSize(), Fill, Radius, Outline, Width);
+		}
+		void Image(const FBox2D& R, const TCHAR* Name)
+		{
+			const FSlateBrush B = Art(Name);
+			if (B.DrawAs != ESlateBrushDrawType::NoDrawType)
+				FSlateDrawElement::MakeBox(Out, On(3), At(R.Min, R.GetSize()), &B, ESlateDrawEffect::None, A(FLinearColor::White));
+		}
+		/** A box sheared into a blade about its centre, the frontend's sports signature (text on it stays upright). */
+		void Blade(const FBox2D& R, const FLinearColor& Fill, float Radius = 0.f, const FLinearColor& Outline = FLinearColor::Transparent, float Width = 1.f)
+		{
+			const FSlateBrush B = Rounded(FLinearColor::White, Radius, A(Outline), Width);
+			const FPaintGeometry PG = G.ToPaintGeometry(FVector2f(R.GetSize()), FSlateLayoutTransform(FVector2f(R.Min)),
+				FSlateRenderTransform(FShear2D::FromShearAngles(FVector2f(-12.f, 0.f))));
+			FSlateDrawElement::MakeBox(Out, On(0), PG, &B, ESlateDrawEffect::None, A(Fill));
 		}
 		void Circle(const FVector2D& C, float R, const FLinearColor& Fill, const FLinearColor& Outline = FLinearColor::Transparent, float Width = 1.f)
 		{
@@ -207,127 +221,91 @@ namespace MatchHudPrivate
 		const FCricketTeam& Bowl = G.Teams[M.BowlingTeam()];
 		const float U = F.U;
 		const FBox2D R = F.Px(CricketTouch::ScoreStrip(F.Aspect, F.Safe));
-		const float X0 = R.Min.X, Y0 = R.Min.Y, SW = R.GetSize().X, SH = R.GetSize().Y, Mid = Y0 + 0.5f * SH;
+		const float X = R.Min.X, Y = R.Min.Y, W = R.GetSize().X, H = R.GetSize().Y;
+		const float Wing = FMath::Min(160.f * U, W * 0.09f);
+		const float ScoreW = W * 0.28f;
+		const float SideW = (W - 2.f * Wing - ScoreW) * 0.5f;
+		const float LeftX = X + Wing, ScoreX = LeftX + SideW, RightX = ScoreX + ScoreW;
+		const float S = U * FMath::Min(1.f, SideW / (470.f * U));
+		const FLinearColor Black = Hex(0x080A10, 0.94f);
+		const FLinearColor Orange = Hex(0xEFA151);
 
-		// Which blocks fit, most important first: the score, this over, the equation, the batters, the bowler.
-		const int32 Slots = FMath::Max(In.BallLog.Num() + FMath::Max(0, M.BallsRemaining()), 6);
-		const float Step = 44.f * U, OverW = 30.f * U + Step * Slots;
-		const float TeamW = 186.f * U, CtxW = 236.f * U, BatW = 270.f * U, BowlW = 190.f * U;
-		float Left = SW - TeamW - OverW;
-		const bool bCtx = Left >= CtxW; if (bCtx) Left -= CtxW;
-		const bool bBat = Left >= BatW; if (bBat) Left -= BatW;
-		const bool bBowl = Left >= BowlW; if (bBowl) Left -= BowlW;
+		// Broadcast layout: crests at the ends, two batter rows, score, then bowler and this over.
+		P.Box(R, Black);
+		P.Box(FVector2D(X, Y), FVector2D(Wing, H), Bat.Colour * FLinearColor(1.f, 1.f, 1.f, 0.7f));
+		P.Box(FVector2D(R.Max.X - Wing, Y), FVector2D(Wing, H), Bowl.Colour * FLinearColor(1.f, 1.f, 1.f, 0.7f));
+		P.Box(FVector2D(LeftX, Y), FVector2D(SideW, H), Hex(0x101018, 0.85f));
+		P.Box(FVector2D(RightX, Y), FVector2D(SideW, H), Hex(0x101018, 0.85f));
+		P.Blade(FBox2D(FVector2D(ScoreX - 16.f * U, Y), FVector2D(ScoreX + ScoreW + 16.f * U, Y + H)),
+			Hex(0x32121D, 0.97f));
+		const float Crest = FMath::Min(H * 0.95f, Wing - 8.f * U);
+		P.Image(FBox2D(FVector2D(X + (Wing - Crest) * 0.5f, Y + (H - Crest) * 0.5f),
+			FVector2D(X + (Wing + Crest) * 0.5f, Y + (H + Crest) * 0.5f)),
+			M.BattingTeam() == 0 ? TEXT("T_CRICKET26_Crest_Home") : TEXT("T_CRICKET26_Crest_Away"));
+		P.Image(FBox2D(FVector2D(R.Max.X - (Wing + Crest) * 0.5f, Y + (H - Crest) * 0.5f),
+			FVector2D(R.Max.X - (Wing - Crest) * 0.5f, Y + (H + Crest) * 0.5f)),
+			M.BowlingTeam() == 0 ? TEXT("T_CRICKET26_Crest_Home") : TEXT("T_CRICKET26_Crest_Away"));
 
-		P.Box(R, Glass(0.9f), 4.f * U, Hair(), U);
-
-		// A boundary, a wicket or the result lights the strip's top edge for as long as the banner shows.
-		const double Since = F.Hud ? F.Now - F.Hud->BannerAt : 100.0;
-		if (Since < 2.2 && F.Hud->BannerPriority >= 6)
+		for (int32 Row = 0; Row < 2; ++Row)
 		{
-			P.Alpha = FMath::Clamp(float(2.2 - Since) / 0.5f, 0.f, 1.f);
-			P.Box(FVector2D(X0, Y0), FVector2D(SW, 4.f * U), EventColour(F.Hud->BannerEvent), 2.f * U);
-			P.Alpha = 1.f;
+			const int32 I = Row == 0 ? In.Striker : In.NonStriker;
+			if (!In.Batters.IsValidIndex(I) || !Bat.Batters.IsValidIndex(I)) continue;
+			const float Mid = Y + H * (Row == 0 ? 0.27f : 0.72f);
+			const FString Name = Bat.Batters[I].Name.ToUpper();
+			const FBatterCard& Card = In.Batters[I];
+			P.Text((Row == 0 ? TEXT("> ") : TEXT("  ")) + Name,
+				FVector2D(LeftX + 22.f * S, Mid), HudFont(22.f * S, EWeight::Bold, 30), Ink());
+			P.Text(FString::Printf(TEXT("%d  %d"), Card.Runs, Card.Balls),
+				FVector2D(LeftX + SideW - 26.f * S, Mid), HudFont(22.f * S, EWeight::Bold), Ink(), 1.f);
+			P.Box(FVector2D(LeftX + 22.f * S, Y + H * (Row == 0 ? 0.43f : 0.89f)),
+				FVector2D(SideW - 48.f * S, 3.f * S), Orange);
 		}
 
-		// The batting side.
-		float X = X0;
-		P.Box(FVector2D(X, Y0), FVector2D(6.f * U, SH), Bat.Colour, 3.f * U);
-		P.Text(Bat.Short.ToUpper(), FVector2D(X + 22.f * U, Y0 + 24.f * U), HudFont(17.f * U, EWeight::Bold, 120), InkDim());
-		const float ScoreW = P.Text(FString::Printf(TEXT("%d/%d"), In.Runs, In.Wickets), FVector2D(X + 22.f * U, Y0 + 58.f * U), HudFont(40.f * U, EWeight::Black), Ink());
-		P.Text(FString::Printf(TEXT("%d.%d"), In.LegalBalls / 6, In.LegalBalls % 6), FVector2D(X + 32.f * U + ScoreW, Y0 + 63.f * U), HudFont(20.f * U, EWeight::Medium), InkDim());
-		X += TeamW;
-		auto Divider = [&]() { P.Box(FVector2D(X, Y0 + 16.f * U), FVector2D(U, SH - 32.f * U), Hair()); };
+		const float Centre = ScoreX + 0.5f * ScoreW;
+		P.Text(FString::Printf(TEXT("%d-%d"), In.Runs, In.Wickets),
+			FVector2D(Centre - 13.f * S, Y + H * 0.37f), HudFont(36.f * S, EWeight::Black), Ink(), 1.f);
+		P.Text(FString::Printf(TEXT("%d.%d OVERS"), In.LegalBalls / 6, In.LegalBalls % 6),
+			FVector2D(Centre + 13.f * S, Y + H * 0.38f), HudFont(17.f * S, EWeight::Medium), InkDim());
+		const float Rate = In.LegalBalls > 0 ? 6.f * In.Runs / In.LegalBalls : 0.f;
+		const FString Context = M.IsChase() && M.Phase != EMatchPhase::MatchComplete
+			? FString::Printf(TEXT("%d REQUIRED FROM %d"), M.RunsRequired(), M.BallsRemaining())
+			: M.Phase == EMatchPhase::MatchComplete
+				? (M.bTied ? FString(TEXT("SCORES LEVEL")) : FString::Printf(TEXT("%s WIN"), *G.Teams[M.Winner].Short.ToUpper()))
+				: FString::Printf(TEXT("RUN RATE %.2f"), Rate);
+		P.Text(Context, FVector2D(Centre, Y + H * 0.76f), HudFont(17.f * S, EWeight::Bold, 40), Ink(), 0.5f);
 
-		// What the innings needs: the chase equation, or the rate so far.
-		if (bCtx)
-		{
-			Divider();
-			const bool bChase = M.IsChase() && M.Phase != EMatchPhase::MatchComplete;
-			const float Rate = In.LegalBalls > 0 ? 6.f * In.Runs / In.LegalBalls : 0.f;
-			FString Top, Under;
-			if (bChase)
-			{
-				const int32 Balls = M.BallsRemaining();
-				Top = Balls == 1 ? FString::Printf(TEXT("%d TO WIN • LAST BALL"), M.RunsRequired())
-					: FString::Printf(TEXT("%d TO WIN • %d BALLS"), M.RunsRequired(), Balls);
-				Under = Balls > 0 ? FString::Printf(TEXT("TARGET %d   RRR %.1f"), M.Target, 6.f * M.RunsRequired() / Balls) : FString::Printf(TEXT("TARGET %d"), M.Target);
-			}
-			else if (M.Phase == EMatchPhase::MatchComplete)
-			{
-				Top = M.bTied ? FString(TEXT("SCORES LEVEL")) : FString::Printf(TEXT("%s WIN"), *G.Teams[M.Winner].Short.ToUpper());
-				Under = FString::Printf(TEXT("SUPER OVER %d"), M.SuperOverNumber);
-			}
-			else
-			{
-				Top = FString::Printf(TEXT("SUPER OVER • %s"), M.IsChase() ? TEXT("2ND INNINGS") : TEXT("1ST INNINGS"));
-				Under = FString::Printf(TEXT("RR %.2f   P'SHIP %d (%d)"), Rate, In.PartnershipRuns, In.PartnershipBalls);
-			}
-			P.Text(Top, FVector2D(X + 20.f * U, Y0 + 32.f * U), HudFont((bChase ? 21.f : 17.f) * U, EWeight::Bold, 40), bChase ? Gold() : Ink());
-			P.Text(Under, FVector2D(X + 20.f * U, Y0 + 62.f * U), HudFont(15.f * U, EWeight::Medium, 60), InkDim());
-			X += CtxW;
-		}
+		P.Text(Bowl.Bowler.Name.ToUpper(), FVector2D(RightX + 30.f * S, Y + H * 0.31f),
+			HudFont(22.f * S, EWeight::Bold, 30), Ink());
+		P.Text(FString::Printf(TEXT("%d-%d  (%d.%d)"), In.Bowler.Wickets, In.Bowler.Runs,
+			In.Bowler.Balls / 6, In.Bowler.Balls % 6),
+			FVector2D(RightX + SideW - 24.f * S, Y + H * 0.31f), HudFont(21.f * S, EWeight::Bold), Ink(), 1.f);
+		P.Box(FVector2D(RightX + 30.f * S, Y + H * 0.46f), FVector2D(SideW - 54.f * S, 3.f * S), Orange);
 
-		// The batters, the striker marked with a bar as well as brighter type.
-		if (bBat)
-		{
-			Divider();
-			for (const int32 I : { In.Striker, In.NonStriker })
-			{
-				if (!In.Batters.IsValidIndex(I) || !Bat.Batters.IsValidIndex(I)) continue;
-				const bool bOn = I == In.Striker;
-				const float Y = Y0 + (bOn ? 30.f : 63.f) * U;
-				if (bOn) P.Box(FVector2D(X + 16.f * U, Y - 10.f * U), FVector2D(4.f * U, 20.f * U), Gold(), U);
-				P.Text(Bat.Batters[I].Name, FVector2D(X + 28.f * U, Y), HudFont(18.f * U, bOn ? EWeight::Bold : EWeight::Medium), bOn ? Ink() : InkDim());
-				P.Text(FString::Printf(TEXT("%d (%d)"), In.Batters[I].Runs, In.Batters[I].Balls), FVector2D(X + BatW - 18.f * U, Y),
-					HudFont(18.f * U, bOn ? EWeight::Bold : EWeight::Medium), bOn ? Ink() : InkDim(), 1.f);
-			}
-			X += BatW;
-		}
-
-		if (bBowl)
-		{
-			Divider();
-			P.Text(Bowl.Bowler.Name, FVector2D(X + 20.f * U, Y0 + 30.f * U), HudFont(18.f * U, EWeight::Bold), Ink());
-			P.Text(FString::Printf(TEXT("%d-%d  (%d.%d)"), In.Bowler.Wickets, In.Bowler.Runs, In.Bowler.Balls / 6, In.Bowler.Balls % 6),
-				FVector2D(X + 20.f * U, Y0 + 63.f * U), HudFont(18.f * U, EWeight::Medium), InkDim());
-			X += BowlW;
-		}
-
-		// This over, with a ring for each legal ball still to come.
-		X = R.Max.X - OverW;
-		Divider();
-		P.Text(TEXT("THIS OVER"), FVector2D(X + 20.f * U, Y0 + 20.f * U), HudFont(12.f * U, EWeight::Bold, 140), InkFaint());
-		const int32 Key = M.CurrentInnings * 100 + In.BallLog.Num();
-		if (SeenBalls >= 0 && Key != SeenBalls && In.BallLog.Num() > 0) NewBallAt = F.Now;
+		const int32 OverBalls = FMath::Max(0, In.BallLog.Num() - In.OverLogStart);
+		const int32 First = FMath::Max(0, OverBalls - 6);
+		const int32 Key = int32(HashCombine(GetTypeHash(M.SuperOverNumber),
+			HashCombine(GetTypeHash(M.CurrentInnings), GetTypeHash(In.BallLog.Num()))));
+		if (SeenBalls >= 0 && Key != SeenBalls && OverBalls > 0) NewBallAt = F.Now;
 		SeenBalls = Key;
-		const float Rd = 17.f * U, CY = Mid + 9.f * U;
-		for (int32 I = 0; I < Slots; ++I)
+		for (int32 I = First; I < OverBalls; ++I)
 		{
-			const FVector2D C(X + 20.f * U + Rd + I * Step, CY);
-			if (I >= In.BallLog.Num()) { P.Circle(C, Rd, FLinearColor::Transparent, Hair(), 1.5f * U); continue; }
-			BallDisc(F, C, Rd, In.BallLog[I]);
-			const float T = float(F.Now - NewBallAt) / 1.2f;
-			if (I == In.BallLog.Num() - 1 && T >= 0.f && T < 1.f)
+			const FVector2D C(RightX + SideW - (OverBalls - I) * 32.f * S - 12.f * S, Y + H * 0.77f);
+			BallDisc(F, C, 12.f * S, In.BallLog[In.OverLogStart + I]);
+			if (I == OverBalls - 1)
 			{
-				P.Alpha = 1.f - T;
-				P.Circle(C, Rd + 12.f * U * T, FLinearColor::Transparent, Ink(), 2.f * U);
-				P.Alpha = 1.f;
+				const float T = float(F.Now - NewBallAt) / 1.2f;
+				if (T >= 0.f && T < 1.f)
+				{
+					P.Alpha = 1.f - T;
+					P.Circle(C, (12.f + 10.f * T) * S, FLinearColor::Transparent, Ink(), 2.f * S);
+					P.Alpha = 1.f;
+				}
 			}
 		}
-
-		// Above the strip: the free hit, and the last ball of a chase.
-		float PillX = X0;
-		auto Flag = [&](const TCHAR* S, const FLinearColor& Fill, const FLinearColor& InkC)
-		{
-			const FSlateFontInfo Fn = HudFont(15.f * U, EWeight::Bold, 100);
-			const float PW = FPaint::Measure(S, Fn).X + 28.f * U;
-			P.Pill(S, FVector2D(PillX + 0.5f * PW, Y0 - 24.f * U), Fn, Fill, InkC, 14.f * U, 32.f * U, 3.f * U);
-			PillX += PW + 8.f * U;
-		};
-		if (M.bFreeHit) Flag(TEXT("FREE HIT"), Gold(), GoldInk());
-		if (M.IsChase() && M.Phase != EMatchPhase::MatchComplete && M.BallsRemaining() == 1) Flag(TEXT("LAST BALL"), Danger(), Ink());
+		if (M.bFreeHit)
+			P.Pill(TEXT("FREE HIT"), FVector2D(Centre, Y - 15.f * U), HudFont(15.f * U, EWeight::Bold),
+				Gold(), GoldInk(), 14.f * U, 30.f * U, 3.f * U);
 	}
-
 	// ---------------------------------------------------------------------------------------------------------------
 	// Field radar: the ground as the camera behind the bowler sees it (the striker at the top), with everyone where
 	// they stand this frame.
@@ -458,22 +436,59 @@ namespace MatchHudPrivate
 		}
 	}
 
+	/** A clean, sporty, minimalistic meter slider: athletic track, sporty title & badge readout, glowing thumb. */
 	void Slider(FMatchFrame& F, const FBox2D& Hit, const TCHAR* Title, const FString& Value, float Fill, bool bCentred, bool bDown)
 	{
 		FPaint& P = F.P;
 		const float U = F.U;
 		const FBox2D R = F.Px(Hit);
-		const float TW = 12.f * U, CX = R.GetCenter().X;
-		const FBox2D Track(FVector2D(CX - 0.5f * TW, R.Min.Y), FVector2D(CX + 0.5f * TW, R.Max.Y));
-		P.Box(Inset(R, 0.f), Glass(bDown ? 0.9f : 0.72f), 4.f * U, bDown ? Teal() : Hair(), U);
-		P.Box(Track, Hex(0x000000, 0.35f), 0.5f * TW);
-		const float Level = R.Max.Y - FMath::Clamp(Fill, 0.f, 1.f) * R.GetSize().Y;
-		const float From = bCentred ? R.GetCenter().Y : R.Max.Y;
-		P.Box(FVector2D(Track.Min.X, FMath::Min(Level, From)), FVector2D(TW, FMath::Abs(From - Level)), Teal(), 0.5f * TW);
-		if (bCentred) P.Box(FVector2D(R.Min.X + 8.f * U, R.GetCenter().Y - 0.5f * U), FVector2D(R.GetSize().X - 16.f * U, U), InkFaint());
-		P.Box(FVector2D(R.Min.X + 6.f * U, Level - 4.f * U), FVector2D(R.GetSize().X - 12.f * U, 8.f * U), Ink(), 3.f * U);
-		P.Text(Title, FVector2D(CX, R.Min.Y - 44.f * U), HudFont(12.f * U, EWeight::Bold, 140), InkDim(), 0.5f);
-		P.Text(Value, FVector2D(CX, R.Min.Y - 20.f * U), HudFont(19.f * U, EWeight::Black), Ink(), 0.5f);
+		const float TH = 6.f * U;
+		const float CY = R.Max.Y - 18.f * U;
+		const float HY = R.Min.Y + 16.f * U;
+
+		// Sporty card backing with subtle sleek border
+		P.Box(R, Glass(bDown ? 0.94f : 0.82f), 6.f * U, bDown ? Teal() : Hair(), bDown ? 1.5f * U : U);
+
+		// Sporty header: title and pill value badge
+		const FLinearColor HeaderCol = bCentred ? Teal() : Gold();
+		P.Text(Title, FVector2D(R.Min.X + 14.f * U, HY), HudFont(11.f * U, EWeight::Bold, 160), HeaderCol);
+
+		// Value in a sleek dark pill badge on the right
+		const FSlateFontInfo ValFont = HudFont(13.f * U, EWeight::Black, 40);
+		const float ValW = FPaint::Measure(Value, ValFont).X + 16.f * U;
+		const FBox2D Badge(FVector2D(R.Max.X - ValW - 10.f * U, HY - 9.f * U), FVector2D(R.Max.X - 10.f * U, HY + 9.f * U));
+		P.Box(Badge, Hex(0x0a1018, 0.75f), 4.f * U, Hair(), U);
+		P.Text(Value, Badge.GetCenter(), ValFont, Ink(), 0.5f);
+
+		// Track: athletic dark channel with tick marks
+		const float X0 = R.Min.X + 14.f * U, X1 = R.Max.X - 14.f * U;
+		const FBox2D Track(FVector2D(X0, CY - 0.5f * TH), FVector2D(X1, CY + 0.5f * TH));
+		P.Box(Track, Hex(0x06090f, 0.85f), 0.5f * TH);
+
+		// Meter ticks for sporty gauge feel
+		for (float TickFrac : { 0.25f, 0.5f, 0.75f })
+		{
+			const float TX = X0 + TickFrac * (X1 - X0);
+			P.Box(FVector2D(TX - 0.5f * U, CY - 4.f * U), FVector2D(U, 8.f * U), Hex(0xffffff, 0.15f));
+		}
+
+		// Active filled bar
+		const float Level = X0 + FMath::Clamp(Fill, 0.f, 1.f) * (X1 - X0);
+		const float From = bCentred ? 0.5f * (X0 + X1) : X0;
+		const FLinearColor FillCol = bCentred ? Teal() : Gold();
+		P.Box(FVector2D(FMath::Min(Level, From), Track.Min.Y), FVector2D(FMath::Max(FMath::Abs(Level - From), 2.f * U), TH), FillCol, 0.5f * TH);
+
+		if (bCentred)
+		{
+			// Center zero tick
+			P.Box(FVector2D(0.5f * (X0 + X1) - 0.75f * U, CY - 6.f * U), FVector2D(1.5f * U, 12.f * U), InkFaint());
+		}
+
+		// Sporty dial thumb: double-ring puck with inner glow
+		const float ThumbR = (bDown ? 10.f : 8.f) * U;
+		P.Circle(FVector2D(Level, CY), ThumbR + 3.f * U, FLinearColor::Transparent, FillCol * FLinearColor(1, 1, 1, 0.35f), 1.5f * U);
+		P.Circle(FVector2D(Level, CY), ThumbR, Ink());
+		P.Circle(FVector2D(Level, CY), ThumbR * 0.45f, FillCol);
 	}
 
 	void DrawControls(FMatchFrame& F, EMode TM)
@@ -484,8 +499,10 @@ namespace MatchHudPrivate
 		const TArray<EDeliveryType> Rep = CricketBowling::Repertoire(G.BowlerPlayer().BowlerType);
 		const bool bDeadBall = G.DPhase == EDeliveryPhase::DeadBall;
 		const bool bBallLive = G.DPhase == EDeliveryPhase::BallInPlay || bDeadBall;
-		P.Alpha = TM == EMode::Batting && bDeadBall ? 0.55f : 1.f;
-		for (const CricketTouch::FButton& B : CricketTouch::Layout(TM, Rep.Num(), F.Aspect, F.Safe))
+		P.Alpha = 1.f;
+		// IPL: the selector sizes itself by the candidate count, not the bowling repertoire.
+		const int32 NumOpts = TM == EMode::Pick ? G.IPLAwaitingCandidates.Num() : Rep.Num();
+		for (const CricketTouch::FButton& B : CricketTouch::Layout(TM, NumOpts, F.Aspect, F.Safe))
 		{
 			const bool bDown = Pressed(F, B.Rect);
 			switch (B.Button)
@@ -535,21 +552,53 @@ namespace MatchHudPrivate
 			}
 			case EButton::Bowl:
 			{
-				const FBox2D T = Tile(F, B.Rect, 0.1f, bDown);
+				const FBox2D T = Tile(F, B.Rect, 0.06f, bDown);
 				const float S = T.GetSize().X;
 				const bool bRunUp = G.DPhase == EDeliveryPhase::RunUp;
-				P.Box(T, bDown ? Ink() : bRunUp ? Teal() : Gold(), 4.f * U);
-				P.Text(bRunUp ? TEXT("RELEASE") : TEXT("BOWL"), T.GetCenter() - FVector2D(0.f, 0.05f * S), HudFont((bRunUp ? 0.14f : 0.19f) * S, EWeight::Black, 80), GoldInk(), 0.5f);
-				P.Text(FString(TypeName(G.HumanPlan.Type)).ToUpper(), T.GetCenter() + FVector2D(0.f, 0.22f * S), HudFont(0.07f * S, EWeight::Bold, 80), GoldInk() * FLinearColor(1, 1, 1, 0.8f), 0.5f);
+				const FLinearColor Hue = bRunUp ? Teal() : Gold();
+				const FVector2D C = T.GetCenter();
+
+				// Sporty energetic stadium action button
+				// Outer dynamic halo rings
+				P.Circle(C, 0.5f * S + 8.f * U, FLinearColor::Transparent, Hue * FLinearColor(1, 1, 1, 0.45f), 2.f * U);
+				P.Circle(C, 0.5f * S + 4.f * U, FLinearColor::Transparent, Hue * FLinearColor(1, 1, 1, 0.2f), U);
+				// Core button
+				P.Circle(C, 0.5f * S, bDown ? Ink() : Hue);
+				// Sporty inner accent ring
+				P.Circle(C, 0.5f * S - 4.f * U, FLinearColor::Transparent, GoldInk() * FLinearColor(1, 1, 1, 0.35f), U);
+
+				P.Text(bRunUp ? TEXT("RELEASE") : TEXT("BOWL"), C - FVector2D(0.f, 0.06f * S), HudFont((bRunUp ? 0.15f : 0.20f) * S, EWeight::Black, 80), GoldInk(), 0.5f);
+				P.Text(FString(TypeName(G.HumanPlan.Type)).ToUpper(), C + FVector2D(0.f, 0.22f * S), HudFont(0.08f * S, EWeight::Bold, 80), GoldInk() * FLinearColor(1, 1, 1, 0.85f), 0.5f);
+				break;
+			}
+			case EButton::Play:
+			{
+				const FBox2D T = Tile(F, B.Rect, 0.1f, bDown);
+				const float S = T.GetSize().X;
+				P.Box(T, bDown ? Ink() : Gold(), 4.f * U);
+				P.Text(TEXT("PLAY"), T.GetCenter() - FVector2D(0.f, 0.05f * S), HudFont(0.19f * S, EWeight::Black, 80), GoldInk(), 0.5f);
+				P.Text(TEXT("NEXT BALL"), T.GetCenter() + FVector2D(0.f, 0.22f * S), HudFont(0.07f * S, EWeight::Bold, 80), GoldInk() * FLinearColor(1, 1, 1, 0.8f), 0.5f);
 				break;
 			}
 			case EButton::Delivery:
 			{
 				const bool bOn = Rep.IsValidIndex(B.Index) && Rep[B.Index] == G.HumanPlan.Type;
-				const FBox2D T = F.Px(Inset(B.Rect, 0.06f));
-				P.Box(T, bOn ? Gold() : Glass(bDown ? 0.95f : 0.8f), 3.f * U, bOn ? FLinearColor::Transparent : Hair(), U);
-				if (Rep.IsValidIndex(B.Index))
-					P.Text(TypeName(Rep[B.Index]), T.GetCenter(), HudFont(FMath::Min(19.f * U, 0.3f * T.GetSize().Y), EWeight::Bold), bOn ? GoldInk() : Ink(), 0.5f);
+				const FBox2D T = F.Px(B.Rect);
+				// Sporty delivery chip: clean athletic pill badge
+				if (bOn)
+				{
+					// Active: vibrant gold pill with thin halo and high-contrast ink
+					P.Box(T, Gold(), 5.f * U, GoldHi(), 1.5f * U);
+					if (Rep.IsValidIndex(B.Index))
+						P.Text(FString(TypeName(Rep[B.Index])).ToUpper(), T.GetCenter(), HudFont(FMath::Min(14.f * U, 0.28f * T.GetSize().Y), EWeight::Black, 60), GoldInk(), 0.5f);
+				}
+				else
+				{
+					// Inactive: dark sporty glass chip with subtle athletic border
+					P.Box(T, Glass(bDown ? 0.94f : 0.8f), 5.f * U, bDown ? Teal() : Hair(), U);
+					if (Rep.IsValidIndex(B.Index))
+						P.Text(FString(TypeName(Rep[B.Index])).ToUpper(), T.GetCenter(), HudFont(FMath::Min(14.f * U, 0.26f * T.GetSize().Y), EWeight::Bold, 60), Ink(), 0.5f);
+				}
 				break;
 			}
 			case EButton::Effort:
@@ -574,12 +623,87 @@ namespace MatchHudPrivate
 					HudFont(FMath::Min(22.f * U, 0.3f * T.GetSize().Y), EWeight::Black, 80), bReview ? GoldInk() : Ink(), 0.5f);
 				break;
 			}
+		case EButton::GuardLeft: case EButton::GuardRight:
+		{
+			// Crease arrows: quiet glass tiles with a single chevron, gold only while pressed.
+			const FBox2D T = Tile(F, B.Rect, 0.1f, bDown);
+			const float S = T.GetSize().X;
+			P.Box(T, Glass(bDown ? 0.95f : 0.8f), 4.f * U, bDown ? Gold() : Hair(), bDown ? 2.f * U : U);
+			const FVector2D C = T.GetCenter();
+			const float Dir = B.Button == EButton::GuardLeft ? -1.f : 1.f;
+			const FLinearColor Col = bDown ? Gold() : Ink();
+			P.Lines({ FVector2f(C + FVector2D(Dir * 0.10f * S, -0.16f * S)), FVector2f(C + FVector2D(-Dir * 0.08f * S, 0.f)),
+				FVector2f(C + FVector2D(Dir * 0.10f * S, 0.16f * S)) }, Col, 3.f * U);
+			break;
+		}
+		case EButton::Pick:
+		{
+			// IPL selector row: number-key hint on the left, the candidate's name beside it.
+			const FBox2D T = F.Px(B.Rect);
+			const TArray<FString> Names = G.IPLPickNames();
+			const FString Label = Names.IsValidIndex(B.Index) ? Names[B.Index] : FString::Printf(TEXT("PICK %d"), B.Index + 1);
+			P.Box(T, bDown ? Gold() : Glass(0.92f), 3.f * U, bDown ? FLinearColor::Transparent : Hair(), U);
+			const FString Key = B.Index < 9 ? FString::Printf(TEXT("%d"), B.Index + 1) : TEXT("0");
+			P.Text(Key, FVector2D(T.Min.X + 12.f * U, T.GetCenter().Y), HudFont(16.f * U, EWeight::Black, 60), Gold(), 0.f);
+			P.Text(Label.ToUpper(), FVector2D(T.Min.X + 44.f * U, T.GetCenter().Y), HudFont(16.f * U, EWeight::Bold, 60), Ink(), 0.f);
+			break;
+		}
 			default: break; // the Field button is the radar
 			}
 		}
 		P.Alpha = 1.f;
 
-		// The held pull: from where the finger went down to where it is, and what that stroke is.
+		// Crease guard readout: a minimal track above the arrows with a centre tick and a gold dot
+		// where the striker stands. Label names the guard so it never relies on position alone.
+		if (TM == EMode::Batting || TM == EMode::Ready)
+		{
+			FBox2D GL, GR;
+			bool bL = false, bR = false;
+			for (const CricketTouch::FButton& Bb : CricketTouch::Layout(TM, Rep.Num(), F.Aspect, F.Safe))
+			{
+				if (Bb.Button == EButton::GuardLeft) { GL = Bb.Rect; bL = true; }
+				else if (Bb.Button == EButton::GuardRight) { GR = Bb.Rect; bR = true; }
+			}
+			if (bL && bR)
+			{
+				const FBox2D Units(FVector2D(FMath::Min(GL.Min.X, GR.Min.X), FMath::Min(GL.Min.Y, GR.Min.Y)),
+					FVector2D(FMath::Max(GL.Max.X, GR.Max.X), FMath::Max(GL.Max.Y, GR.Max.Y)));
+				const FBox2D PxR = F.Px(Units);
+				const float TW = PxR.GetSize().X, TX = PxR.GetCenter().X, TY = PxR.Min.Y - 16.f * U;
+				P.Box(FVector2D(TX - 0.5f * TW, TY - 3.f * U), FVector2D(TW, 6.f * U), Hex(0x000000, 0.35f), 3.f * U);
+				P.Box(FVector2D(TX - 0.5f * U, TY - 6.f * U), FVector2D(U, 12.f * U), InkFaint());
+				const float Max = FMath::Max(G.ControlTuning.GuardMax, 0.01f);
+				const float Off = OffSideSign(G.StrikerPlayer().BatHand);
+				// Screen-left is world +Y: the dot follows the batter on screen, not the batter-relative sign.
+				const float DotX = TX - Off * FMath::Clamp(G.StrikerGuard / Max, -1.f, 1.f) * (0.5f * TW - 6.f * U);
+				P.Circle(FVector2D(DotX, TY), 6.f * U, Gold(), GoldInk(), U);
+				const float A = FMath::Abs(G.StrikerGuard);
+				const FString Where = A < 0.03f ? FString(TEXT("MIDDLE"))
+					: FString::Printf(TEXT("%.1f %s"), A, G.StrikerGuard > 0.f ? TEXT("OFF") : TEXT("LEG"));
+				P.Text(FString::Printf(TEXT("CREASE • %s"), *Where), FVector2D(TX, TY - 16.f * U), HudFont(11.f * U, EWeight::Bold, 140), InkDim(), 0.5f);
+			}
+		}
+
+		// Pull and release. At rest, a big pad left of centre says where and how; held, a slingshot from
+		// where the finger went down: the full-power ring, a band to the finger with an arrow the way the ball will go,
+		// and what that stroke is. The pull maps 1:1 to the finger with no smoothing, so it never lags behind it.
+		const float Full = G.ControlTuning.PullMax * F.H;
+		if (TM == EMode::Batting && !G.bBatPullActive)
+		{
+			const FVector2D O = F.Px(CricketTouch::GestureZone(TM, F.Aspect, F.Safe).GetCenter());
+			const float Breathe = 0.5f + 0.5f * FMath::Sin(3.f * float(F.Now));
+			P.Alpha = 0.55f + 0.2f * Breathe;
+			P.Circle(O, 0.78f * Full, Glass(0.35f), Ink() * FLinearColor(1, 1, 1, 0.5f), 2.f * U);
+			P.Circle(O, 12.f * U, Gold());
+			for (int32 I = 0; I < 3; ++I)
+			{
+				const FVector2D C = O + FVector2D(0.f, (30.f + 20.f * I + 8.f * Breathe) * U);
+				P.Lines({ FVector2f(C + FVector2D(-15.f, -7.5f) * U), FVector2f(C + FVector2D(0.f, 7.5f) * U), FVector2f(C + FVector2D(15.f, -7.5f) * U) },
+					Gold() * FLinearColor(1, 1, 1, 1.f - 0.3f * I), 3.5f * U);
+			}
+			P.Text(TEXT("PULL & RELEASE"), O + FVector2D(0.f, 0.78f * Full + 26.f * U), HudFont(16.f * U, EWeight::Bold, 160), Ink(), 0.5f);
+			P.Alpha = 1.f;
+		}
 		if (TM == EMode::Batting && G.bBatPullActive)
 		{
 			const CricketTouch::FGesture& Gs = G.Gesture();
@@ -587,13 +711,80 @@ namespace MatchHudPrivate
 			{
 				if (Finger.Id != Gs.Finger) continue;
 				const FVector2D O = F.Px(Gs.Origin), At = F.Px(Finger.Pos);
-				P.Circle(O, 16.f * U, FLinearColor::Transparent, Ink() * FLinearColor(1, 1, 1, 0.6f), 2.f * U);
-				P.Line(O, At, Gold(), 3.f * U);
-				P.Circle(At, 11.f * U, Gold(), GoldInk(), 2.f * U);
-				const FString What = FString::Printf(TEXT("%s • %s"), CricketControl::ZoneName(G.LiveAim.DirectionDeg), CricketControl::PowerBandName(G.LiveAim.Magnitude)).ToUpper();
-				P.Pill(What, At - FVector2D(0.f, 52.f * U), HudFont(17.f * U, EWeight::Bold, 80), Glass(0.92f), Gold(), 16.f * U, 38.f * U, 3.f * U, Hair());
+				const FVector2D Dir = (At - O).GetSafeNormal();
+				const float Power = G.LiveAim.Magnitude;
+				const FLinearColor Band = Power >= 0.99f ? GoldHi() : Gold();
+				P.Circle(O, Full, Glass(0.3f), Ink() * FLinearColor(1, 1, 1, 0.45f), 2.f * U);
+				P.Circle(O, FMath::Max(Power * Full, 14.f * U), Gold() * FLinearColor(1, 1, 1, 0.18f), Band, 2.5f * U);
+				P.Circle(O, 14.f * U, Ink(), GoldInk(), 2.f * U);
+				if (!Dir.IsZero())
+				{
+					P.Line(O, At, Band, 8.f * U);
+					const FVector2D Side(-Dir.Y, Dir.X), Tip = At + Dir * 38.f * U;
+					P.Lines({ FVector2f(Tip - Dir * 20.f * U + Side * 16.f * U), FVector2f(Tip), FVector2f(Tip - Dir * 20.f * U - Side * 16.f * U) }, Band, 5.5f * U);
+				}
+				P.Circle(At, 26.f * U, Band, GoldInk(), 3.f * U);
+				const FString What = FString::Printf(TEXT("%s • %s • %d%%"), CricketControl::ZoneName(G.LiveAim.DirectionDeg), CricketControl::PowerBandName(Power),
+					FMath::RoundToInt(100.f * Power)).ToUpper();
+				P.Pill(What, O - FVector2D(0.f, Full + 34.f * U), HudFont(19.f * U, EWeight::Bold, 80), Glass(0.92f), Gold(), 16.f * U, 42.f * U, 3.f * U, Hair());
 			}
 		}
+	}
+
+	/**
+	 * IPL selector header: what is being picked, over the candidate column, in the broadcast voice.
+	 */
+	void DrawIPLPickTitle(FMatchFrame& F)
+	{
+		FPaint& P = F.P;
+		ASuperOverGameMode& G = F.G;
+		const float U = F.U;
+		const TArray<CricketTouch::FButton> Col = CricketTouch::Layout(EMode::Pick, G.IPLAwaitingCandidates.Num(), F.Aspect, F.Safe);
+		if (Col.Num() == 0) return;
+		FBox2D All = Col[0].Rect;
+		for (int32 I = 1; I < Col.Num(); ++I) All += Col[I].Rect;
+		const FBox2D Px = F.Px(All);
+		P.Pill(G.IPLPickTitle(), FVector2D(Px.GetCenter().X, Px.Min.Y - 34.f * U),
+			HudFont(19.f * U, EWeight::Black, 80), Gold(), GoldInk(), 16.f * U, 44.f * U, 3.f * U, FLinearColor::Transparent);
+		P.Text(TEXT("TAP A PLAYER  •  OR PRESS 1-9, 0"), FVector2D(Px.GetCenter().X, Px.Max.Y + 20.f * U),
+			HudFont(13.f * U, EWeight::Bold, 140), InkDim(), 0.5f);
+	}
+
+	/**
+	 * Where the bowled ball will pitch, for a human batter: a ring flat on the pitch (each point projected, so it
+	 * lies in perspective), shown after a difficulty-set delay and gone once the ball lands.
+	 */
+	void DrawPitchMarker(FMatchFrame& F, const FGeometry& Geometry)
+	{
+		ASuperOverGameMode& G = F.G;
+		// The clock runs from the start of the run-up.
+		const float Since = G.DPhase == EDeliveryPhase::RunUp ? G.PhaseTime : G.ReleaseAt() + G.PhaseTime;
+		const float Alpha = CricketControl::PitchMarkerAlpha(G.ControlTuning, int32(G.Difficulty), Since, G.PitchPreviewAt);
+		APlayerController* PC = G.GetWorld()->GetFirstPlayerController();
+		if (Alpha <= 0.f || !PC) return;
+		const float Radius = G.ControlTuning.PitchMarkerRadius[FMath::Clamp(int32(G.Difficulty), 0, 3)];
+		const float Scale = FMath::Max(Geometry.Scale, KINDA_SMALL_NUMBER);
+		auto Ring = [&](float R, TArray<FVector2f>& Out)
+		{
+			constexpr int32 N = 24;
+			for (int32 I = 0; I <= N; ++I)
+			{
+				const float A = 2.f * PI * I / N;
+				FVector2D S;
+				const FVector M(G.PitchPreview.X + R * FMath::Cos(A), G.PitchPreview.Y + R * FMath::Sin(A), 0.01f);
+				if (!PC->ProjectWorldLocationToScreen(M * 100.f, S, true)) return false;
+				Out.Add(FVector2f(S / Scale));
+			}
+			return true;
+		};
+		TArray<FVector2f> Outer, Inner;
+		if (!Ring(Radius, Outer) || !Ring(0.45f * Radius, Inner)) return;
+		FPaint& P = F.P;
+		const float Pulse = 0.85f + 0.15f * FMath::Sin(8.f * Since);
+		P.Alpha = Alpha * Pulse;
+		P.Lines(MoveTemp(Outer), Ink() * FLinearColor(1, 1, 1, 0.9f), 2.f * F.U);
+		P.Lines(MoveTemp(Inner), Gold() * FLinearColor(1, 1, 1, 0.5f), 1.5f * F.U);
+		P.Alpha = 1.f;
 	}
 
 	/** The pitch target where the bowler is aiming, over the world, with its length in words. */
@@ -608,16 +799,23 @@ namespace MatchHudPrivate
 		const float U = F.U;
 		const FVector2D C = Screen / FMath::Max(Geometry.Scale, KINDA_SMALL_NUMBER);
 		const bool bLocked = G.DPhase == EDeliveryPhase::RunUp;
-		P.Alpha = bLocked ? 0.6f : 1.f;
-		const float R = 24.f * U;
+		const float R = 28.f * U;
+
+		// Sporty concentric pitch target
+		P.Circle(C, R + 4.f * U, FLinearColor::Transparent, Gold() * FLinearColor(1, 1, 1, 0.35f), U);
 		P.Circle(C, R, FLinearColor::Transparent, Gold(), 2.f * U);
+		P.Circle(C, 8.f * U, FLinearColor::Transparent, Gold(), 1.5f * U);
 		P.Circle(C, 3.f * U, Gold());
+
+		// Crosshair ticks
 		for (const FVector2D& D : { FVector2D(1, 0), FVector2D(-1, 0), FVector2D(0, 1), FVector2D(0, -1) })
-			P.Line(C + D * (R + 4.f * U), C + D * (R + 12.f * U), Gold(), 2.f * U);
-		const FString What = FString::Printf(TEXT("%s • %.1f M"), LengthName(G.HumanPlan.Length), G.HumanPlan.Length);
-		const FSlateFontInfo Fn = HudFont(15.f * U, EWeight::Bold, 80);
-		const float PW = FPaint::Measure(What, Fn).X + 28.f * U;
-		P.Pill(What, C + FVector2D(R + 24.f * U + 0.5f * PW, 0.f), Fn, Glass(0.9f), Ink(), 14.f * U, 32.f * U, 3.f * U, Hair());
+			P.Line(C + D * (R + 2.f * U), C + D * (R + 10.f * U), Gold(), 2.f * U);
+
+		// Clean sporty floating badge
+		const FString What = FString::Printf(TEXT("%s  •  %.1f M"), LengthName(G.HumanPlan.Length), G.HumanPlan.Length);
+		const FSlateFontInfo Fn = HudFont(13.f * U, EWeight::Black, 60);
+		const float PW = FPaint::Measure(What, Fn).X + 22.f * U;
+		P.Pill(What, C + FVector2D(R + 18.f * U + 0.5f * PW, 0.f), Fn, Hex(0x0a1018, 0.9f), Gold(), 12.f * U, 26.f * U, 2.f * U, Gold() * FLinearColor(1, 1, 1, 0.6f));
 		P.Alpha = 1.f;
 	}
 
@@ -691,8 +889,10 @@ namespace MatchHudPrivate
 
 		// Beside the map: the title, the presets, the counted rules and the actions.
 		const float PX = Map.Max.X + 0.04f * F.H, PW = 0.34f * F.H;
-		P.Text(TEXT("SET FIELD"), FVector2D(PX, Map.Min.Y + 26.f * U), HudFont(30.f * U, EWeight::Black, 60), Ink());
-		P.Text(TEXT("Drag an outfielder. Locks when the run-up starts."), FVector2D(PX, Map.Min.Y + 62.f * U), HudFont(14.f * U, EWeight::Medium), InkDim());
+		P.Text(TEXT("SET FIELD"), FVector2D(PX, Map.Min.Y + 24.f * U), HudFont(30.f * U, EWeight::Black, 60), Ink());
+		if (G.ShowCoach(EMode::FieldEdit) && G.EditPick == INDEX_NONE)
+			P.Pill(TEXT("DRAG A FIELDER TO MOVE THEM"), FVector2D(Map.GetCenter().X, Map.Max.Y + 34.f * U), HudFont(14.f * U, EWeight::Bold, 140),
+				Glass(0.8f), InkDim(), 18.f * U, 36.f * U, 3.f * U, Hair());
 		int32 Outside = 0, BehindLeg = 0;
 		for (const FFielder& Who : Shown)
 		{
@@ -700,15 +900,16 @@ namespace MatchHudPrivate
 			Outside += CricketField::IsOutsideCircle(Who.Home);
 			BehindLeg += CricketField::IsBehindSquareLeg(Who.Home, Hand);
 		}
-		auto Count = [&](float Y, const TCHAR* Label, int32 N, int32 Max)
+		// The counted rules in the map's empty top corners, clear of the ground.
+		auto Count = [&](float X, float Align, const TCHAR* Label, int32 N, int32 Max)
 		{
 			const FLinearColor Col = N > Max ? Danger() : N == Max ? Gold() : Ink();
-			P.Text(Label, FVector2D(PX, Y), HudFont(13.f * U, EWeight::Bold, 120), InkDim());
-			P.Text(FString::Printf(TEXT("%d / %d%s"), N, Max, N > Max ? TEXT("  OVER") : TEXT("")), FVector2D(PX + PW, Y), HudFont(18.f * U, EWeight::Black), Col, 1.f);
+			P.Text(Label, FVector2D(X, Map.Min.Y + 14.f * U), HudFont(12.f * U, EWeight::Bold, 120), InkDim(), Align);
+			P.Text(FString::Printf(TEXT("%d / %d%s"), N, Max, N > Max ? TEXT("  OVER") : TEXT("")), FVector2D(X, Map.Min.Y + 38.f * U), HudFont(20.f * U, EWeight::Black), Col, Align);
 		};
-		const float CountY = Units.Min.Y * F.H + (0.1f + 2.f * 0.115f) * F.H + 30.f * U;
-		Count(CountY, TEXT("OUTSIDE THE CIRCLE"), Outside, CricketField::MaxOutside);
-		Count(CountY + 40.f * U, TEXT("BEHIND SQUARE, LEG SIDE"), BehindLeg, CricketField::MaxBehindSquareLeg);
+		Count(Map.Min.X + 6.f * U, 0.f, TEXT("OUTSIDE CIRCLE"), Outside, CricketField::MaxOutside);
+		Count(Map.Max.X - 6.f * U, 1.f, TEXT("BEHIND SQUARE LEG"), BehindLeg, CricketField::MaxBehindSquareLeg);
+		(void)PW;
 
 		for (const CricketTouch::FButton& B : CricketTouch::Layout(EMode::FieldEdit, 0, F.Aspect, F.Safe))
 		{
@@ -721,9 +922,14 @@ namespace MatchHudPrivate
 			switch (B.Button)
 			{
 			case EButton::FieldPreset:
-				P.Text(TEXT("PRESET"), FVector2D(T.Min.X + 18.f * U, C.Y - 12.f * U), HudFont(11.f * U, EWeight::Bold, 140), InkFaint());
-				P.Text(B.Index == 0 ? TEXT("DEATH OVERS") : TEXT("SPIN, DEFENSIVE"), FVector2D(T.Min.X + 18.f * U, C.Y + 10.f * U), Fn, Ink());
+			{
+				// The preset now loaded, if the field still matches it, stands out by fill and weight, not colour alone.
+				const bool bOn = G.EditPreset == B.Index;
+				if (bOn) P.Box(T, Ink(), 3.f * U);
+				P.Text(CricketField::PresetName(EFieldPreset(B.Index)), C, HudFont(FMath::Min(15.f * U, 0.3f * T.GetSize().Y), bOn ? EWeight::Black : EWeight::Bold, 60),
+					bOn ? GoldInk() : Ink(), 0.5f);
 				break;
+			}
 			case EButton::FieldReset: P.Text(TEXT("RESET"), C, Fn, Ink(), 0.5f); break;
 			case EButton::FieldCancel: P.Text(TEXT("CANCEL"), C, Fn, InkDim(), 0.5f); break;
 			case EButton::FieldApply: P.Text(TEXT("APPLY FIELD"), C, HudFont(20.f * U, EWeight::Black, 100), GoldInk(), 0.5f); break;
@@ -780,7 +986,7 @@ namespace MatchHudPrivate
 				P.Box(FVector2D(PX, Y + 36.f * U), FVector2D(PW * FMath::Max(0.f, 1.f - G.PhaseTime / ASuperOverGameMode::ReviewWindow), 2.f * U), Gold());
 		}
 
-		const bool bVerdict = G.bReferredThis && G.DPhase == EDeliveryPhase::DeadBall && G.PhaseTime < ASuperOverGameMode::ReplayDelay;
+		const bool bVerdict = G.bReferredThis && G.DPhase == EDeliveryPhase::DeadBall && G.PhaseTime < G.ReplayDelay;
 		if (G.bAwaitingThirdUmpire || bVerdict)
 		{
 			const bool bStumping = G.Result.Running.Attempted == 0, bOut = G.Result.Dismissal != EDismissal::None;
@@ -795,7 +1001,13 @@ namespace MatchHudPrivate
 		}
 	}
 
-	void DrawReplay(FMatchFrame& F)
+constexpr float ReplayWipeOpacity(float T)
+{
+	return T <= -0.45f || T >= 0.4f ? 0.f : T < -0.08f ? (T + 0.45f) / 0.37f : T <= 0.08f ? 1.f : (0.4f - T) / 0.32f;
+}
+static_assert(ReplayWipeOpacity(-0.45f) == 0.f && ReplayWipeOpacity(0.f) == 1.f && ReplayWipeOpacity(0.4f) == 0.f);
+
+void DrawReplay(FMatchFrame& F)
 	{
 		FPaint& P = F.P;
 		ASuperOverGameMode& G = F.G;
@@ -879,7 +1091,8 @@ namespace MatchHudPrivate
 		P.Box(FVector2D::ZeroVector, FVector2D(F.W, F.H), Scrim() * FLinearColor(1, 1, 1, 0.6f));
 		float Y = F.Safe.T * F.H + 0.12f * F.H;
 		const float Top = Y;
-		P.Text(M.Phase == EMatchPhase::InningsBreak ? FString(TEXT("INNINGS BREAK")) : FString::Printf(TEXT("SUPER OVER %d • RESULT"), M.SuperOverNumber),
+		P.Text(M.Phase == EMatchPhase::InningsBreak ? FString(TEXT("INNINGS BREAK")) :
+			(M.Rules.MaxLegalBalls == 6 ? FString::Printf(TEXT("SUPER OVER %d • RESULT"), M.SuperOverNumber) : FString(TEXT("MATCH RESULT"))),
 			FVector2D(X0, Y), HudFont(15.f * U, EWeight::Bold, 180), Gold());
 		Y += 26.f * U;
 		for (const FInningsState& Inn : M.Innings)
@@ -910,12 +1123,28 @@ namespace MatchHudPrivate
 			Y += 10.f * U;
 		}
 		const FCricketTeam& Chasing = G.Teams[M.BowlingTeam()];
-		const FString Line = M.Phase == EMatchPhase::InningsBreak ? FString::Printf(TEXT("%s NEED %d TO WIN FROM 6 BALLS"), *Chasing.Name.ToUpper(), M.Target)
+		const FString Line = M.Phase == EMatchPhase::InningsBreak ? FString::Printf(TEXT("%s NEED %d TO WIN FROM %d BALLS"), *Chasing.Name.ToUpper(), M.Target, M.Rules.MaxLegalBalls)
 			: M.bTied ? FString(TEXT("SCORES LEVEL • ANOTHER SUPER OVER")) : FString::Printf(TEXT("%s WIN"), *G.Teams[M.Winner].Name.ToUpper());
 		const bool bWon = M.Phase == EMatchPhase::MatchComplete && !M.bTied;
 		P.Box(FVector2D(X0, Y), FVector2D(CW, 58.f * U), bWon ? Gold() : Glass(0.96f), 3.f * U, bWon ? FLinearColor::Transparent : Gold(), 1.5f * U);
 		P.Text(Line, FVector2D(X0 + 0.5f * CW, Y + 29.f * U), HudFont(22.f * U, EWeight::Black, 80), bWon ? GoldInk() : Gold(), 0.5f);
-		Y += 80.f * U;
+		Y += 64.f * U;
+		// Player of the match, from the cards (runs and wickets, the winners weighted up).
+		if (bWon)
+		{
+			const CricketPresentation::FPlayerImpact Best = CricketPresentation::PlayerOfMatch(M);
+			if (G.Teams.IsValidIndex(Best.Team))
+			{
+				const FCricketTeam& T = G.Teams[Best.Team];
+				const FString Who = Best.bBowler ? T.Bowler.Name : T.Batters.IsValidIndex(Best.Batter) ? T.Batters[Best.Batter].Name : FString();
+				P.Box(FVector2D(X0, Y), FVector2D(CW, 40.f * U), Glass(0.95f), 3.f * U, Hair(), U);
+				P.Box(FVector2D(X0, Y), FVector2D(6.f * U, 40.f * U), T.Colour, 2.f * U);
+				P.Text(TEXT("PLAYER OF THE MATCH"), FVector2D(X0 + 24.f * U, Y + 20.f * U), HudFont(13.f * U, EWeight::Bold, 160), Gold());
+				P.Text(FString::Printf(TEXT("%s  •  %s"), *Who.ToUpper(), *T.Short.ToUpper()), FVector2D(X0 + CW - 24.f * U, Y + 20.f * U), HudFont(18.f * U, EWeight::Black, 60), Ink(), 1.f);
+				Y += 42.f * U;
+			}
+		}
+		Y += 16.f * U;
 		P.Pill(M.Phase == EMatchPhase::InningsBreak ? TEXT("TAP TO START THE CHASE") : M.bTied ? TEXT("TAP FOR THE NEXT SUPER OVER") : TEXT("TAP TO PLAY AGAIN"),
 			FVector2D(X0 + 0.5f * CW, Y), HudFont(15.f * U, EWeight::Bold, 140), Glass(0.9f), Ink(), 18.f * U, 38.f * U, 3.f * U, Hair());
 
@@ -973,8 +1202,9 @@ void SCricketMatchHUD::AddToGameViewport(ASuperOverGameMode* InGame, ASuperOverH
 	// A fullscreen overlay over the game viewport, under the frontend's pause and result cards (z 50).
 	if (GEngine && GEngine->GameViewport)
 	{
-		GEngine->GameViewport->AddViewportWidgetContent(
-			SNew(SWeakWidget).PossiblyNullContent(TSharedRef<SCricketMatchHUD>(SNew(SCricketMatchHUD, InGame, InHUD))), 20);
+		// The viewport must own the HUD: wrapped in an SWeakWidget nothing held it and it was freed before its first
+		// paint. The viewport's widgets are cleared on map travel.
+		GEngine->GameViewport->AddViewportWidgetContent(SNew(SCricketMatchHUD, InGame, InHUD), 20);
 		UE_LOG(LogCRICKET26, Display, TEXT("Match HUD added to the viewport"));
 	}
 	else
@@ -1002,7 +1232,7 @@ int32 SCricketMatchHUD::OnPaint(const FPaintArgs& Args, const FGeometry& Geometr
 
 	const EMode TM = G->TouchMode();
 	const bool bReplay = G->IsReplaying(), bReview = G->IsReviewing(), bCard = G->ShowingScorecard();
-	const bool bThird = G->bAwaitingThirdUmpire || (G->bReferredThis && G->DPhase == EDeliveryPhase::DeadBall && G->PhaseTime < ASuperOverGameMode::ReplayDelay);
+	const bool bThird = G->bAwaitingThirdUmpire || (G->bReferredThis && G->DPhase == EDeliveryPhase::DeadBall && G->PhaseTime < G->ReplayDelay);
 	const bool bBroadcast = !bReplay && !bReview && !bCard && TM != EMode::FieldEdit;
 	const bool bInPlay = M.Phase != EMatchPhase::InningsBreak && M.Phase != EMatchPhase::MatchComplete;
 	const FVector2D TopMid(0.5f * F.W, F.Safe.T * F.H + 0.03f * F.H + 20.f * U);
@@ -1012,13 +1242,19 @@ int32 SCricketMatchHUD::OnPaint(const FPaintArgs& Args, const FGeometry& Geometr
 		DrawStrip(F, SeenBalls, NewBallAt);
 		if (bInPlay && !bThird && !G->bAwaitingReview && G->DPhase != EDeliveryPhase::DeadBall) DrawRadar(F, TM);
 
-		// Top centre: what to do now before the ball, the speed gun after it.
+		// Top centre: first-use coaching for the controls in play (until each has been used a few times), the speed
+		// gun once the ball is bowled.
 		const FSlateFontInfo Hint = HudFont(14.f * U, EWeight::Bold, 140);
 		FString Say;
-		if (G->bAutoPlay) Say = TEXT("AI VS AI");
-		else if (TM == EMode::Batting && G->DPhase <= EDeliveryPhase::RunUp) Say = TEXT("PULL TO AIM  •  RELEASE TO PLAY");
-		else if (TM == EMode::Bowling) Say = G->DPhase == EDeliveryPhase::RunUp ? TEXT("RELEASE IN THE GREEN") : TEXT("DRAG TO SET LINE AND LENGTH  •  TAP BOWL");
-		if (!Say.IsEmpty() && G->DPhase <= EDeliveryPhase::RunUp) P.Pill(Say, TopMid, Hint, Glass(0.8f), InkDim(), 18.f * U, 36.f * U, 3.f * U, Hair());
+		if (G->bAutoPlay) Say = G->DPhase <= EDeliveryPhase::RunUp ? TEXT("AI VS AI") : TEXT("");
+		else if (!G->ShowCoach(TM)) {}
+		else if (TM == EMode::Batting && G->DPhase <= EDeliveryPhase::RunUp) Say = TEXT("PULL BACK AND RELEASE TO PLAY THE SHOT");
+		else if (TM == EMode::Ready) Say = TEXT("PICK A SHOT MODE  •  TAP PLAY WHEN YOU ARE READY FOR THE BALL");
+		else if (TM == EMode::Bowling) Say = TEXT("DRAG PITCH TARGET  •  SELECT VARIATION  •  TAP BOWL");
+		else if (TM == EMode::Release) Say = TEXT("TAP RELEASE AT THE IDEAL POINT");
+		else if (TM == EMode::Running) Say = TEXT("TAP RUN  •  AGAIN FOR ANOTHER  •  CANCEL TO SEND THEM BACK");
+		const bool bSpeed = (G->DPhase == EDeliveryPhase::BallInPlay || G->DPhase == EDeliveryPhase::DeadBall) && G->Result.SpeedKph > 0.f && !bThird;
+		if (!Say.IsEmpty()) P.Pill(Say, bSpeed ? TopMid + FVector2D(0.f, 50.f * U) : TopMid, Hint, Glass(0.8f), InkDim(), 18.f * U, 36.f * U, 3.f * U, Hair());
 		if ((G->DPhase == EDeliveryPhase::BallInPlay || G->DPhase == EDeliveryPhase::DeadBall) && G->Result.SpeedKph > 0.f && !bThird)
 		{
 			const FString Speed = FString::Printf(TEXT("%.1f KM/H"), G->Result.SpeedKph);
@@ -1048,6 +1284,7 @@ int32 SCricketMatchHUD::OnPaint(const FPaintArgs& Args, const FGeometry& Geometr
 		}
 
 		if (G->HumanBowls() && (G->DPhase == EDeliveryPhase::Waiting || G->DPhase == EDeliveryPhase::RunUp) && bInPlay) DrawReticle(F, Geometry);
+		if (G->HumanBats() && (G->DPhase == EDeliveryPhase::RunUp || G->DPhase == EDeliveryPhase::BallInPlay)) DrawPitchMarker(F, Geometry);
 
 		// The release meter, over the score strip: timing zones from the control tuning, a no-ball past 0.85.
 		const FBox2D Strip = F.Px(CricketTouch::ScoreStrip(F.Aspect, F.Safe));
@@ -1059,28 +1296,35 @@ int32 SCricketMatchHUD::OnPaint(const FPaintArgs& Args, const FGeometry& Geometr
 				G->ControlTuning.PerfectRelease, G->Meter, FString(CricketControl::ReleaseGradeName(Grade)).ToUpper(), Col, 0.85f);
 		}
 
-		// Timing after a stroke, as long as the result is on screen, so the window can be learnt.
+		// Timing after a stroke: a small card in the top-right corner (the radar's place, hidden while the ball is
+		// dead) until the next ball, so it can be read without covering the play or the result.
 		const FDeliveryResult& Last = G->Result;
-		if (G->bTimingFeedback && Last.Contact.Shot != EShotType::Leave && G->DPhase == EDeliveryPhase::DeadBall && G->PhaseTime < 3.f && !bThird && !G->bAwaitingReview)
+		if (G->bTimingFeedback && Last.Contact.Shot != EShotType::Leave && G->DPhase == EDeliveryPhase::DeadBall && !bThird && !G->bAwaitingReview)
 		{
 			using namespace CricketDelivery;
 			constexpr float Span = 0.12f; // s either side of ideal: the swing misses beyond it
 			const float T = Last.Contact.TimingError;
 			const FLinearColor Col = FMath::Abs(T) <= PerfectTiming ? Teal() : FMath::Abs(T) <= GoodTiming ? Ink() : Amber();
-			Meter(F, FVector2D(0.5f * F.W, 0.56f * F.H), 420.f * U, GoodTiming / Span, PerfectTiming / Span, T / Span,
-				FString::Printf(TEXT("%s • %s, %s"), *TimingName(T), *ShotName(Last.Shot.Shot), *ZoneName(Last.Contact.Zone).ToLower()).ToUpper(), Col);
+			const FBox2D Corner = F.Px(CricketTouch::Radar(F.Aspect, F.Safe));
+			const float W = 230.f * U, H = 58.f * U, X0 = Corner.Max.X - W, Y0 = Corner.Min.Y;
+			P.Box(FVector2D(X0, Y0), FVector2D(W, H), Glass(0.85f), 3.f * U, Hair(), U);
+			P.Box(FVector2D(X0, Y0), FVector2D(4.f * U, H), Col, 2.f * U);
+			P.Text(TimingName(T).ToUpper(), FVector2D(X0 + 14.f * U, Y0 + 18.f * U), HudFont(15.f * U, EWeight::Black, 80), Col);
+			P.Text(FString::Printf(TEXT("%s • %s"), *ShotName(Last.Shot.Shot), *ZoneName(Last.Contact.Zone)).ToUpper(), FVector2D(X0 + 14.f * U, Y0 + 36.f * U),
+				HudFont(10.f * U, EWeight::Bold, 60), InkDim());
+			// The window as a thin track: perfect band, good band, and where this stroke landed.
+			const float TX = X0 + 14.f * U, TW = W - 28.f * U, TY = Y0 + H - 11.f * U;
+			auto At = [&](float V) { return TX + TW * 0.5f * (FMath::Clamp(V, -1.f, 1.f) + 1.f); };
+			P.Box(FVector2D(TX, TY), FVector2D(TW, 4.f * U), Hex(0x000000, 0.4f), 2.f * U);
+			P.Box(FVector2D(At(-GoodTiming / Span), TY), FVector2D(At(GoodTiming / Span) - At(-GoodTiming / Span), 4.f * U), Teal() * FLinearColor(1, 1, 1, 0.45f), 2.f * U);
+			P.Box(FVector2D(At(-PerfectTiming / Span), TY), FVector2D(At(PerfectTiming / Span) - At(-PerfectTiming / Span), 4.f * U), Teal(), 2.f * U);
+			P.Box(FVector2D(At(T / Span) - 1.5f * U, TY - 4.f * U), FVector2D(3.f * U, 12.f * U), Ink(), U);
 		}
 
-		// The last ball in words, a caption over the strip.
-		if (!G->Commentary.IsEmpty() && !G->bAwaitingReview && !bThird && G->DPhase == EDeliveryPhase::DeadBall)
-		{
-			FSlateFontInfo Fn = HudFont(19.f * U, EWeight::Medium);
-			const float Room = Strip.GetSize().X - 40.f * U, Need = FPaint::Measure(G->Commentary, Fn).X;
-			if (Need > Room) Fn.Size *= Room / Need;
-			P.Pill(G->Commentary, FVector2D(Strip.GetCenter().X, Strip.Min.Y - (M.bFreeHit ? 80.f : 40.f) * U), Fn, Glass(0.9f), Ink(), 20.f * U, 42.f * U, 3.f * U, Hair());
-		}
+		// Commentary subtitles removed per user request (audio commentary only).
 
-		if (TM == EMode::Batting || TM == EMode::Bowling || TM == EMode::Review) DrawControls(F, TM);
+		if (TM == EMode::Batting || TM == EMode::Ready || TM == EMode::Running || TM == EMode::Bowling || TM == EMode::Release || TM == EMode::Review || TM == EMode::Pick) DrawControls(F, TM);
+		if (TM == EMode::Pick) DrawIPLPickTitle(F);
 	}
 	if (TM == EMode::FieldEdit) DrawFieldEditor(F);
 	if (bReplay) DrawReplay(F);
@@ -1104,6 +1348,32 @@ int32 SCricketMatchHUD::OnPaint(const FPaintArgs& Args, const FGeometry& Geometr
 		P.Box(C + FVector2D(-0.5f * TW, 0.5f * BH - 22.f * U), FVector2D(TW * In, 4.f * U), Accent, 2.f * U);
 		P.Text(Hud->Banner, C - FVector2D(0.f, 4.f * U), Fn, Ink(), 0.5f);
 		P.Alpha = 1.f;
+	}
+	// Replay angle cuts land under a small lower-third stinger, never a fullscreen wipe: gameplay stays visible.
+	if (G->bReplayThis && G->DPhase == EDeliveryPhase::DeadBall)
+	{
+		const int32 Angle = G->ReplayAngle();
+		float Start = 0.f;
+		for (int32 I = 0; I < Angle; ++I) Start += G->ReplayAngleDuration(I);
+		const float T = G->PhaseTime - G->ReplayDelay;
+		const float FromStart = T - Start;
+		const float FromEnd = T - Start - G->ReplayAngleDuration(Angle);
+		const float CutTime = FMath::Abs(FromStart) < FMath::Abs(FromEnd) ? FromStart : FromEnd;
+		if (const float Opacity = ReplayWipeOpacity(CutTime); Opacity > 0.f)
+		{
+			P.Alpha = FMath::SmoothStep(0.f, 1.f, Opacity);
+			// In names the event, as the reference's FOUR stinger does; every later cut carries the logo.
+			const bool bEntry = Angle == 0 && CutTime == FromStart && !G->InReel() && G->ReplayEvent() != EReplayEventType::None;
+			const FString StingLabel = bEntry ? FString(CricketBroadcast::ReplayEventName(G->ReplayEvent())).Replace(TEXT("-"), TEXT(" ")) : FString(TEXT("CRICKET 26"));
+			const FSlateFontInfo StingFn = HudFont(30.f * U, EWeight::Black, 70);
+			const float StingW = FPaint::Measure(StingLabel, StingFn).X + 72.f * U, StingH = 56.f * U;
+			const FBox2D Strip = F.Px(CricketTouch::ScoreStrip(F.Aspect, F.Safe));
+			const FVector2D StingC(0.5f * F.W, Strip.Min.Y - 46.f * U);
+			P.Box(StingC - 0.5f * FVector2D(StingW, StingH), FVector2D(StingW, StingH), Glass(0.94f), 4.f * U, Hair(), U);
+			P.Box(StingC - 0.5f * FVector2D(StingW, 5.f * U), FVector2D(StingW, 5.f * U), Gold(), 2.f * U);
+			P.Text(StingLabel, StingC, StingFn, Ink(), 0.5f);
+			P.Alpha = 1.f;
+		}
 	}
 	return P.Layer;
 }

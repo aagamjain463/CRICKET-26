@@ -15,6 +15,7 @@ struct FBatInput
 	EBatIntent Intent = EBatIntent::Leave;
 	float DirectionDeg = 0.f;
 	float PressTime = -1.f; // seconds after release
+	float Power = 0.8f;     // 0..1 how hard the player swings; 0.8 is the batter's natural stroke
 	bool IsShot() const { return Intent != EBatIntent::Leave && PressTime >= 0.f; }
 };
 
@@ -24,10 +25,13 @@ struct FResolveContext
 	TArray<FFielder> Field;
 	FPitchConditions Conditions;
 	float RunMargin = 0.4f;
+	FRunCalls RunCalls;        // manual: the player calls the runs and RunMargin is unused
 	bool bFreeHit = false;
 	FSuperOverRules Rules;
 	int32 BouncersBowled = 0;  // this over, before this delivery
 	int32 Seed = 0;
+	/** Striker's lateral guard: stance shift in metres, batter-relative (+ off side). Moves the pads and the bat's reach with the body; stumps and wides stay put. */
+	float StrikerGuard = 0.f;
 };
 
 /** What the batter can see of a delivery at a moment in time. */
@@ -101,6 +105,9 @@ namespace CricketDelivery
 	/** The player's timing grade for a swing: within PerfectTiming of ideal, within GoodTiming, else early or late. */
 	constexpr float PerfectTiming = 0.015f, GoodTiming = 0.04f;
 	FString TimingName(float TimingError);
+	/** How a swing's power (FBatInput::Power, 0.8 natural) scales the bat speed, and the error in placing the bat. */
+	inline float PowerSpeed(float Power) { return 0.6f + 0.5f * FMath::Clamp(Power, 0.f, 1.f); }
+	inline float PowerRisk(float Power) { return FMath::Max(0.7f, 1.f + 1.5f * (FMath::Clamp(Power, 0.f, 1.f) - 0.8f)); }
 	/**
 	 * The edge detector's sound envelope, 0 to 1, at a time after release: a sharp spike where the bat touched the
 	 * ball and a low, broad thud where the pad did. Silent otherwise; the HUD adds the background noise.

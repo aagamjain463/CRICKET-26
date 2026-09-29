@@ -183,7 +183,7 @@ FDeliveryRelease CricketBowling::Execute(const FCricketPlayer& Bowler, ECricketH
 	// Execution: accuracy sets the scatter, a poor release widens it and biases length
 	// (early = overpitched, late = dragged down).
 	// A scrambled seam gives up movement for control: it is the easiest ball to land.
-	const float Scatter = (0.5f + 1.5f * (1.f - Q)) * (Plan.Type == EDeliveryType::CrossSeam ? 0.75f : 1.f);
+	const float Scatter = (0.5f + 1.5f * (1.f - Q)) * (Plan.Type == EDeliveryType::CrossSeam ? 0.75f : 1.f) * EffortScatter(Plan.Effort);
 	const float Skill = FMath::Clamp(Bowler.Accuracy, 0.f, 1.f);
 	const float LengthSigma = (0.15f + 0.9f * (1.f - Skill)) * Scatter;
 	const float LineSigma = (0.04f + 0.25f * (1.f - Skill)) * Scatter;
@@ -203,14 +203,14 @@ FDeliveryRelease CricketBowling::Execute(const FCricketPlayer& Bowler, ECricketH
 	case EDeliveryType::Googly: SpeedFactor = 0.97f; break;
 	default: break;
 	}
-	const float Speed = Bowler.PaceKph / 3.6f * SpeedFactor * (1.f - 0.05f * (1.f - Q) + 0.01f * CricketMath::Gauss(Rng));
+	const float Speed = Bowler.PaceKph / 3.6f * SpeedFactor * EffortPace(Plan.Effort) * (1.f - 0.05f * (1.f - Q) + 0.01f * CricketMath::Gauss(Rng));
 	Out.SpeedKph = Speed * 3.6f;
 
 	FBallState& B = Out.Ball;
 	B.Pos = FVector(CricketGeo::PitchLength - 1.5f, 0.26f * Arm, bSpin ? 1.95f : 2.15f);
 
 	// Movement. Magnitudes scale with the bowler's skill and the quality of the release.
-	const float Move = FMath::Clamp(Bowler.Movement, 0.f, 1.f) * FMath::Lerp(0.35f, 1.f, Q);
+	const float Move = FMath::Clamp(Bowler.Movement, 0.f, 1.f) * FMath::Clamp(Plan.Movement, 0.f, 1.f) * FMath::Lerp(0.35f, 1.f, Q);
 	FVector Spin = FVector::ZeroVector;
 	if (!bSpin)
 	{

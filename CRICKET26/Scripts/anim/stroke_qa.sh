@@ -14,6 +14,7 @@ CAM[rear]="-3.2,-2.2,1.5,0.9,-0.35,0.9,34"
 CAM[close]="7,2.4,1.4,0.9,-0.35,1.1,30"   # close front three-quarter from the off side, the arms filling the frame
 CAM[back]="-2.5,-5.5,1.7,0.9,-0.35,1.1,30"  # close from behind square leg, over the back shoulder
 CAM[lpoint]="1.25,-6.5,1.0,1.25,0.35,0.95,40" # a left-hander's point: pass -CricketLeftHanded
+CAM[ref]="10,-0.45,1.35,0.9,-0.45,1.05,20"  # full body from the bowler's end, framed like the broadcast reference (SHOT.mp4 256-258 s)
 "$ROOT/Scripts/capture.sh" 1 -CricketSlowMo=0.25 -CricketShotEvery=0.04 -CricketDevCam=${CAM[$VIEW]} "$@" > /dev/null
 grep -E "Display: HOM|Display: AWY|Pose:" "$ROOT/Saved/Capture.log" | sed 's/^.*Display: //'
 # The frames round the stroke: live (phase 2) from 0.7 s before the contact to 1.5 s after (or the first 2 s when

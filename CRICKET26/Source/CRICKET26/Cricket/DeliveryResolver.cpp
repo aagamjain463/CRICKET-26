@@ -141,6 +141,8 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 	const FPitchConditions& C = Ctx.Conditions;
 	const FCricketPlayer& Bat = Ctx.Striker;
 	const float Off = OffSideSign(Bat.BatHand);
+	// Guard travels with the body, not the stumps: pads and reach move, wides and bowled do not.
+	const float Guard = FMath::Clamp(Ctx.StrikerGuard, -1.2f, 1.2f);
 	FRandomStream Rng(Ctx.Seed * 7919 + 13);
 
 	FDeliveryResult R;
@@ -197,7 +199,9 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 			}
 			// Judgement and hand-eye error in placing the bat: grows with pace and with the size of the
 			// swing, shrinks with technique. This is what separates middled shots from mistimed ones.
-			const float Swing = Input.Intent == EBatIntent::Defend ? 0.6f : Input.Intent == EBatIntent::Loft ? 1.25f : 1.f;
+			// Swinging harder than the natural stroke costs control; a checked stroke gains a little.
+			const float Swing = (Input.Intent == EBatIntent::Defend ? 0.6f : Input.Intent == EBatIntent::Loft ? 1.25f : 1.f)
+				* (Input.Intent == EBatIntent::Defend ? 1.f : CricketDelivery::PowerRisk(Input.Power));
 			const float Sigma = (0.012f + 0.03f * (1.f - FMath::Clamp(Bat.Technique, 0.f, 1.f))) * Swing * (Probe.Vel.Size() / 33.f);
 			Aim.Y += CricketMath::Gauss(Rng) * Sigma;
 			Aim.Z += CricketMath::Gauss(Rng) * Sigma;
@@ -236,8 +240,9 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 			const FBallState AtBat = AtPlane(Prev, B, R.Shot.ContactX());
 			PassedBat = AtBat.Time;
 			HeightAtBat = AtBat.Pos.Z;
-			LineAtBat = AtBat.Pos.Y * Off;
-			R.Contact = CricketBatting::ResolveContact(AtBat, Aim, R.Shot, FaceDir, Timing, Bat, Input.Intent == EBatIntent::Loft);
+			LineAtBat = AtBat.Pos.Y * Off - Guard;
+			R.Contact = CricketBatting::ResolveContact(AtBat, Aim, R.Shot, FaceDir, Timing, Bat, Input.Intent == EBatIntent::Loft,
+				Input.Intent == EBatIntent::Defend ? 1.f : CricketDelivery::PowerSpeed(Input.Power), Guard);
 			if (R.Contact.HasContact())
 			{
 				bContact = true;
@@ -260,7 +265,8 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 		{
 			const FBallState S = AtPlane(Prev, B, PadX);
 			const float Lat = S.Pos.Y * Off;
-			if (Lat >= PadMin - CricketGeo::BallRadius && Lat <= PadMax + CricketGeo::BallRadius && S.Pos.Z < 0.6f)
+			const float LatRel = Lat - Guard;
+			if (LatRel >= PadMin - CricketGeo::BallRadius && LatRel <= PadMax + CricketGeo::BallRadius && S.Pos.Z < 0.6f)
 			{
 				R.bPadImpact = true;
 				// Ball tracking: would it have gone on to hit the stumps?
@@ -413,14 +419,14 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 			else if (R.bRunsAllowed)
 			{
 				R.Running = CricketField::SolveRunning(F, Ctx.Striker, Ctx.NonStriker, Ctx.Fielding,
-					Ctx.Field[F.Fielder].bKeeper, Ctx.RunMargin, Rng, &Ctx.Field);
+					Ctx.Field[F.Fielder].bKeeper, Ctx.RunMargin, Rng, &Ctx.Field, &Ctx.RunCalls);
 			}
 
 			if (R.DeadTime > 0.f)
 			{
 				// Already decided above (catch or stumping).
 			}
-			else if (bContact || R.Running.Attempted > 0)
+			else if ((bContact && !Ctx.Field[F.Fielder].bKeeper) || R.Running.Attempted > 0)
 			{
 				const FRunningOutcome& Run = R.Running;
 				const FVector Hand = FVector(F.FieldPos.X, F.FieldPos.Y, Run.ThrowType == EThrowType::Underarm ? 0.6f : 1.4f);
@@ -457,6 +463,11 @@ FDeliveryResult CricketDelivery::Resolve(const FDeliveryRelease& Release, const 
 			}
 			else
 			{
+				// No run and no throw: the ball stays in the hands that took it. The throw SolveRunning planned was
+				// only for a run, and left set it would play a throw with nothing thrown (the keeper after a wide).
+				R.Running.ThrowType = EThrowType::None;
+				R.Running.ThrowRelease = R.Running.ThrowArrive = R.Running.RelayCatch = R.Running.RelayRelease = 0.f;
+				R.Running.RelayMove = FFielderMove();
 				Hold(R.BallPath, F.FieldPos, 1.f);
 				R.DeadTime = T0 + F.FieldTime + 1.f;
 			}
