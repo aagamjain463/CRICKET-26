@@ -1,401 +1,401 @@
-Name,Short,Country,Role,BatHand,BowlStyle,Age,Capped,Team2026,Price2026Lakh,IplMatches,IplRuns,IplSR,IplWkts,IplEcon,T20Matches,T20Runs,T20SR,T20Wkts,T20Econ,BasePriceLakh,BatRating,BowlRating,Retained2026
-Ruturaj Gaikwad,R Gaikwad,India,BAT,R,Right-arm offbreak,29,1,CSK,1800,85,2839,135.65,0,,,,,,,200,80,20,1
-Sanju Samson,S Samson,India,WK,R,Right-arm offbreak,31,1,CSK,1800,190,5181,141.14,0,,,,,,,200,84,10,1
-Kartik Sharma,K Sharma,India,WK,R,,20,0,CSK,1420,11,295,136.58,0,,,,,,,30,64,10,0
-Prashant Veer,P Veer,India,AR,L,Left-arm orthodox,20,0,CSK,1420,6,91,135.83,0,12.50,,,,,,30,54,45,0
-Shivam Dube,S Dube,India,AR,L,Right-arm medium,33,1,CSK,1200,92,2129,145.43,6,10.79,,,,,,200,76,60,1
-Noor Ahmad,N Ahmad,Afghanistan,SPIN,R,Left-arm wrist-spin,21,1,CSK,1000,51,31,53.45,61,8.17,,,,,,200,28,78,1
-Rahul Chahar,R Chahar,India,SPIN,R,Right-arm legbreak,27,1,CSK,520,80,129,104.04,75,7.78,,,,,,100,28,75,0
-Khaleel Ahmed,K Ahmed,India,PACE,R,Left-arm fast-medium,28,1,CSK,480,76,2,22.23,91,8.96,,,,,,200,22,72,1
-MS Dhoni,MS Dhoni,India,WK,R,Right-arm medium,45,0,CSK,400,278,5439,137.46,0,,,,,,,50,89,10,1
-Anshul Kamboj,A Kamboj,India,AR,R,Right-arm fast-medium,25,1,CSK,340,25,74,142.31,31,9.97,,,,,,30,51,58,1
-Dewald Brevis,D Brevis,South Africa,BAT,R,Right-arm legbreak,23,1,CSK,220,27,606,146.03,1,,,,,,,150,66,21,1
-Gurjapneet Singh,G Singh,India,PACE,R,Left-arm fast-medium,27,0,CSK,220,8,0,,4,9.26,,,,,,30,22,49,1
-Akeal Hosein,A Hosein,West Indies,SPIN,L,Left-arm orthodox,33,1,CSK,200,8,21,161.54,9,8.30,,,,,,200,42,84,0
-Matt Henry,M Henry,New Zealand,PACE,R,Right-arm fast-medium,34,1,CSK,200,9,7,70.00,4,11.52,,,,,,200,23,77,0
-Nathan Ellis,N Ellis,Australia,PACE,R,Right-arm fast-medium,32,1,CSK,200,17,19,76.00,19,8.67,,,,,,100,24,62,1
-Jamie Overton,J Overton,England,AR,R,Right-arm fast,32,1,CSK,150,13,151,162.37,14,9.76,,,,,,150,57,78,1
-Matthew Short,M Short,Australia,BAT,R,Right-arm offbreak,30,1,CSK,150,9,177,123.78,0,8.93,,,,,,150,64,27,0
-Sarfaraz Khan,S Khan,India,BAT,R,Right-arm legbreak,28,1,CSK,75,58,746,137.39,0,,,,,,,75,61,20,0
-Zak Foulkes,Z Foulkes,New Zealand,AR,R,Right-arm medium,24,1,CSK,75,0,0,,0,,,,,,,75,50,60,0
-Aman Khan,A Khan,India,AR,R,Right-arm medium,29,0,CSK,40,12,115,110.58,0,13.00,,,,,,30,45,45,0
-Ayush Mhatre,A Mhatre,India,BAT,R,Right-arm offbreak,19,0,CSK,30,13,441,183.75,0,,,,,,,30,78,20,1
-Mukesh Choudhary,M Choudhary,India,PACE,L,Left-arm fast-medium,30,0,CSK,30,24,8,100.00,25,9.58,,,,,,30,22,55,1
-Ramakrishna Ghosh,R Ghosh,India,AR,R,Right-arm fast-medium,29,0,CSK,30,1,0,,1,8.00,,,,,,30,48,46,1
-Shreyas Gopal,S Gopal,India,SPIN,R,Right-arm legbreak,33,0,CSK,30,52,180,106.51,52,8.16,,,,,,30,33,75,1
-Urvil Patel,U Patel,India,WK,R,,27,0,CSK,30,10,197,205.21,0,,,,,,,30,60,10,1
-Axar Patel,A Patel,India,AR,L,Left-arm orthodox,32,1,DC,1650,176,2089,133.74,139,7.41,,,,,,200,63,80,1
-KL Rahul,KL Rahul,India,WK,R,,34,1,DC,1400,159,5815,139.15,0,,,,,,,200,96,10,1
-Kuldeep Yadav,K Yadav,India,SPIN,L,Left-arm wrist-spin,31,1,DC,1325,110,210,83.01,112,8.26,,,,,,200,33,79,1
-Mitchell Starc,M Starc,Australia,PACE,L,Left-arm fast,36,1,DC,1175,57,111,91.74,76,8.79,,,,,,200,26,77,1
-T Natarajan,T Natarajan,India,PACE,L,Left-arm fast-medium,35,1,DC,1075,73,4,57.15,72,9.21,,,,,,200,22,61,1
-Tristan Stubbs,T Stubbs,South Africa,WK,R,Right-arm offbreak,26,1,DC,1000,46,980,151.24,4,11.50,,,,,,200,81,13,1
-Auqib Nabi,A Nabi,India,PACE,R,Right-arm medium,29,0,DC,840,5,14,350.00,0,11.46,,,,,,30,23,49,0
-Mukesh Kumar,M Kumar,India,PACE,R,Right-arm fast-medium,32,1,DC,800,42,10,55.56,42,10.59,,,,,,200,23,46,1
-Nitish Rana,N Rana,India,BAT,L,Right-arm offbreak,32,1,DC,420,127,3078,137.72,10,9.03,,,,,,150,73,36,1
-Pathum Nissanka,P Nissanka,Sri Lanka,BAT,R,,28,1,DC,400,10,278,158.86,0,,,,,,,75,67,12,0
-Abhishek Porel,A Porel,India,WK,L,,23,0,DC,400,35,769,145.37,0,,,,,,,30,67,10,1
-Ashutosh Sharma,A Sharma,India,AR,R,Right-arm medium,28,0,DC,380,32,564,168.87,0,,,,,,,30,79,45,1
-Ben Duckett,B Duckett,England,BAT,L,Right-arm offbreak,31,1,DC,200,0,0,,0,,,,,,,200,71,20,0
-David Miller,D Miller,South Africa,BAT,L,Right-arm offbreak,37,1,DC,200,152,3288,139.50,0,,,,,,,200,81,20,0
-Kyle Jamieson,K Jamieson,New Zealand,PACE,R,Right-arm fast-medium,31,1,DC,200,15,77,105.48,16,10.12,,,,,,200,28,51,0
-Lungi Ngidi,L Ngidi,South Africa,PACE,R,Right-arm fast,30,1,DC,200,28,4,44.45,42,8.41,,,,,,200,25,78,0
-Sameer Rizvi,S Rizvi,India,BAT,R,Right-arm offbreak,22,0,DC,95,24,424,144.71,0,,,,,,,30,69,20,1
-Dushmantha Chameera,D Chameera,Sri Lanka,PACE,R,Right-arm fast,34,1,DC,75,20,53,117.78,13,9.70,,,,,,75,26,36,1
-Prithvi Shaw,P Shaw,India,BAT,R,Right-arm offbreak,26,1,DC,75,79,1892,147.47,0,,,,,,,75,70,20,0
-Karun Nair,K Nair,India,BAT,R,Right-arm offbreak,34,1,DC,50,86,1712,131.29,0,,,,,,,30,62,20,1
-Madhav Tiwari,M Tiwari,India,AR,R,Right-arm fast-medium,23,0,DC,40,4,21,175.00,4,8.70,,,,,,30,49,48,1
-Ajay Mandal,A Mandal,India,AR,L,Left-arm orthodox,30,0,DC,30,0,0,,0,,,,,,,30,48,45,1
-Sahil Parekh,S Parekh,India,BAT,L,Right-arm legbreak,19,0,DC,30,4,46,139.40,0,,,,,,,30,59,20,0
-Tripurana Vijay,T Vijay,India,AR,R,Right-arm offbreak,25,0,DC,30,1,0,,0,14.50,,,,,,30,48,45,1
-Vipraj Nigam,V Nigam,India,AR,R,Right-arm legbreak,22,0,DC,30,19,157,176.41,13,9.77,,,,,,30,55,46,1
-Rashid Khan,R Khan,Afghanistan,AR,R,Right-arm legbreak,28,1,GT,1800,153,635,156.41,179,7.28,,,,,,200,62,95,1
-Shubman Gill,S Gill,India,BAT,R,Right-arm offbreak,27,1,GT,1650,134,4598,142.09,0,,,,,,,200,90,20,1
-Jos Buttler,J Buttler,England,WK,R,,36,1,GT,1575,138,4646,149.73,0,,,,,,,200,93,10,1
-Mohammed Siraj,M Siraj,India,PACE,R,Right-arm fast,32,1,GT,1225,125,117,84.18,128,8.78,,,,,,200,27,73,1
-Kagiso Rabada,K Rabada,South Africa,PACE,L,Right-arm fast,31,1,GT,1075,101,262,109.63,148,8.80,,,,,,200,36,85,1
-Prasidh Krishna,P Krishna,India,PACE,R,Right-arm fast,30,1,GT,950,78,15,48.39,90,8.99,,,,,,200,23,70,1
-Sai Sudharsan,S Sudharsan,India,BAT,L,Right-arm legbreak,24,1,GT,850,57,2515,149.17,0,,,,,,,200,89,20,1
-Jason Holder,J Holder,West Indies,AR,R,Right-arm fast-medium,34,1,GT,700,57,324,123.67,70,8.58,,,,,,200,46,76,0
-Rahul Tewatia,R Tewatia,India,AR,L,Right-arm legbreak,33,0,GT,400,124,1302,138.07,32,7.91,,,,,,50,64,61,1
-Shahrukh Khan,S Khan,India,BAT,R,Right-arm offbreak,31,0,GT,400,64,775,147.91,1,9.33,,,,,,50,64,21,1
-Washington Sundar,W Sundar,India,AR,L,Right-arm offbreak,26,1,GT,320,83,888,135.37,40,7.77,,,,,,200,60,57,1
-Glenn Phillips,G Phillips,New Zealand,WK,R,Right-arm offbreak,29,1,GT,200,14,132,121.11,2,8.00,,,,,,200,76,31,1
-Tom Banton,T Banton,England,WK,R,Right-arm offbreak,27,1,GT,200,2,18,90.00,0,,,,,,,200,70,10,0
-Sai Kishore,S Kishore,India,AR,L,Left-arm orthodox,29,1,GT,200,28,18,112.50,33,8.99,,,,,,75,47,69,1
-Arshad Khan,A Khan,India,AR,L,Left-arm medium,28,0,GT,130,27,147,148.49,18,11.06,,,,,,30,53,42,1
-Gurnoor Brar,G Brar,India,PACE,L,Right-arm fast,26,1,GT,130,1,0,,0,14.00,,,,,,30,22,55,1
-Ashok Sharma,A Sharma,India,PACE,R,Right-arm fast-medium,24,1,GT,90,6,1,25.00,6,10.86,,,,,,30,22,51,0
-Ishant Sharma,I Sharma,India,PACE,R,Right-arm fast-medium,38,1,GT,75,117,57,82.61,96,8.38,,,,,,75,24,65,1
-Jayant Yadav,J Yadav,India,SPIN,R,Right-arm offbreak,36,1,GT,75,20,40,111.12,8,6.85,,,,,,75,27,61,1
-Luke Wood,L Wood,England,PACE,L,Left-arm fast-medium,31,1,GT,75,2,9,300.00,1,15.50,,,,,,75,22,63,0
-Kumar Kushagra,K Kushagra,India,WK,R,,21,0,GT,65,5,21,100.00,0,,,,,,,30,53,10,1
-Anuj Rawat,A Rawat,India,WK,L,,26,0,GT,30,24,318,119.11,0,,,,,,,30,50,10,1
-Manav Suthar,M Suthar,India,AR,L,Left-arm orthodox,24,1,GT,30,5,1,50.00,2,11.75,,,,,,30,48,44,1
-Nishant Sindhu,N Sindhu,India,AR,L,Left-arm orthodox,22,0,GT,30,8,63,126.00,0,,,,,,,30,48,45,1
-Prithvi Raj,P Raj,India,PACE,L,Left-arm fast-medium,28,0,GT,30,2,0,0.00,1,11.40,,,,,,30,22,53,0
-Cameron Green,C Green,Australia,AR,R,Right-arm fast-medium,27,1,KKR,2520,43,1029,151.11,23,9.44,,,,,,200,80,46,0
-Matheesha Pathirana,M Pathirana,Sri Lanka,PACE,R,Right-arm fast,23,1,KKR,1800,33,0,,47,8.66,,,,,,200,23,75,0
-Rinku Singh,R Singh,India,BAT,L,Right-arm offbreak,28,1,KKR,1300,72,1394,145.97,0,,,,,,,200,76,22,1
-Sunil Narine,S Narine,West Indies,AR,L,Right-arm offbreak,38,1,KKR,1200,201,1820,165.31,207,6.79,,,,,,200,73,95,1
-Varun Chakravarthy,V Chakravarthy,India,SPIN,R,Right-arm legbreak,35,1,KKR,1200,94,31,58.50,111,7.72,,,,,,200,26,87,1
-Mustafizur Rahman,M Rahman,Bangladesh,PACE,L,Left-arm fast-medium,31,1,KKR,920,60,13,54.17,65,8.13,,,,,,200,23,73,0
-Harshit Rana,H Rana,India,PACE,R,Right-arm fast-medium,24,1,KKR,400,33,59,105.36,40,9.51,,,,,,150,28,64,1
-Ramandeep Singh,R Singh,India,AR,R,Right-arm medium,29,1,KKR,400,38,299,145.86,7,10.07,,,,,,150,56,46,1
-Angkrish Raghuvanshi,A Raghuvanshi,India,BAT,R,Right-arm offbreak,22,0,KKR,300,35,885,145.56,0,,,,,,,30,74,20,1
-Tejasvi Singh,T Singh,India,WK,R,Right-arm offbreak,24,0,KKR,300,2,12,80.00,0,,,,,,,30,54,10,0
-Finn Allen,F Allen,New Zealand,BAT,R,Right-arm offbreak,27,1,KKR,200,11,349,214.12,0,,,,,,,200,73,20,0
-Rachin Ravindra,R Ravindra,New Zealand,AR,L,Left-arm orthodox,26,1,KKR,200,18,413,143.91,0,3.50,,,,,,200,63,83,0
-Vaibhav Arora,V Arora,India,PACE,R,Right-arm fast-medium,28,0,KKR,180,43,10,37.04,47,9.74,,,,,,30,22,58,1
-Ajinkya Rahane,A Rahane,India,BAT,R,Right-arm medium,38,1,KKR,150,212,5367,125.61,1,5.00,,,,,,150,77,21,1
-Rovman Powell,R Powell,West Indies,BAT,R,Right-arm fast-medium,33,1,KKR,150,39,555,142.31,1,11.67,,,,,,150,62,24,1
-Tim Seifert,T Seifert,New Zealand,WK,R,,31,1,KKR,150,6,45,109.76,0,,,,,,,150,77,10,0
-Akash Deep,A Deep,India,PACE,R,Right-arm fast-medium,29,1,KKR,100,14,25,178.58,10,11.83,,,,,,100,24,38,0
-Manish Pandey,M Pandey,India,BAT,R,Right-arm medium,37,1,KKR,75,180,4012,121.84,0,,,,,,,75,71,20,1
-Rahul Tripathi,R Tripathi,India,BAT,R,Right-arm medium,35,1,KKR,75,100,2291,137.85,0,12.00,,,,,,75,69,20,0
-Umran Malik,U Malik,India,PACE,R,Right-arm fast,26,1,KKR,75,26,23,143.75,29,9.40,,,,,,75,24,63,1
-Anukul Roy,A Roy,India,AR,L,Left-arm orthodox,27,0,KKR,40,25,78,121.88,15,8.90,,,,,,30,47,53,1
-Daksh Kamra,D Kamra,India,AR,R,Right-arm legbreak,23,0,KKR,30,0,0,,0,,,,,,,30,48,45,0
-Kartik Tyagi,K Tyagi,India,PACE,R,Right-arm fast,25,0,KKR,30,34,24,92.31,33,9.98,,,,,,30,22,46,0
-Prashant Solanki,P Solanki,India,SPIN,R,Right-arm legbreak,26,0,KKR,30,2,0,,2,6.33,,,,,,30,25,58,0
-Sarthak Ranjan,S Ranjan,India,BAT,R,Right-arm offbreak,30,0,KKR,30,0,0,,0,,,,,,,30,60,20,0
-Rishabh Pant,R Pant,India,WK,L,Right-arm medium,28,1,LSG,2700,139,3865,146.80,0,,,,,,,200,84,10,1
-Nicholas Pooran,N Pooran,West Indies,WK,L,Right-arm offbreak,30,1,LSG,2100,104,2527,164.10,0,,,,,,,200,85,10,1
-Mayank Yadav,M Yadav,India,PACE,R,Right-arm fast,24,1,LSG,1100,10,5,100.00,9,10.15,,,,,,200,22,47,1
-Mohammed Shami,M Shami,India,PACE,R,Right-arm fast,36,1,LSG,1000,132,115,103.61,145,8.67,,,,,,200,26,78,1
-Avesh Khan,A Khan,India,PACE,R,Right-arm fast-medium,29,1,LSG,975,82,68,158.14,93,9.29,,,,,,200,28,67,1
-Josh Inglis,J Inglis,Australia,WK,R,,31,1,LSG,860,16,544,173.25,0,,,,,,,200,87,10,0
-Abdul Samad,A Samad,India,AR,R,Right-arm legbreak,24,0,LSG,420,71,857,148.79,2,13.16,,,,,,30,64,42,1
-Ayush Badoni,A Badoni,India,AR,R,Right-arm offbreak,26,0,LSG,400,66,1178,140.91,4,9.22,,,,,,50,66,47,1
-Mohsin Khan,M Khan,India,PACE,L,Left-arm fast-medium,28,0,LSG,400,31,25,89.29,38,8.41,,,,,,30,23,75,1
-Mitchell Marsh,M Marsh,Australia,AR,R,Right-arm fast-medium,34,1,LSG,340,68,1855,148.52,37,8.52,,,,,,200,76,76,1
-Mukul Choudhary,M Choudhary,India,WK,R,,22,0,LSG,260,10,170,141.67,0,,,,,,,30,59,10,0
-Shahbaz Ahmed,S Ahmed,India,AR,L,Left-arm orthodox,31,1,LSG,240,63,603,123.32,27,9.79,,,,,,100,53,43,1
-Akshat Raghuwanshi,A Raghuwanshi,India,BAT,R,Right-arm offbreak,23,0,LSG,220,3,29,116.00,0,,,,,,,30,59,20,0
-Aiden Markram,A Markram,South Africa,BAT,R,Right-arm offbreak,31,1,LSG,200,69,1671,135.53,6,9.61,,,,,,200,69,45,1
-Anrich Nortje,A Nortje,South Africa,PACE,R,Right-arm fast,32,1,LSG,200,49,49,98.00,61,9.09,,,,,,200,23,67,0
-Wanindu Hasaranga,W Hasaranga,Sri Lanka,AR,R,Right-arm legbreak,29,1,LSG,200,37,81,92.05,46,8.41,,,,,,200,49,75,0
-Naman Tiwari,N Tiwari,India,PACE,L,Left-arm fast-medium,20,0,LSG,100,0,0,,0,,,,,,,30,22,55,0
-Matthew Breetzke,M Breetzke,South Africa,WK,R,Right-arm medium,27,1,LSG,75,1,14,116.67,0,,,,,,,100,49,10,1
-Manimaran Siddharth,M Siddharth,India,SPIN,R,Left-arm orthodox,28,0,LSG,75,9,0,,9,9.13,,,,,,30,25,55,1
-Akash Singh,A Singh,India,PACE,R,Left-arm fast-medium,24,0,LSG,30,12,0,,13,9.86,,,,,,30,22,53,1
-Arjun Tendulkar,A Tendulkar,India,AR,L,Left-arm fast-medium,27,0,LSG,30,6,18,128.58,4,9.28,,,,,,30,48,45,1
-Arshin Kulkarni,A Kulkarni,India,AR,R,Right-arm fast-medium,21,0,LSG,30,4,26,78.79,0,,,,,,,30,46,45,1
-Digvesh Rathi,D Rathi,India,SPIN,R,Right-arm legbreak,26,0,LSG,30,23,3,37.50,19,9.08,,,,,,30,25,41,1
-Himmat Singh,H Singh,India,BAT,R,Right-arm offbreak,29,0,LSG,30,9,92,133.34,0,,,,,,,30,61,20,1
-Prince Yadav,P Yadav,India,PACE,R,Right-arm fast,24,1,LSG,30,20,5,45.46,19,9.14,,,,,,30,22,51,1
-Jasprit Bumrah,J Bumrah,India,PACE,R,Right-arm fast,32,1,MI,1800,158,75,87.21,187,7.34,,,,,,200,25,95,1
-Hardik Pandya,H Pandya,India,AR,R,Right-arm fast-medium,32,1,MI,1635,162,2955,146.29,82,9.36,,,,,,200,76,60,1
-Suryakumar Yadav,S Yadav,India,BAT,R,Right-arm offbreak,36,1,MI,1635,179,4581,148.59,0,8.00,,,,,,200,87,21,1
-Rohit Sharma,R Sharma,India,BAT,R,Right-arm offbreak,39,1,MI,1630,281,7329,132.92,15,8.02,,,,,,200,82,52,1
-Trent Boult,T Boult,New Zealand,PACE,R,Left-arm fast-medium,37,1,MI,1250,124,93,109.42,145,8.49,,,,,,200,26,82,1
-Deepak Chahar,D Chahar,India,PACE,R,Right-arm fast-medium,34,1,MI,925,103,142,137.87,96,8.30,,,,,,200,33,74,1
-Tilak Varma,T Varma,India,BAT,L,Right-arm offbreak,23,1,MI,800,68,1858,144.71,0,7.64,,,,,,200,78,30,1
-Will Jacks,W Jacks,England,AR,R,Right-arm offbreak,27,1,MI,525,28,602,158.84,10,9.86,,,,,,200,74,66,1
-Naman Dhir,N Dhir,India,BAT,R,Right-arm offbreak,26,1,MI,525,37,710,163.98,0,8.77,,,,,,30,76,22,1
-Allah Ghazanfar,A Ghazanfar,Afghanistan,SPIN,R,Right-arm offbreak,20,1,MI,480,11,2,66.67,15,10.02,,,,,,75,25,55,1
-Sherfane Rutherford,S Rutherford,West Indies,AR,L,Right-arm fast-medium,28,1,MI,260,31,520,142.86,1,8.63,,,,,,150,64,43,1
-Mitchell Santner,M Santner,New Zealand,AR,L,Left-arm orthodox,34,1,MI,200,35,136,110.57,30,7.51,,,,,,200,58,72,1
-Shardul Thakur,S Thakur,India,AR,R,Right-arm fast-medium,34,1,MI,200,114,349,132.70,119,9.57,,,,,,200,49,68,1
-Quinton de Kock,Q de Kock,South Africa,WK,L,,33,1,MI,100,118,3441,134.95,0,,,,,,,100,76,10,0
-Ryan Rickelton,R Rickelton,South Africa,WK,L,Left-arm orthodox,30,1,MI,100,26,836,168.21,0,,,,,,,100,84,10,1
-Corbin Bosch,C Bosch,South Africa,AR,R,Right-arm fast-medium,32,1,MI,75,9,97,153.97,13,9.20,,,,,,100,45,80,1
-Robin Minz,R Minz,India,WK,L,Left-arm orthodox,24,0,MI,65,4,12,63.16,0,,,,,,,30,53,10,1
-Ashwani Kumar,A Kumar,India,PACE,L,Left-arm fast-medium,25,0,MI,30,10,1,16.67,17,10.95,,,,,,30,22,53,1
-Atharva Ankolekar,A Ankolekar,India,AR,L,Left-arm orthodox,26,0,MI,30,0,0,,0,,,,,,,30,48,45,0
-Danish Malewar,D Malewar,India,BAT,R,Right-arm legbreak,22,0,MI,30,2,2,40.00,0,,,,,,,30,59,20,0
-Mayank Markande,M Markande,India,SPIN,R,Right-arm legbreak,28,0,MI,30,40,48,114.29,37,9.16,,,,,,30,28,60,1
-Mayank Rawat,M Rawat,India,AR,R,Right-arm offbreak,26,0,MI,30,1,0,,0,,,,,,,30,48,45,0
-Mohammad Izhar,M Izhar,India,PACE,R,Left-arm fast-medium,22,0,MI,30,0,0,,0,,,,,,,30,22,55,0
-Raghu Sharma,R Sharma,India,SPIN,R,Right-arm legbreak,33,0,MI,30,6,0,,1,8.67,,,,,,30,25,52,1
-Raj Angad Bawa,RA Bawa,India,AR,L,Right-arm fast-medium,23,0,MI,30,8,35,109.38,2,12.50,,,,,,30,47,45,1
-Shreyas Iyer,S Iyer,India,BAT,R,Right-arm legbreak,31,1,PBKS,2675,146,4229,136.73,0,7.00,,,,,,200,83,21,1
-Arshdeep Singh,A Singh,India,PACE,L,Left-arm fast-medium,27,1,PBKS,1800,96,32,68.09,111,9.19,,,,,,200,25,72,1
-Yuzvendra Chahal,Y Chahal,India,SPIN,R,Right-arm legbreak,36,1,PBKS,1800,188,37,43.03,233,8.05,,,,,,200,26,91,1
-Marcus Stoinis,M Stoinis,Australia,AR,R,Right-arm medium,37,1,PBKS,1100,122,2242,147.50,46,9.93,,,,,,200,75,52,1
-Marco Jansen,M Jansen,South Africa,AR,R,Left-arm fast,26,1,PBKS,700,48,192,110.35,45,9.63,,,,,,125,43,50,1
-Shashank Singh,S Singh,India,AR,R,Right-arm medium,34,0,PBKS,550,53,905,161.61,5,9.33,,,,,,50,83,48,1
-Ben Dwarshuis,B Dwarshuis,Australia,PACE,L,Left-arm fast-medium,32,1,PBKS,440,1,0,,1,12.75,,,,,,100,24,61,0
-Nehal Wadhera,N Wadhera,India,BAT,L,Right-arm legbreak,26,0,PBKS,420,44,784,140.00,0,7.76,,,,,,30,63,22,1
-Prabhsimran Singh,P Singh,India,WK,R,,26,0,PBKS,400,65,1815,156.34,0,,,,,,,50,78,10,1
-Priyansh Arya,P Arya,India,BAT,L,Right-arm offbreak,25,0,PBKS,380,30,839,192.00,0,,,,,,,30,80,20,1
-Cooper Connolly,C Connolly,Australia,AR,L,Left-arm orthodox,23,1,PBKS,300,14,491,163.13,0,,,,,,,200,88,42,0
-Mitchell Owen,M Owen,Australia,AR,R,Right-arm medium,25,1,PBKS,300,1,0,0.00,0,,,,,,,100,53,45,1
-Azmatullah Omarzai,A Omarzai,Afghanistan,AR,R,Right-arm fast-medium,26,1,PBKS,240,19,151,149.51,15,9.63,,,,,,150,55,45,1
-Lockie Ferguson,L Ferguson,New Zealand,PACE,R,Right-arm fast,35,1,PBKS,200,52,72,153.20,52,9.21,,,,,,200,29,59,1
-Vijaykumar Vyshak,V Vyshak,India,PACE,R,Right-arm medium,29,0,PBKS,180,26,16,100.00,26,10.47,,,,,,30,22,44,1
-Yash Thakur,Y Thakur,India,PACE,R,Right-arm fast-medium,27,1,PBKS,160,22,0,,27,10.60,,,,,,30,22,49,1
-Harpreet Brar,H Brar,India,SPIN,L,Left-arm orthodox,31,0,PBKS,150,51,249,120.88,37,8.00,,,,,,30,43,67,1
-Vishnu Vinod,V Vinod,India,WK,R,Right-arm medium-fast,32,0,PBKS,95,7,71,109.24,0,,,,,,,30,51,10,1
-Xavier Bartlett,X Bartlett,Australia,PACE,R,Right-arm fast-medium,27,1,PBKS,80,13,40,142.86,7,11.13,,,,,,75,26,36,1
-Harnoor Pannu,H Pannu,India,BAT,L,Right-arm legbreak,23,0,PBKS,30,0,0,,0,,,,,,,30,60,20,1
-Musheer Khan,M Khan,India,AR,R,Left-arm orthodox,21,0,PBKS,30,1,0,0.00,1,13.50,,,,,,30,48,45,1
-Praveen Dubey,P Dubey,India,AR,R,Right-arm legbreak,33,0,PBKS,30,5,23,69.70,2,8.54,,,,,,30,47,45,0
-Pyla Avinash,P Avinash,India,BAT,R,Right-arm fast-medium,26,0,PBKS,30,0,0,,0,,,,,,,30,60,20,1
-Suryansh Shedge,S Shedge,India,AR,R,Right-arm fast-medium,23,1,PBKS,30,12,165,163.37,0,13.33,,,,,,30,56,43,1
-Vishal Nishad,V Nishad,India,SPIN,R,Right-arm legbreak,21,0,PBKS,30,0,0,,0,,,,,,,30,25,55,0
-Virat Kohli,V Kohli,India,BAT,R,Right-arm medium,37,1,RCB,2100,283,9336,134.80,4,8.80,,,,,,200,91,30,1
-Josh Hazlewood,J Hazlewood,Australia,PACE,L,Right-arm fast-medium,35,1,RCB,1250,52,19,63.34,72,8.62,,,,,,200,24,78,1
-Phil Salt,P Salt,England,WK,R,Right-arm offbreak,30,1,RCB,1150,40,1258,174.48,0,,,,,,,200,86,10,1
-Rajat Patidar,R Patidar,India,BAT,R,Right-arm offbreak,33,1,RCB,1100,57,1612,164.49,0,,,,,,,200,84,20,1
-Jitesh Sharma,J Sharma,India,WK,R,,32,1,RCB,1100,71,1107,152.48,0,,,,,,,100,69,10,1
-Bhuvneshwar Kumar,B Kumar,India,PACE,R,Right-arm fast-medium,36,1,RCB,1075,206,354,93.90,226,7.71,,,,,,200,33,89,1
-Venkatesh Iyer,V Iyer,India,AR,L,Right-arm medium,31,1,RCB,700,68,1677,142.00,3,10.59,,,,,,200,73,42,0
-Rasikh Salam,R Salam,India,PACE,R,Right-arm fast-medium,26,0,RCB,600,25,43,102.39,29,10.01,,,,,,30,24,56,1
-Krunal Pandya,K Pandya,India,AR,L,Left-arm orthodox,35,1,RCB,575,158,1974,133.84,107,7.57,,,,,,200,64,76,1
-Mangesh Yadav,M Yadav,India,AR,L,Left-arm fast-medium,23,0,RCB,520,0,0,,0,,,,,,,30,48,45,0
-Yash Dayal,Y Dayal,India,PACE,R,Left-arm fast-medium,28,0,RCB,500,43,4,44.45,41,9.58,,,,,,30,22,53,1
-Tim David,T David,Australia,BAT,R,Right-arm offbreak,30,1,RCB,300,66,1151,177.08,0,18.00,,,,,,200,84,25,1
-Jacob Bethell,J Bethell,England,AR,L,Left-arm orthodox,22,1,RCB,260,9,163,140.52,0,,,,,,,125,73,50,1
-Suyash Sharma,S Sharma,India,SPIN,R,Right-arm legbreak,23,0,RCB,260,39,0,,27,8.89,,,,,,30,25,42,1
-Devdutt Padikkal,D Padikkal,India,BAT,L,Right-arm offbreak,26,1,RCB,200,90,2270,133.14,0,,,,,,,200,68,20,1
-Jacob Duffy,J Duffy,New Zealand,PACE,R,Right-arm fast-medium,32,1,RCB,200,6,0,,9,10.96,,,,,,200,23,84,0
-Nuwan Thushara,N Thushara,Sri Lanka,PACE,R,Right-arm fast-medium,32,1,RCB,160,8,0,,9,9.43,,,,,,75,23,76,1
-Romario Shepherd,R Shepherd,West Indies,AR,R,Right-arm fast-medium,31,1,RCB,150,33,268,175.17,17,11.77,,,,,,150,62,41,1
-Jordan Cox,J Cox,England,WK,R,Right-arm offbreak,25,1,RCB,75,0,0,,0,,,,,,,75,55,10,0
-Swapnil Singh,S Singh,India,SPIN,R,Left-arm orthodox,35,0,RCB,50,14,51,113.34,7,8.93,,,,,,30,27,54,1
-Abhinandan Singh,A Singh,India,PACE,R,Right-arm fast-medium,29,0,RCB,30,3,0,,3,12.62,,,,,,30,22,53,1
-Kanishk Chouhan,K Chouhan,India,AR,R,Right-arm offbreak,20,0,RCB,30,0,0,,0,,,,,,,30,48,45,0
-Satvik Deswal,S Deswal,India,AR,L,Left-arm wrist-spin,19,0,RCB,30,0,0,,0,,,,,,,30,48,45,0
-Vicky Ostwal,V Ostwal,India,SPIN,R,Left-arm orthodox,24,0,RCB,30,0,0,,0,,,,,,,30,25,55,0
-Vihaan Malhotra,V Malhotra,India,AR,L,Right-arm offbreak,19,0,RCB,30,0,0,,0,,,,,,,30,48,45,0
-Yashasvi Jaiswal,Y Jaiswal,India,BAT,L,Right-arm legbreak,24,1,RR,1800,82,2593,152.80,0,,,,,,,200,82,20,1
-Dhruv Jurel,D Jurel,India,WK,R,,25,1,RR,1400,57,1195,154.20,0,,,,,,,200,77,10,1
-Ravindra Jadeja,R Jadeja,India,AR,L,Left-arm orthodox,37,1,RR,1400,268,3526,130.60,180,7.71,,,,,,200,73,82,1
-Riyan Parag,R Parag,India,AR,R,Right-arm legbreak,24,1,RR,1400,97,1875,144.24,9,9.69,,,,,,200,70,35,1
-Jofra Archer,J Archer,England,PACE,R,Right-arm fast,31,1,RR,1250,68,326,144.89,84,8.22,,,,,,200,47,79,1
-Shimron Hetmyer,S Hetmyer,West Indies,BAT,L,,29,1,RR,1100,94,1560,149.29,0,,,,,,,200,73,12,1
-Ravi Bishnoi,R Bishnoi,India,SPIN,R,Right-arm legbreak,26,1,RR,720,86,45,65.22,83,8.36,,,,,,200,26,71,0
-Tushar Deshpande,T Deshpande,India,PACE,L,Right-arm fast-medium,31,1,RR,650,53,54,150.00,55,10.11,,,,,,100,26,51,1
-Sandeep Sharma,S Sharma,India,PACE,R,Right-arm fast-medium,33,0,RR,400,142,60,80.00,151,8.16,,,,,,50,25,83,1
-Nandre Burger,N Burger,South Africa,PACE,L,Left-arm fast-medium,31,1,RR,350,18,14,155.56,21,9.67,,,,,,150,22,57,1
-Adam Milne,A Milne,New Zealand,PACE,R,Right-arm fast,34,1,RR,240,11,25,80.65,7,9.73,,,,,,200,25,78,0
-Sam Curran,S Curran,England,AR,L,Left-arm fast-medium,28,1,RR,240,64,997,136.39,59,9.74,,,,,,200,63,54,1
-Kwena Maphaka,K Maphaka,South Africa,PACE,L,Left-arm fast-medium,20,1,RR,150,4,8,400.00,2,13.00,,,,,,75,23,57,1
-Vaibhav Sooryavanshi,V Sooryavanshi,India,BAT,L,Left-arm orthodox,15,1,RR,110,23,1028,228.96,0,,,,,,,30,93,20,1
-Donovan Ferreira,D Ferreira,South Africa,WK,R,Right-arm offbreak,28,1,RR,100,18,326,170.69,1,13.67,,,,,,75,69,17,1
-Ravi Singh,R Singh,India,WK,L,Right-arm legbreak,25,0,RR,95,1,4,200.00,0,,,,,,,30,55,10,0
-Sushant Mishra,S Mishra,India,PACE,L,Left-arm fast-medium,25,0,RR,90,2,1,33.34,2,10.58,,,,,,30,22,54,0
-Shubham Dubey,S Dubey,India,BAT,L,Right-arm offbreak,32,0,RR,80,20,220,153.85,0,,,,,,,30,63,20,1
-Kuldeep Sen,K Sen,India,PACE,R,Right-arm fast,29,1,RR,75,12,0,0.00,14,9.63,,,,,,75,22,56,0
-Yudhvir Singh,Y Singh,India,PACE,R,Right-arm fast-medium,29,0,RR,35,9,22,137.50,8,11.00,,,,,,30,23,53,1
-Lhuan-dre Pretorius,L Pretorius,South Africa,WK,L,,20,1,RR,30,2,7,87.50,0,,,,,,,100,67,10,1
-Aman Rao,A Rao,India,BAT,R,,22,0,RR,30,0,0,,0,,,,,,,30,60,12,0
-Brijesh Sharma,B Sharma,India,PACE,R,Right-arm medium,27,0,RR,30,13,2,50.00,14,9.89,,,,,,30,22,52,0
-Vignesh Puthur,V Puthur,India,SPIN,R,Left-arm wrist-spin,25,0,RR,30,5,0,,6,9.08,,,,,,30,25,57,0
-Yash Raj Punja,YR Punja,India,SPIN,R,Right-arm legbreak,20,0,RR,30,8,0,,9,9.30,,,,,,30,25,55,0
-Heinrich Klaasen,H Klaasen,South Africa,WK,R,Right-arm offbreak,35,1,SRH,2300,64,2104,166.72,0,,,,,,,200,93,10,1
-Pat Cummins,P Cummins,Australia,PACE,R,Right-arm fast,33,1,SRH,1800,80,642,152.50,87,8.89,,,,,,200,65,67,1
-Abhishek Sharma,A Sharma,India,AR,L,Left-arm orthodox,26,1,SRH,1400,92,2378,171.21,11,9.04,,,,,,200,86,40,1
-Travis Head,T Head,Australia,BAT,L,Right-arm offbreak,32,1,SRH,1400,53,1556,170.06,3,11.25,,,,,,200,85,22,1
-Liam Livingstone,L Livingstone,England,AR,R,Right-arm legbreak,33,1,SRH,1300,51,1066,155.17,13,9.02,,,,,,200,72,49,0
-Ishan Kishan,I Kishan,India,WK,L,Right-arm legbreak,28,1,SRH,1125,134,3600,143.55,0,,,,,,,200,79,10,1
-Harshal Patel,H Patel,India,PACE,R,Right-arm fast-medium,35,1,SRH,800,124,280,117.65,151,8.92,,,,,,200,37,83,1
-Nitish Kumar Reddy,NK Reddy,India,AR,R,Right-arm fast-medium,23,1,SRH,600,42,787,145.48,13,10.65,,,,,,200,70,36,1
-Jack Edwards,J Edwards,Australia,AR,R,Right-arm medium,26,1,SRH,300,0,0,,0,,,,,,,50,48,45,0
-Salil Arora,S Arora,India,WK,R,,23,0,SRH,150,14,156,159.19,0,,,,,,,30,59,10,0
-Eshan Malinga,E Malinga,Sri Lanka,PACE,L,Right-arm fast-medium,25,1,SRH,120,22,7,41.18,33,9.20,,,,,,30,23,68,1
-Brydon Carse,B Carse,England,PACE,R,Right-arm fast,31,1,SRH,100,0,0,,0,,,,,,,100,25,61,1
-Jaydev Unadkat,J Unadkat,India,PACE,R,Left-arm fast-medium,34,1,SRH,100,116,201,118.94,114,8.94,,,,,,100,34,70,1
-Kamindu Mendis,K Mendis,Sri Lanka,AR,L,Right-arm offbreak,27,1,SRH,75,5,92,133.34,2,8.57,,,,,,75,56,46,1
-Shivam Mavi,S Mavi,India,PACE,R,Right-arm fast-medium,27,1,SRH,75,32,51,91.08,30,8.71,,,,,,75,23,61,0
-Zeeshan Ansari,Z Ansari,India,SPIN,R,Right-arm legbreak,26,0,SRH,40,10,0,,6,9.84,,,,,,30,25,44,1
-Harsh Dubey,H Dubey,India,AR,L,Left-arm orthodox,24,1,SRH,30,11,13,144.45,13,10.19,,,,,,100,48,49,1
-Amit Kumar,A Kumar,India,SPIN,R,Right-arm legbreak,23,0,SRH,30,0,0,,0,,,,,,,30,25,55,0
-Aniket Verma,A Verma,India,BAT,R,Right-arm medium,24,0,SRH,30,24,315,160.72,0,,,,,,,30,65,20,1
-Krains Fuletra,K Fuletra,India,SPIN,R,Left-arm wrist-spin,22,0,SRH,30,0,0,,0,,,,,,,30,25,55,0
-Onkar Tarmale,O Tarmale,India,PACE,R,Right-arm fast-medium,24,0,SRH,30,0,0,,0,,,,,,,30,22,55,0
-Praful Hinge,P Hinge,India,PACE,R,Right-arm fast-medium,24,0,SRH,30,7,3,33.34,14,11.73,,,,,,30,22,53,0
-Sakib Hussain,S Hussain,India,PACE,R,Right-arm fast-medium,21,0,SRH,30,11,5,71.43,15,9.45,,,,,,30,22,58,0
-Shivang Kumar,S Kumar,India,AR,R,Left-arm wrist-spin,24,0,SRH,30,13,53,115.22,9,9.62,,,,,,30,47,42,0
-Smaran Ravichandran,S Ravichandran,India,BAT,L,Right-arm offbreak,23,0,SRH,30,6,19,76.00,0,,,,,,,30,57,20,1
-Adam Zampa,A Zampa,Australia,SPIN,R,Right-arm legbreak,34,1,,,22,15,62.50,31,8.38,,,,,,200,25,76,0
-Alzarri Joseph,A Joseph,West Indies,PACE,R,Right-arm fast,29,1,,,22,27,84.38,21,9.55,,,,,,200,25,53,0
-Ben Stokes,B Stokes,England,AR,L,Right-arm fast-medium,35,1,,,45,935,133.95,28,8.64,,,,,,200,62,56,0
-Dan Lawrence,D Lawrence,England,BAT,R,Right-arm offbreak,29,1,,,0,0,,0,,,,,,,200,60,20,0
-Daryl Mitchell,D Mitchell,New Zealand,AR,R,Right-arm medium,35,1,,,15,351,131.46,1,12.12,,,,,,200,59,43,0
-David Warner,D Warner,Australia,BAT,L,Right-arm legbreak,39,1,,,184,6567,139.66,0,12.00,,,,,,200,93,20,0
-Devon Conway,D Conway,New Zealand,WK,L,Right-arm medium,35,1,,,29,1080,139.72,0,,,,,,,200,79,10,0
-Faf du Plessis,F du Plessis,South Africa,BAT,R,Right-arm legbreak,42,1,,,154,4773,135.79,0,16.00,,,,,,200,84,20,0
-Gerald Coetzee,G Coetzee,South Africa,PACE,R,Right-arm fast,25,1,,,14,31,93.94,15,10.37,,,,,,200,23,51,0
-Glenn Maxwell,G Maxwell,Australia,AR,R,Right-arm offbreak,37,1,,,141,2820,155.12,41,8.30,,,,,,200,77,60,0
-Gus Atkinson,G Atkinson,England,PACE,R,Right-arm fast-medium,28,1,,,0,0,,0,,,,,,,200,22,55,0
-Harry Brook,H Brook,England,BAT,R,Right-arm medium,27,1,,,11,190,123.38,0,,,,,,,200,56,20,0
-Jake Fraser-McGurk,J Fraser-McGurk,Australia,BAT,R,Right-arm legbreak,24,1,,,15,385,199.48,0,,,,,,,200,70,20,0
-Jamie Smith,J Smith,England,WK,R,,26,1,,,0,0,,0,,,,,,,200,55,10,0
-Kane Williamson,K Williamson,New Zealand,BAT,R,Right-arm offbreak,36,1,,,79,2132,125.63,0,10.33,,,,,,200,71,21,0
-Maheesh Theekshana,M Theekshana,Sri Lanka,SPIN,R,Right-arm offbreak,26,1,,,38,17,50.00,36,8.27,,,,,,200,26,61,0
-Mayank Agarwal,M Agarwal,India,BAT,R,Right-arm offbreak,35,1,,,130,2764,133.79,0,,,,,,,200,67,20,0
-Michael Bracewell,M Bracewell,New Zealand,AR,L,Right-arm offbreak,35,1,,,5,58,123.40,6,8.64,,,,,,200,50,49,0
-Moeen Ali,M Ali,England,AR,L,Right-arm offbreak,39,1,,,73,1167,139.76,41,7.23,,,,,,200,63,81,0
-Mujeeb Ur Rahman,M Ur Rahman,Afghanistan,SPIN,R,Right-arm offbreak,25,1,,,20,12,80.00,20,8.34,,,,,,200,25,62,0
-Sean Abbott,S Abbott,Australia,AR,R,Right-arm fast-medium,34,1,,,3,22,122.22,1,11.56,,,,,,200,48,42,0
-Shakib Al Hasan,S Al Hasan,Bangladesh,AR,L,Left-arm orthodox,39,1,,,71,795,124.41,63,7.44,,,,,,200,53,76,0
-Steve Smith,S Smith,Australia,BAT,R,Right-arm legbreak,37,1,,,103,2495,128.28,0,15.00,,,,,,200,72,20,0
-Umesh Yadav,U Yadav,India,PACE,R,Right-arm fast,38,1,,,148,208,103.48,144,8.51,,,,,,200,31,77,0
-Chris Jordan,C Jordan,England,PACE,R,Right-arm fast-medium,37,1,,,34,81,105.19,30,9.62,,,,,,150,25,49,0
-Chris Woakes,C Woakes,England,AR,R,Right-arm fast-medium,37,1,,,21,78,101.30,30,8.97,,,,,,150,45,68,0
-Evin Lewis,E Lewis,West Indies,BAT,L,Right-arm medium,34,1,,,27,654,137.11,0,,,,,,,150,64,20,0
-Jhye Richardson,J Richardson,Australia,PACE,R,Right-arm fast,30,1,,,4,17,65.38,3,10.47,,,,,,150,23,49,0
-Mohammad Nabi,M Nabi,Afghanistan,AR,R,Right-arm offbreak,41,1,,,24,221,145.39,15,7.44,,,,,,150,52,59,0
-Naveen-ul-Haq,Naveen-ul-Haq,Afghanistan,PACE,R,Right-arm medium-fast,27,1,,,18,18,72.00,25,9.16,,,,,,150,23,65,0
-Rahmanullah Gurbaz,R Gurbaz,Afghanistan,WK,R,,24,1,,,18,363,134.94,0,,,,,,,150,58,10,0
-Riley Meredith,R Meredith,Australia,PACE,R,Right-arm fast,30,1,,,18,0,0.00,19,9.46,,,,,,150,22,54,0
-Sam Billings,S Billings,England,WK,R,,35,1,,,30,503,129.64,0,,,,,,,150,54,10,0
-Spencer Johnson,S Johnson,Australia,PACE,L,Left-arm fast,30,1,,,12,8,66.67,7,10.33,,,,,,150,22,40,0
-Aaron Hardie,A Hardie,Australia,AR,R,Right-arm medium-fast,27,1,,,0,0,,0,,,,,,,125,48,45,0
-Adil Rashid,A Rashid,England,SPIN,R,Right-arm legbreak,38,1,,,3,22,137.50,2,9.10,,,,,,100,26,53,0
-Alex Hales,A Hales,England,BAT,R,Right-arm medium,37,1,,,6,148,125.42,0,,,,,,,100,58,20,0
-Ali Khan,A Khan,USA,PACE,R,Right-arm fast-medium,35,1,,,0,0,,0,,,,,,,100,22,55,0
-Ashton Agar,A Agar,Australia,SPIN,L,Left-arm orthodox,32,1,,,0,0,,0,,,,,,,100,25,55,0
-Bas de Leede,B de Leede,Netherlands,AR,R,Right-arm medium,26,1,,,0,0,,0,,,,,,,100,48,45,0
-Ben McDermott,B McDermott,Australia,BAT,R,Right-arm medium,31,1,,,0,0,,0,,,,,,,100,60,20,0
-Blessing Muzarabani,B Muzarabani,Zimbabwe,PACE,R,Right-arm fast-medium,29,1,,,2,0,,4,10.71,,,,,,100,22,54,0
-Brandon King,B King,West Indies,BAT,R,,31,1,,,0,0,,0,,,,,,,100,60,12,0
-Charith Asalanka,C Asalanka,Sri Lanka,AR,L,Right-arm offbreak,29,1,,,0,0,,0,,,,,,,100,48,45,0
-David Payne,D Payne,England,PACE,R,Left-arm fast-medium,35,1,,,2,6,120.00,2,14.00,,,,,,100,22,55,0
-Dian Forrester,D Forrester,South Africa,AR,L,Right-arm fast,26,1,,,0,0,,0,,,,,,,100,48,45,0
-Dilshan Madushanka,D Madushanka,Sri Lanka,PACE,R,Left-arm fast-medium,26,1,,,1,0,,1,9.00,,,,,,100,22,55,0
-Dunith Wellalage,D Wellalage,Sri Lanka,AR,L,Left-arm orthodox,23,1,,,0,0,,0,,,,,,,100,48,45,0
-Fazalhaq Farooqi,F Farooqi,Afghanistan,PACE,R,Left-arm fast,26,1,,,12,5,33.33,6,10.32,,,,,,100,22,38,0
-George Linde,G Linde,South Africa,AR,L,Left-arm orthodox,34,1,,,3,31,147.62,1,8.92,,,,,,100,48,44,0
-Gudakesh Motie,G Motie,West Indies,AR,L,Left-arm orthodox,31,1,,,0,0,,0,,,,,,,100,48,45,0
-Gulbadin Naib,G Naib,Afghanistan,AR,R,Right-arm fast-medium,35,1,,,2,19,126.67,0,12.00,,,,,,100,48,45,0
-Ibrahim Zadran,I Zadran,Afghanistan,BAT,R,Right-arm medium-fast,24,1,,,0,0,,0,,,,,,,100,60,20,0
-Ish Sodhi,I Sodhi,New Zealand,SPIN,R,Right-arm legbreak,33,1,,,8,7,41.18,9,6.70,,,,,,100,25,66,0
-Jimmy Neesham,J Neesham,New Zealand,AR,L,Right-arm medium-fast,36,1,,,14,92,98.92,8,9.28,,,,,,100,43,43,0
-Jonny Bairstow,J Bairstow,England,WK,R,,37,1,,,52,1674,146.07,0,,,,,,,100,77,10,0
-Josh Little,J Little,Ireland,PACE,R,Left-arm fast,26,1,,,11,0,,11,8.92,,,,,,100,22,57,0
-Josh Philippe,J Philippe,Australia,WK,R,,29,1,,,5,78,101.30,0,,,,,,,100,51,10,0
-Keshav Maharaj,K Maharaj,South Africa,SPIN,R,Left-arm orthodox,36,1,,,2,1,50.00,2,6.50,,,,,,100,25,58,0
-Kusal Mendis,K Mendis,Sri Lanka,WK,R,Right-arm legbreak,31,1,,,1,20,200.00,0,,,,,,,100,56,10,0
-Kusal Perera,K Perera,Sri Lanka,WK,L,Right-arm medium,36,1,,,2,14,107.69,0,,,,,,,100,54,10,0
-Kyle Mayers,K Mayers,West Indies,AR,L,Right-arm medium,34,1,,,13,379,144.11,0,8.43,,,,,,100,65,45,0
-Litton Das,L Das,Bangladesh,WK,R,Right-arm offbreak,31,1,,,1,4,100.00,0,,,,,,,100,55,10,0
-Mark Chapman,M Chapman,New Zealand,AR,L,Left-arm orthodox,32,1,,,0,0,,0,,,,,,,100,48,45,0
-Mark Wood,M Wood,England,PACE,R,Right-arm fast,36,1,,,5,12,150.00,11,8.95,,,,,,100,23,58,0
-Navdeep Saini,N Saini,India,PACE,R,Right-arm fast,33,1,,,1,0,,0,17.00,,,,,,100,22,55,0
-Obed McCoy,O McCoy,West Indies,PACE,L,Left-arm fast-medium,29,1,,,8,8,160.00,11,9.32,,,,,,100,23,58,0
-Ottneil Baartman,O Baartman,South Africa,PACE,R,Right-arm fast-medium,33,1,,,0,0,,0,,,,,,,100,22,55,0
-Paul Stirling,P Stirling,Ireland,BAT,R,Right-arm offbreak,36,1,,,0,0,,0,,,,,,,100,60,20,0
-Rassie van der Dussen,R van der Dussen,South Africa,BAT,R,Right-arm legbreak,37,1,,,3,22,91.67,0,,,,,,,100,58,20,0
-Reeza Hendricks,R Hendricks,South Africa,BAT,R,Right-arm offbreak,37,1,,,0,0,,0,,,,,,,100,60,20,0
-Rehan Ahmed,R Ahmed,England,AR,R,Right-arm legbreak,22,1,,,0,0,,0,,,,,,,100,48,45,0
-Rishad Hossain,R Hossain,Bangladesh,AR,R,Right-arm legbreak,24,1,,,0,0,,0,,,,,,,100,48,45,0
-Sandeep Warrier,S Warrier,India,PACE,R,Right-arm medium-fast,35,1,,,10,0,,8,9.04,,,,,,100,22,55,0
-Saurabh Netravalkar,S Netravalkar,USA,PACE,R,Left-arm fast-medium,34,1,,,0,0,,0,,,,,,,100,22,55,0
-Shai Hope,S Hope,West Indies,WK,R,Left-arm medium,32,1,,,9,183,150.00,0,,,,,,,100,59,10,0
-Sikandar Raza,S Raza,Zimbabwe,AR,R,Right-arm offbreak,40,1,,,9,182,133.82,3,10.07,,,,,,100,54,42,0
-Tabraiz Shamsi,T Shamsi,South Africa,SPIN,R,Left-arm wrist-spin,36,1,,,5,2,50.00,3,9.05,,,,,,100,25,51,0
-Tanveer Sangha,T Sangha,Australia,SPIN,R,Right-arm legbreak,24,1,,,0,0,,0,,,,,,,100,25,55,0
-Tom Curran,T Curran,England,AR,R,Right-arm fast-medium,31,1,,,13,127,118.69,13,10.84,,,,,,100,50,45,0
-Towhid Hridoy,T Hridoy,Bangladesh,BAT,R,Right-arm offbreak,25,1,,,0,0,,0,,,,,,,100,60,20,0
-Tymal Mills,T Mills,England,PACE,R,Left-arm fast,34,1,,,10,8,57.14,11,9.85,,,,,,100,22,53,0
-Waqar Salamkheil,W Salamkheil,Afghanistan,SPIN,R,Left-arm wrist-spin,24,1,,,0,0,,0,,,,,,,100,25,55,0
-Wiaan Mulder,W Mulder,South Africa,AR,R,Right-arm medium,28,1,,,1,9,81.82,0,16.00,,,,,,100,47,45,0
-Will O'Rourke,W O'Rourke,New Zealand,PACE,R,Right-arm fast,25,1,,,3,0,,6,12.77,,,,,,100,22,54,0
-William Sutherland,W Sutherland,Australia,AR,R,Right-arm medium-fast,26,1,,,0,0,,0,,,,,,,100,48,45,0
-Chetan Sakariya,C Sakariya,India,PACE,L,Left-arm medium-fast,28,1,,,20,20,64.52,20,8.62,,,,,,75,23,60,0
-Dasun Shanaka,D Shanaka,Sri Lanka,AR,R,Right-arm medium,35,1,,,10,89,123.61,1,10.00,,,,,,75,47,44,0
-Deepak Hooda,D Hooda,India,AR,R,Right-arm offbreak,31,1,,,125,1497,127.62,10,8.64,,,,,,75,56,43,0
-KS Bharat,KS Bharat,India,WK,R,,32,1,,,10,199,122.09,0,,,,,,,75,56,10,0
-Lizaad Williams,L Williams,South Africa,PACE,L,Right-arm medium-fast,32,1,,,2,1,50.00,1,12.00,,,,,,75,22,52,0
-Nathan Smith,N Smith,New Zealand,AR,R,Right-arm medium-fast,28,1,,,0,0,,0,,,,,,,75,48,45,0
-Reece Topley,R Topley,England,PACE,R,Left-arm fast-medium,32,1,,,6,3,50.00,5,11.10,,,,,,75,22,49,0
-Richard Gleeson,R Gleeson,England,PACE,R,Right-arm fast-medium,38,1,,,3,2,100.00,2,9.71,,,,,,75,22,51,0
-Sediqullah Atal,S Atal,Afghanistan,BAT,L,,25,1,,,1,22,137.50,0,,,,,,,75,60,12,0
-Shamar Joseph,S Joseph,West Indies,PACE,L,Right-arm fast,27,1,,,1,0,,0,11.75,,,,,,75,22,54,0
-Taskin Ahmed,T Ahmed,Bangladesh,PACE,L,Right-arm fast,31,1,,,0,0,,0,,,,,,,75,22,55,0
-Karn Sharma,K Sharma,India,AR,L,Right-arm legbreak,38,0,,,90,352,119.32,83,8.38,,,,,,50,45,76,0
-Mahipal Lomror,M Lomror,India,AR,L,Left-arm orthodox,26,0,,,40,527,141.29,1,8.47,,,,,,50,59,45,0
-Mandeep Singh,M Singh,India,AR,R,Right-arm medium,34,0,,,111,1706,122.91,0,13.00,,,,,,50,57,45,0
-Rajvardhan Hangargekar,R Hangargekar,India,AR,R,Right-arm fast,23,0,,,2,0,,3,10.00,,,,,,40,48,46,0
-Abhimanyu Easwaran,A Easwaran,India,BAT,R,Right-arm legbreak,31,0,,,0,0,,0,,,,,,,30,60,20,0
-Abhinav Manohar,A Manohar,India,AR,R,Right-arm legbreak,32,0,,,27,292,124.26,0,,,,,,,30,48,45,0
-Akash Madhwal,A Madhwal,India,PACE,R,Right-arm medium-fast,32,0,,,17,8,57.14,23,10.06,,,,,,30,22,56,0
-Anmolpreet Singh,A Singh,India,BAT,R,Right-arm offbreak,28,0,,,9,139,120.87,0,,,,,,,30,55,20,0
-Aryan Juyal,A Juyal,India,WK,R,,24,0,,,0,0,,0,,,,,,,30,55,10,0
-Atharva Taide,A Taide,India,BAT,L,Left-arm orthodox,26,0,,,10,260,146.89,0,24.00,,,,,,30,64,20,0
-Avanish Rao Aravelly,AR Aravelly,India,WK,L,,21,0,,,0,0,,0,,,,,,,30,55,10,0
-Bevon Jacobs,B Jacobs,New Zealand,BAT,R,Right-arm medium,24,1,,,0,0,,0,,,,,,,30,60,20,0
-Chama Milind,C Milind,India,PACE,L,Left-arm medium,32,0,,,0,0,,0,,,,,,,30,22,55,0
-Connor Esterhuizen,C Esterhuizen,South Africa,BAT,R,,25,1,,,0,0,,0,,,,,,,30,60,12,0
-Daniel Lategan,D Lategan,England,BAT,L,Right-arm offbreak,20,0,,,0,0,,0,,,,,,,30,60,20,0
-Darshan Nalkande,D Nalkande,India,PACE,R,Right-arm fast-medium,27,0,,,6,12,100.00,6,10.57,,,,,,30,22,54,0
-Emanjot Chahal,E Chahal,India,AR,R,Left-arm orthodox,22,0,,,0,0,,0,,,,,,,30,48,45,0
-Jalaj Saxena,J Saxena,India,AR,R,Right-arm offbreak,39,0,,,1,0,,0,9.00,,,,,,30,48,46,0
-KC Cariappa,KC Cariappa,India,SPIN,R,Right-arm legbreak,32,0,,,11,24,114.29,8,9.67,,,,,,30,26,47,0
-KM Asif,KM Asif,India,PACE,R,Right-arm medium,33,0,,,7,0,0.00,7,10.42,,,,,,30,22,52,0
-Kamlesh Nagarkoti,K Nagarkoti,India,PACE,R,Right-arm fast,26,0,,,12,22,66.67,5,9.50,,,,,,30,23,46,0
-Karan Lal,K Lal,India,AR,R,Right-arm offbreak,25,0,,,0,0,,0,,,,,,,30,48,45,0
-Karim Janat,K Janat,Afghanistan,BAT,R,Right-arm medium-fast,28,1,,,1,0,,0,30.00,,,,,,30,60,20,0
-Krish Bhagat,K Bhagat,India,PACE,R,Right-arm medium,21,0,,,3,10,47.62,0,10.50,,,,,,30,23,52,0
-Krishnan Shrijith,K Shrijith,India,WK,L,,30,0,,,0,0,,0,,,,,,,30,55,10,0
-Kuldip Yadav,K Yadav,India,PACE,L,Left-arm fast-medium,29,0,,,3,0,0.00,2,9.33,,,,,,30,22,53,0
-Kulwant Khejroliya,K Khejroliya,India,PACE,L,Left-arm medium-fast,34,0,,,9,0,,6,11.01,,,,,,30,22,47,0
-Kumar Kartikeya,K Kartikeya,India,SPIN,R,Left-arm wrist-spin,28,0,,,16,12,70.59,12,8.66,,,,,,30,25,56,0
-Kunal Rathore,K Rathore,India,WK,L,,23,0,,,1,0,0.00,0,,,,,,,30,54,10,0
-Luvnith Sisodia,L Sisodia,India,WK,L,Left-arm medium,26,0,,,0,0,,0,,,,,,,30,55,10,0
-Macneil Noronha,M Noronha,India,AR,R,Right-arm offbreak,25,0,,,0,0,,0,,,,,,,30,48,45,0
-Manan Vohra,M Vohra,India,BAT,R,Right-arm fast-medium,33,0,,,56,1083,130.64,0,,,,,,,30,59,20,0
-Manoj Bhandage,M Bhandage,India,AR,L,Right-arm medium-fast,27,0,,,1,1,25.00,0,,,,,,,30,48,45,0
-Mayank Dagar,M Dagar,India,SPIN,R,Left-arm orthodox,29,0,,,8,0,0.00,2,8.89,,,,,,30,25,50,0
-Mohit Rathee,M Rathee,India,AR,R,Right-arm legbreak,27,0,,,1,1,50.00,0,14.50,,,,,,30,48,45,0
-Murugan Ashwin,M Ashwin,India,SPIN,R,Right-arm legbreak,36,0,,,44,35,70.00,35,8.01,,,,,,30,26,63,0
-Priyam Garg,P Garg,India,BAT,R,Right-arm medium,25,0,,,23,273,113.28,0,,,,,,,30,47,20,0
-RS Ambrish,RS Ambrish,India,AR,L,Right-arm medium,19,0,,,0,0,,0,,,,,,,30,48,45,0
-Rohan Kunnummal,R Kunnummal,India,BAT,R,Right-arm offbreak,28,0,,,0,0,,0,,,,,,,30,60,20,0
-Sachin Baby,S Baby,India,BAT,L,Right-arm offbreak,37,0,,,20,144,122.03,2,4.80,,,,,,30,55,22,0
-Salman Nizar,S Nizar,India,BAT,L,Right-arm offbreak,29,0,,,0,0,,0,,,,,,,30,60,20,0
-Sanvir Singh,S Singh,India,AR,R,Right-arm medium,29,0,,,6,25,119.05,0,,,,,,,30,48,45,0
-Saurabh Dubey,S Dubey,India,PACE,R,Left-arm fast-medium,28,0,,,4,4,200.00,5,8.26,,,,,,30,22,58,0
-Shaik Rasheed,S Rasheed,India,BAT,R,Right-arm legbreak,22,0,,,5,71,112.70,0,,,,,,,30,56,20,0
-Simarjeet Singh,S Singh,India,PACE,R,Right-arm medium-fast,28,0,,,14,10,66.67,11,10.00,,,,,,30,22,49,0
-Tanay Thyagarajan,T Thyagarajan,India,AR,L,Left-arm orthodox,30,0,,,0,0,,0,,,,,,,30,48,45,0
-Tanush Kotian,T Kotian,India,AR,R,Right-arm offbreak,27,0,,,1,24,77.42,0,,,,,,,30,48,45,0
-Tejas Baroka,T Baroka,India,SPIN,R,Right-arm legbreak,30,0,,,1,0,,0,9.43,,,,,,30,25,55,0
-Utkarsh Singh,U Singh,India,AR,L,Right-arm offbreak,28,0,,,0,0,,0,,,,,,,30,48,45,0
-Vidwath Kaverappa,V Kaverappa,India,PACE,R,Right-arm fast-medium,27,0,,,1,0,,2,9.00,,,,,,30,22,56,0
-Vijay Shankar,V Shankar,India,AR,R,Right-arm medium,35,0,,,78,1233,129.79,9,8.67,,,,,,30,62,47,0
-Yash Dhull,Y Dhull,India,BAT,R,Right-arm offbreak,23,0,,,4,16,69.57,0,,,,,,,30,58,20,0
-Yuvraj Chaudhary,Y Chaudhary,India,AR,L,Left-arm orthodox,24,0,,,0,0,,0,,,,,,,30,48,45,0
+Name,Short,Country,Role,BatHand,BowlStyle,Age,Capped,Team2026,Price2026Lakh,IplMatches,IplRuns,IplSR,IplWkts,IplEcon,T20Matches,T20Runs,T20SR,T20Wkts,T20Econ,BasePriceLakh,BatRating,BowlRating,Retained2026,Tags,LastMatches,LastRuns,LastSR,LastWkts,LastEcon,BatRatingV1,BowlRatingV1
+Ruturaj Gaikwad,R Gaikwad,India,BAT,R,Right-arm offbreak,29,1,CSK,1800,85,2839,135.65,0,,,,,,,200,80,20,1,Opener|Captain,,,,,,80,20
+Sanju Samson,S Samson,India,WK,R,Right-arm offbreak,31,1,CSK,1800,190,5181,141.14,0,,,,,,,200,84,10,1,Opener|KeeperBat|Captain,,,,,,84,10
+Kartik Sharma,K Sharma,India,WK,R,,20,0,CSK,1420,11,295,136.58,0,,,,,,,30,61,10,0,Anchor,,,,,,64,10
+Prashant Veer,P Veer,India,AR,L,Left-arm orthodox,20,0,CSK,1420,6,91,135.83,0,12.50,,,,,,30,53,45,0,FingerSpin,,,,,,54,45
+Shivam Dube,S Dube,India,AR,L,Right-arm medium,33,1,CSK,1200,92,2129,145.43,6,10.79,,,,,,200,76,58,1,,,,,,,76,60
+Noor Ahmad,N Ahmad,Afghanistan,SPIN,R,Left-arm wrist-spin,21,1,CSK,1000,51,31,53.45,61,8.17,,,,,,200,27,75,1,WristSpin|Mystery,,,,,,28,78
+Rahul Chahar,R Chahar,India,SPIN,R,Right-arm legbreak,27,1,CSK,520,80,129,104.04,75,7.78,,,,,,100,27,74,0,WristSpin,,,,,,28,75
+Khaleel Ahmed,K Ahmed,India,PACE,R,Left-arm fast-medium,28,1,CSK,480,76,2,22.23,91,8.96,,,,,,200,22,71,1,PowerplayPace|LeftArmPace,,,,,,22,72
+MS Dhoni,MS Dhoni,India,WK,R,Right-arm medium,45,0,CSK,400,278,5439,137.46,0,,,,,,,50,62,10,1,Captain,,,,,,89,10
+Anshul Kamboj,A Kamboj,India,AR,R,Right-arm fast-medium,25,1,CSK,340,25,74,142.31,31,9.97,,,,,,30,50,54,1,,,,,,,51,58
+Dewald Brevis,D Brevis,South Africa,BAT,R,Right-arm legbreak,23,1,CSK,220,27,606,146.03,1,,,,,,,150,64,21,1,,,,,,,66,21
+Gurjapneet Singh,G Singh,India,PACE,R,Left-arm fast-medium,27,0,CSK,220,8,0,,4,9.26,,,,,,30,22,50,1,LeftArmPace,,,,,,22,49
+Akeal Hosein,A Hosein,West Indies,SPIN,L,Left-arm orthodox,33,1,CSK,200,8,21,161.54,9,8.30,,,,,,200,39,79,0,FingerSpin,,,,,,42,84
+Matt Henry,M Henry,New Zealand,PACE,R,Right-arm fast-medium,34,1,CSK,200,9,7,70.00,4,11.52,,,,,,200,22,72,0,,,,,,,23,77
+Nathan Ellis,N Ellis,Australia,PACE,R,Right-arm fast-medium,32,1,CSK,200,17,19,76.00,19,8.67,,,,,,100,24,60,1,,,,,,,24,62
+Jamie Overton,J Overton,England,AR,R,Right-arm fast,32,1,CSK,150,13,151,162.37,14,9.76,,,,,,150,55,72,1,Finisher,,,,,,57,78
+Matthew Short,M Short,Australia,BAT,R,Right-arm offbreak,30,1,CSK,150,9,177,123.78,0,8.93,,,,,,150,63,27,0,,,,,,,64,27
+Sarfaraz Khan,S Khan,India,BAT,R,Right-arm legbreak,28,1,CSK,75,58,746,137.39,0,,,,,,,75,61,20,0,,,,,,,61,20
+Zak Foulkes,Z Foulkes,New Zealand,AR,R,Right-arm medium,24,1,CSK,75,0,0,,0,,,,,,,75,50,60,0,,,,,,,50,60
+Aman Khan,A Khan,India,AR,R,Right-arm medium,29,0,CSK,40,12,115,110.58,0,13.00,,,,,,30,46,45,0,,,,,,,45,45
+Ayush Mhatre,A Mhatre,India,BAT,R,Right-arm offbreak,19,0,CSK,30,13,441,183.75,0,,,,,,,30,71,20,1,Opener,,,,,,78,20
+Mukesh Choudhary,M Choudhary,India,PACE,L,Left-arm fast-medium,30,0,CSK,30,24,8,100.00,25,9.58,,,,,,30,22,55,1,LeftArmPace,,,,,,22,55
+Ramakrishna Ghosh,R Ghosh,India,AR,R,Right-arm fast-medium,29,0,CSK,30,1,0,,1,8.00,,,,,,30,48,46,1,,,,,,,48,46
+Shreyas Gopal,S Gopal,India,SPIN,R,Right-arm legbreak,33,0,CSK,30,52,180,106.51,52,8.16,,,,,,30,30,73,1,WristSpin,,,,,,33,75
+Urvil Patel,U Patel,India,WK,R,,27,0,CSK,30,10,197,205.21,0,,,,,,,30,59,10,1,Finisher,,,,,,60,10
+Axar Patel,A Patel,India,AR,L,Left-arm orthodox,32,1,DC,1650,176,2089,133.74,139,7.41,,,,,,200,63,79,1,FingerSpin|Captain,,,,,,63,80
+KL Rahul,KL Rahul,India,WK,R,,34,1,DC,1400,159,5815,139.15,0,,,,,,,200,95,10,1,Opener|KeeperBat|Captain,,,,,,96,10
+Kuldeep Yadav,K Yadav,India,SPIN,L,Left-arm wrist-spin,31,1,DC,1325,110,210,83.01,112,8.26,,,,,,200,30,79,1,WristSpin|Mystery,,,,,,33,79
+Mitchell Starc,M Starc,Australia,PACE,L,Left-arm fast,36,1,DC,1175,57,111,91.74,76,8.79,,,,,,200,22,72,1,PowerplayPace|LeftArmPace,,,,,,26,77
+T Natarajan,T Natarajan,India,PACE,L,Left-arm fast-medium,35,1,DC,1075,73,4,57.15,72,9.21,,,,,,200,20,59,1,DeathPace|LeftArmPace,,,,,,22,61
+Tristan Stubbs,T Stubbs,South Africa,WK,R,Right-arm offbreak,26,1,DC,1000,46,980,151.24,4,11.50,,,,,,200,77,13,1,Finisher|KeeperBat,,,,,,81,13
+Auqib Nabi,A Nabi,India,PACE,R,Right-arm medium,29,0,DC,840,5,14,350.00,0,11.46,,,,,,30,23,50,0,,,,,,,23,49
+Mukesh Kumar,M Kumar,India,PACE,R,Right-arm fast-medium,32,1,DC,800,42,10,55.56,42,10.59,,,,,,200,23,48,1,PowerplayPace,,,,,,23,46
+Nitish Rana,N Rana,India,BAT,L,Right-arm offbreak,32,1,DC,420,127,3078,137.72,10,9.03,,,,,,150,73,31,1,Anchor,,,,,,73,36
+Pathum Nissanka,P Nissanka,Sri Lanka,BAT,R,,28,1,DC,400,10,278,158.86,0,,,,,,,75,65,12,0,Opener,,,,,,67,12
+Abhishek Porel,A Porel,India,WK,L,,23,0,DC,400,35,769,145.37,0,,,,,,,30,64,10,1,,,,,,,67,10
+Ashutosh Sharma,A Sharma,India,AR,R,Right-arm medium,28,0,DC,380,32,564,168.87,0,,,,,,,30,67,45,1,Finisher,,,,,,79,45
+Ben Duckett,B Duckett,England,BAT,L,Right-arm offbreak,31,1,DC,200,0,0,,0,,,,,,,200,71,20,0,,,,,,,71,20
+David Miller,D Miller,South Africa,BAT,L,Right-arm offbreak,37,1,DC,200,152,3288,139.50,0,,,,,,,200,76,20,0,,,,,,,81,20
+Kyle Jamieson,K Jamieson,New Zealand,PACE,R,Right-arm fast-medium,31,1,DC,200,15,77,105.48,16,10.12,,,,,,200,27,52,0,,,,,,,28,51
+Lungi Ngidi,L Ngidi,South Africa,PACE,R,Right-arm fast,30,1,DC,200,28,4,44.45,42,8.41,,,,,,200,25,71,0,,,,,,,25,78
+Sameer Rizvi,S Rizvi,India,BAT,R,Right-arm offbreak,22,0,DC,95,24,424,144.71,0,,,,,,,30,65,20,1,,,,,,,69,20
+Dushmantha Chameera,D Chameera,Sri Lanka,PACE,R,Right-arm fast,34,1,DC,75,20,53,117.78,13,9.70,,,,,,75,24,43,1,,,,,,,26,36
+Prithvi Shaw,P Shaw,India,BAT,R,Right-arm offbreak,26,1,DC,75,79,1892,147.47,0,,,,,,,75,70,20,0,,,,,,,70,20
+Karun Nair,K Nair,India,BAT,R,Right-arm offbreak,34,1,DC,50,86,1712,131.29,0,,,,,,,30,61,20,1,,,,,,,62,20
+Madhav Tiwari,M Tiwari,India,AR,R,Right-arm fast-medium,23,0,DC,40,4,21,175.00,4,8.70,,,,,,30,49,48,1,,,,,,,49,48
+Ajay Mandal,A Mandal,India,AR,L,Left-arm orthodox,30,0,DC,30,0,0,,0,,,,,,,30,48,45,1,FingerSpin,,,,,,48,45
+Sahil Parekh,S Parekh,India,BAT,L,Right-arm legbreak,19,0,DC,30,4,46,139.40,0,,,,,,,30,59,20,0,,,,,,,59,20
+Tripurana Vijay,T Vijay,India,AR,R,Right-arm offbreak,25,0,DC,30,1,0,,0,14.50,,,,,,30,48,45,1,FingerSpin,,,,,,48,45
+Vipraj Nigam,V Nigam,India,AR,R,Right-arm legbreak,22,0,DC,30,19,157,176.41,13,9.77,,,,,,30,53,46,1,Finisher|WristSpin,,,,,,55,46
+Rashid Khan,R Khan,Afghanistan,AR,R,Right-arm legbreak,28,1,GT,1800,153,635,156.41,179,7.28,,,,,,200,58,94,1,Finisher|WristSpin|Mystery|Captain,,,,,,62,95
+Shubman Gill,S Gill,India,BAT,R,Right-arm offbreak,27,1,GT,1650,134,4598,142.09,0,,,,,,,200,90,20,1,Opener|Captain,,,,,,90,20
+Jos Buttler,J Buttler,England,WK,R,,36,1,GT,1575,138,4646,149.73,0,,,,,,,200,90,10,1,Opener|KeeperBat|Captain,,,,,,93,10
+Mohammed Siraj,M Siraj,India,PACE,R,Right-arm fast,32,1,GT,1225,125,117,84.18,128,8.78,,,,,,200,26,73,1,PowerplayPace,,,,,,27,73
+Kagiso Rabada,K Rabada,South Africa,PACE,L,Right-arm fast,31,1,GT,1075,101,262,109.63,148,8.80,,,,,,200,31,85,1,PowerplayPace|DeathPace,,,,,,36,85
+Prasidh Krishna,P Krishna,India,PACE,R,Right-arm fast,30,1,GT,950,78,15,48.39,90,8.99,,,,,,200,23,69,1,DeathPace,,,,,,23,70
+Sai Sudharsan,S Sudharsan,India,BAT,L,Right-arm legbreak,24,1,GT,850,57,2515,149.17,0,,,,,,,200,89,20,1,Opener,,,,,,89,20
+Jason Holder,J Holder,West Indies,AR,R,Right-arm fast-medium,34,1,GT,700,57,324,123.67,70,8.58,,,,,,200,46,67,0,,,,,,,46,76
+Rahul Tewatia,R Tewatia,India,AR,L,Right-arm legbreak,33,0,GT,400,124,1302,138.07,32,7.91,,,,,,50,63,60,1,WristSpin,,,,,,64,61
+Shahrukh Khan,S Khan,India,BAT,R,Right-arm offbreak,31,0,GT,400,64,775,147.91,1,9.33,,,,,,50,63,21,1,,,,,,,64,21
+Washington Sundar,W Sundar,India,AR,L,Right-arm offbreak,26,1,GT,320,83,888,135.37,40,7.77,,,,,,200,58,55,1,FingerSpin,,,,,,60,57
+Glenn Phillips,G Phillips,New Zealand,WK,R,Right-arm offbreak,29,1,GT,200,14,132,121.11,2,8.00,,,,,,200,70,29,1,KeeperBat,,,,,,76,31
+Tom Banton,T Banton,England,WK,R,Right-arm offbreak,27,1,GT,200,2,18,90.00,0,,,,,,,200,67,10,0,,,,,,,70,10
+Sai Kishore,S Kishore,India,AR,L,Left-arm orthodox,29,1,GT,200,28,18,112.50,33,8.99,,,,,,75,47,62,1,FingerSpin,,,,,,47,69
+Arshad Khan,A Khan,India,AR,L,Left-arm medium,28,0,GT,130,27,147,148.49,18,11.06,,,,,,30,52,43,1,LeftArmPace,,,,,,53,42
+Gurnoor Brar,G Brar,India,PACE,L,Right-arm fast,26,1,GT,130,1,0,,0,14.00,,,,,,30,22,55,1,,,,,,,22,55
+Ashok Sharma,A Sharma,India,PACE,R,Right-arm fast-medium,24,1,GT,90,6,1,25.00,6,10.86,,,,,,30,22,52,0,,,,,,,22,51
+Ishant Sharma,I Sharma,India,PACE,R,Right-arm fast-medium,38,1,GT,75,117,57,82.61,96,8.38,,,,,,75,17,58,1,,,,,,,24,65
+Jayant Yadav,J Yadav,India,SPIN,R,Right-arm offbreak,36,1,GT,75,20,40,111.12,8,6.85,,,,,,75,24,56,1,FingerSpin,,,,,,27,61
+Luke Wood,L Wood,England,PACE,L,Left-arm fast-medium,31,1,GT,75,2,9,300.00,1,15.50,,,,,,75,22,62,0,LeftArmPace,,,,,,22,63
+Kumar Kushagra,K Kushagra,India,WK,R,,21,0,GT,65,5,21,100.00,0,,,,,,,30,53,10,1,,,,,,,53,10
+Anuj Rawat,A Rawat,India,WK,L,,26,0,GT,30,24,318,119.11,0,,,,,,,30,52,10,1,,,,,,,50,10
+Manav Suthar,M Suthar,India,AR,L,Left-arm orthodox,24,1,GT,30,5,1,50.00,2,11.75,,,,,,30,48,44,1,FingerSpin,,,,,,48,44
+Nishant Sindhu,N Sindhu,India,AR,L,Left-arm orthodox,22,0,GT,30,8,63,126.00,0,,,,,,,30,48,45,1,FingerSpin,,,,,,48,45
+Prithvi Raj,P Raj,India,PACE,L,Left-arm fast-medium,28,0,GT,30,2,0,0.00,1,11.40,,,,,,30,22,53,0,LeftArmPace,,,,,,22,53
+Cameron Green,C Green,Australia,AR,R,Right-arm fast-medium,27,1,KKR,2520,43,1029,151.11,23,9.44,,,,,,200,75,46,0,Finisher,,,,,,80,46
+Matheesha Pathirana,M Pathirana,Sri Lanka,PACE,R,Right-arm fast,23,1,KKR,1800,33,0,,47,8.66,,,,,,200,23,70,0,DeathPace,,,,,,23,75
+Rinku Singh,R Singh,India,BAT,L,Right-arm offbreak,28,1,KKR,1300,72,1394,145.97,0,,,,,,,200,75,22,1,,,,,,,76,22
+Sunil Narine,S Narine,West Indies,AR,L,Right-arm offbreak,38,1,KKR,1200,201,1820,165.31,207,6.79,,,,,,200,65,88,1,Finisher|FingerSpin|Mystery,,,,,,73,95
+Varun Chakravarthy,V Chakravarthy,India,SPIN,R,Right-arm legbreak,35,1,KKR,1200,94,31,58.50,111,7.72,,,,,,200,24,84,1,WristSpin|Mystery,,,,,,26,87
+Mustafizur Rahman,M Rahman,Bangladesh,PACE,L,Left-arm fast-medium,31,1,KKR,920,60,13,54.17,65,8.13,,,,,,200,23,72,0,DeathPace|LeftArmPace,,,,,,23,73
+Harshit Rana,H Rana,India,PACE,R,Right-arm fast-medium,24,1,KKR,400,33,59,105.36,40,9.51,,,,,,150,27,62,1,DeathPace,,,,,,28,64
+Ramandeep Singh,R Singh,India,AR,R,Right-arm medium,29,1,KKR,400,38,299,145.86,7,10.07,,,,,,150,53,46,1,,,,,,,56,46
+Angkrish Raghuvanshi,A Raghuvanshi,India,BAT,R,Right-arm offbreak,22,0,KKR,300,35,885,145.56,0,,,,,,,30,72,20,1,Opener,,,,,,74,20
+Tejasvi Singh,T Singh,India,WK,R,Right-arm offbreak,24,0,KKR,300,2,12,80.00,0,,,,,,,30,54,10,0,,,,,,,54,10
+Finn Allen,F Allen,New Zealand,BAT,R,Right-arm offbreak,27,1,KKR,200,11,349,214.12,0,,,,,,,200,69,20,0,Opener,,,,,,73,20
+Rachin Ravindra,R Ravindra,New Zealand,AR,L,Left-arm orthodox,26,1,KKR,200,18,413,143.91,0,3.50,,,,,,200,57,75,0,FingerSpin,,,,,,63,83
+Vaibhav Arora,V Arora,India,PACE,R,Right-arm fast-medium,28,0,KKR,180,43,10,37.04,47,9.74,,,,,,30,22,58,1,,,,,,,22,58
+Ajinkya Rahane,A Rahane,India,BAT,R,Right-arm medium,38,1,KKR,150,212,5367,125.61,1,5.00,,,,,,150,70,14,1,Anchor|Captain,,,,,,77,21
+Rovman Powell,R Powell,West Indies,BAT,R,Right-arm fast-medium,33,1,KKR,150,39,555,142.31,1,11.67,,,,,,150,61,23,1,,,,,,,62,24
+Tim Seifert,T Seifert,New Zealand,WK,R,,31,1,KKR,150,6,45,109.76,0,,,,,,,150,73,10,0,KeeperBat,,,,,,77,10
+Akash Deep,A Deep,India,PACE,R,Right-arm fast-medium,29,1,KKR,100,14,25,178.58,10,11.83,,,,,,100,24,43,0,,,,,,,24,38
+Manish Pandey,M Pandey,India,BAT,R,Right-arm medium,37,1,KKR,75,180,4012,121.84,0,,,,,,,75,66,20,1,Anchor,,,,,,71,20
+Rahul Tripathi,R Tripathi,India,BAT,R,Right-arm medium,35,1,KKR,75,100,2291,137.85,0,12.00,,,,,,75,67,20,0,,,,,,,69,20
+Umran Malik,U Malik,India,PACE,R,Right-arm fast,26,1,KKR,75,26,23,143.75,29,9.40,,,,,,75,24,60,1,,,,,,,24,63
+Anukul Roy,A Roy,India,AR,L,Left-arm orthodox,27,0,KKR,40,25,78,121.88,15,8.90,,,,,,30,47,51,1,FingerSpin,,,,,,47,53
+Daksh Kamra,D Kamra,India,AR,R,Right-arm legbreak,23,0,KKR,30,0,0,,0,,,,,,,30,48,45,0,WristSpin,,,,,,48,45
+Kartik Tyagi,K Tyagi,India,PACE,R,Right-arm fast,25,0,KKR,30,34,24,92.31,33,9.98,,,,,,30,22,48,0,,,,,,,22,46
+Prashant Solanki,P Solanki,India,SPIN,R,Right-arm legbreak,26,0,KKR,30,2,0,,2,6.33,,,,,,30,25,58,0,WristSpin,,,,,,25,58
+Sarthak Ranjan,S Ranjan,India,BAT,R,Right-arm offbreak,30,0,KKR,30,0,0,,0,,,,,,,30,60,20,0,,,,,,,60,20
+Rishabh Pant,R Pant,India,WK,L,Right-arm medium,28,1,LSG,2700,139,3865,146.80,0,,,,,,,200,84,10,1,Opener|KeeperBat|Captain,,,,,,84,10
+Nicholas Pooran,N Pooran,West Indies,WK,L,Right-arm offbreak,30,1,LSG,2100,104,2527,164.10,0,,,,,,,200,85,10,1,Opener|KeeperBat|Captain,,,,,,85,10
+Mayank Yadav,M Yadav,India,PACE,R,Right-arm fast,24,1,LSG,1100,10,5,100.00,9,10.15,,,,,,200,22,49,1,,,,,,,22,47
+Mohammed Shami,M Shami,India,PACE,R,Right-arm fast,36,1,LSG,1000,132,115,103.61,145,8.67,,,,,,200,22,75,1,PowerplayPace|DeathPace,,,,,,26,78
+Avesh Khan,A Khan,India,PACE,R,Right-arm fast-medium,29,1,LSG,975,82,68,158.14,93,9.29,,,,,,200,27,67,1,DeathPace,,,,,,28,67
+Josh Inglis,J Inglis,Australia,WK,R,,31,1,LSG,860,16,544,173.25,0,,,,,,,200,74,10,0,Opener|KeeperBat,,,,,,87,10
+Abdul Samad,A Samad,India,AR,R,Right-arm legbreak,24,0,LSG,420,71,857,148.79,2,13.16,,,,,,30,61,43,1,WristSpin,,,,,,64,42
+Ayush Badoni,A Badoni,India,AR,R,Right-arm offbreak,26,0,LSG,400,66,1178,140.91,4,9.22,,,,,,50,64,47,1,FingerSpin,,,,,,66,47
+Mohsin Khan,M Khan,India,PACE,L,Left-arm fast-medium,28,0,LSG,400,31,25,89.29,38,8.41,,,,,,30,23,70,1,DeathPace|LeftArmPace,,,,,,23,75
+Mitchell Marsh,M Marsh,Australia,AR,R,Right-arm fast-medium,34,1,LSG,340,68,1855,148.52,37,8.52,,,,,,200,74,69,1,Opener|Captain,,,,,,76,76
+Mukul Choudhary,M Choudhary,India,WK,R,,22,0,LSG,260,10,170,141.67,0,,,,,,,30,58,10,0,,,,,,,59,10
+Shahbaz Ahmed,S Ahmed,India,AR,L,Left-arm orthodox,31,1,LSG,240,63,603,123.32,27,9.79,,,,,,100,52,43,1,FingerSpin,,,,,,53,43
+Akshat Raghuwanshi,A Raghuwanshi,India,BAT,R,Right-arm offbreak,23,0,LSG,220,3,29,116.00,0,,,,,,,30,59,20,0,,,,,,,59,20
+Aiden Markram,A Markram,South Africa,BAT,R,Right-arm offbreak,31,1,LSG,200,69,1671,135.53,6,9.61,,,,,,200,69,40,1,Anchor|Captain,,,,,,69,45
+Anrich Nortje,A Nortje,South Africa,PACE,R,Right-arm fast,32,1,LSG,200,49,49,98.00,61,9.09,,,,,,200,23,65,0,PowerplayPace|DeathPace,,,,,,23,67
+Wanindu Hasaranga,W Hasaranga,Sri Lanka,AR,R,Right-arm legbreak,29,1,LSG,200,37,81,92.05,46,8.41,,,,,,200,49,64,0,WristSpin,,,,,,49,75
+Naman Tiwari,N Tiwari,India,PACE,L,Left-arm fast-medium,20,0,LSG,100,0,0,,0,,,,,,,30,22,55,0,LeftArmPace,,,,,,22,55
+Matthew Breetzke,M Breetzke,South Africa,WK,R,Right-arm medium,27,1,LSG,75,1,14,116.67,0,,,,,,,100,50,10,1,,,,,,,49,10
+Manimaran Siddharth,M Siddharth,India,SPIN,R,Left-arm orthodox,28,0,LSG,75,9,0,,9,9.13,,,,,,30,25,55,1,FingerSpin,,,,,,25,55
+Akash Singh,A Singh,India,PACE,R,Left-arm fast-medium,24,0,LSG,30,12,0,,13,9.86,,,,,,30,22,53,1,LeftArmPace,,,,,,22,53
+Arjun Tendulkar,A Tendulkar,India,AR,L,Left-arm fast-medium,27,0,LSG,30,6,18,128.58,4,9.28,,,,,,30,48,45,1,LeftArmPace,,,,,,48,45
+Arshin Kulkarni,A Kulkarni,India,AR,R,Right-arm fast-medium,21,0,LSG,30,4,26,78.79,0,,,,,,,30,46,45,1,,,,,,,46,45
+Digvesh Rathi,D Rathi,India,SPIN,R,Right-arm legbreak,26,0,LSG,30,23,3,37.50,19,9.08,,,,,,30,25,46,1,WristSpin|Mystery,,,,,,25,41
+Himmat Singh,H Singh,India,BAT,R,Right-arm offbreak,29,0,LSG,30,9,92,133.34,0,,,,,,,30,61,20,1,,,,,,,61,20
+Prince Yadav,P Yadav,India,PACE,R,Right-arm fast,24,1,LSG,30,20,5,45.46,19,9.14,,,,,,30,22,52,1,,,,,,,22,51
+Jasprit Bumrah,J Bumrah,India,PACE,R,Right-arm fast,32,1,MI,1800,158,75,87.21,187,7.34,,,,,,200,24,95,1,DeathPace,,,,,,25,95
+Hardik Pandya,H Pandya,India,AR,R,Right-arm fast-medium,32,1,MI,1635,162,2955,146.29,82,9.36,,,,,,200,76,60,1,Captain,,,,,,76,60
+Suryakumar Yadav,S Yadav,India,BAT,R,Right-arm offbreak,36,1,MI,1635,179,4581,148.59,0,8.00,,,,,,200,84,18,1,Opener|Captain,,,,,,87,21
+Rohit Sharma,R Sharma,India,BAT,R,Right-arm offbreak,39,1,MI,1630,281,7329,132.92,15,8.02,,,,,,200,73,37,1,Anchor|Captain,,,,,,82,52
+Trent Boult,T Boult,New Zealand,PACE,R,Left-arm fast-medium,37,1,MI,1250,124,93,109.42,145,8.49,,,,,,200,20,77,1,PowerplayPace|LeftArmPace,,,,,,26,82
+Deepak Chahar,D Chahar,India,PACE,R,Right-arm fast-medium,34,1,MI,925,103,142,137.87,96,8.30,,,,,,200,29,73,1,PowerplayPace,,,,,,33,74
+Tilak Varma,T Varma,India,BAT,L,Right-arm offbreak,23,1,MI,800,68,1858,144.71,0,7.64,,,,,,200,78,28,1,Opener,,,,,,78,30
+Will Jacks,W Jacks,England,AR,R,Right-arm offbreak,27,1,MI,525,28,602,158.84,10,9.86,,,,,,200,65,60,1,Finisher|FingerSpin,,,,,,74,66
+Naman Dhir,N Dhir,India,BAT,R,Right-arm offbreak,26,1,MI,525,37,710,163.98,0,8.77,,,,,,30,71,22,1,Finisher,,,,,,76,22
+Allah Ghazanfar,A Ghazanfar,Afghanistan,SPIN,R,Right-arm offbreak,20,1,MI,480,11,2,66.67,15,10.02,,,,,,75,25,55,1,FingerSpin|Mystery,,,,,,25,55
+Sherfane Rutherford,S Rutherford,West Indies,AR,L,Right-arm fast-medium,28,1,MI,260,31,520,142.86,1,8.63,,,,,,150,58,44,1,,,,,,,64,43
+Mitchell Santner,M Santner,New Zealand,AR,L,Left-arm orthodox,34,1,MI,200,35,136,110.57,30,7.51,,,,,,200,54,62,1,FingerSpin,,,,,,58,72
+Shardul Thakur,S Thakur,India,AR,R,Right-arm fast-medium,34,1,MI,200,114,349,132.70,119,9.57,,,,,,200,48,66,1,,,,,,,49,68
+Quinton de Kock,Q de Kock,South Africa,WK,L,,33,1,MI,100,118,3441,134.95,0,,,,,,,100,76,10,0,Anchor|KeeperBat|Captain,,,,,,76,10
+Ryan Rickelton,R Rickelton,South Africa,WK,L,Left-arm orthodox,30,1,MI,100,26,836,168.21,0,,,,,,,100,77,10,1,Opener|KeeperBat,,,,,,84,10
+Corbin Bosch,C Bosch,South Africa,AR,R,Right-arm fast-medium,32,1,MI,75,9,97,153.97,13,9.20,,,,,,100,46,75,1,Finisher,,,,,,45,80
+Robin Minz,R Minz,India,WK,L,Left-arm orthodox,24,0,MI,65,4,12,63.16,0,,,,,,,30,53,10,1,,,,,,,53,10
+Ashwani Kumar,A Kumar,India,PACE,L,Left-arm fast-medium,25,0,MI,30,10,1,16.67,17,10.95,,,,,,30,22,53,1,LeftArmPace,,,,,,22,53
+Atharva Ankolekar,A Ankolekar,India,AR,L,Left-arm orthodox,26,0,MI,30,0,0,,0,,,,,,,30,48,45,0,FingerSpin,,,,,,48,45
+Danish Malewar,D Malewar,India,BAT,R,Right-arm legbreak,22,0,MI,30,2,2,40.00,0,,,,,,,30,59,20,0,,,,,,,59,20
+Mayank Markande,M Markande,India,SPIN,R,Right-arm legbreak,28,0,MI,30,40,48,114.29,37,9.16,,,,,,30,27,59,1,WristSpin,,,,,,28,60
+Mayank Rawat,M Rawat,India,AR,R,Right-arm offbreak,26,0,MI,30,1,0,,0,,,,,,,30,48,45,0,FingerSpin,,,,,,48,45
+Mohammad Izhar,M Izhar,India,PACE,R,Left-arm fast-medium,22,0,MI,30,0,0,,0,,,,,,,30,22,55,0,LeftArmPace,,,,,,22,55
+Raghu Sharma,R Sharma,India,SPIN,R,Right-arm legbreak,33,0,MI,30,6,0,,1,8.67,,,,,,30,25,52,1,WristSpin,,,,,,25,52
+Raj Angad Bawa,RA Bawa,India,AR,L,Right-arm fast-medium,23,0,MI,30,8,35,109.38,2,12.50,,,,,,30,47,45,1,,,,,,,47,45
+Shreyas Iyer,S Iyer,India,BAT,R,Right-arm legbreak,31,1,PBKS,2675,146,4229,136.73,0,7.00,,,,,,200,83,21,1,Anchor|Captain,,,,,,83,21
+Arshdeep Singh,A Singh,India,PACE,L,Left-arm fast-medium,27,1,PBKS,1800,96,32,68.09,111,9.19,,,,,,200,24,72,1,DeathPace|LeftArmPace,,,,,,25,72
+Yuzvendra Chahal,Y Chahal,India,SPIN,R,Right-arm legbreak,36,1,PBKS,1800,188,37,43.03,233,8.05,,,,,,200,23,88,1,WristSpin,,,,,,26,91
+Marcus Stoinis,M Stoinis,Australia,AR,R,Right-arm medium,37,1,PBKS,1100,122,2242,147.50,46,9.93,,,,,,200,70,47,1,,,,,,,75,52
+Marco Jansen,M Jansen,South Africa,AR,R,Left-arm fast,26,1,PBKS,700,48,192,110.35,45,9.63,,,,,,125,45,48,1,PowerplayPace|LeftArmPace,,,,,,43,50
+Shashank Singh,S Singh,India,AR,R,Right-arm medium,34,0,PBKS,550,53,905,161.61,5,9.33,,,,,,50,75,46,1,Finisher,,,,,,83,48
+Ben Dwarshuis,B Dwarshuis,Australia,PACE,L,Left-arm fast-medium,32,1,PBKS,440,1,0,,1,12.75,,,,,,100,24,61,0,LeftArmPace,,,,,,24,61
+Nehal Wadhera,N Wadhera,India,BAT,L,Right-arm legbreak,26,0,PBKS,420,44,784,140.00,0,7.76,,,,,,30,62,22,1,,,,,,,63,22
+Prabhsimran Singh,P Singh,India,WK,R,,26,0,PBKS,400,65,1815,156.34,0,,,,,,,50,77,10,1,Opener|KeeperBat,,,,,,78,10
+Priyansh Arya,P Arya,India,BAT,L,Right-arm offbreak,25,0,PBKS,380,30,839,192.00,0,,,,,,,30,74,20,1,Opener,,,,,,80,20
+Cooper Connolly,C Connolly,Australia,AR,L,Left-arm orthodox,23,1,PBKS,300,14,491,163.13,0,,,,,,,200,71,42,0,Opener|FingerSpin,,,,,,88,42
+Mitchell Owen,M Owen,Australia,AR,R,Right-arm medium,25,1,PBKS,300,1,0,0.00,0,,,,,,,100,53,45,1,,,,,,,53,45
+Azmatullah Omarzai,A Omarzai,Afghanistan,AR,R,Right-arm fast-medium,26,1,PBKS,240,19,151,149.51,15,9.63,,,,,,150,53,45,1,,,,,,,55,45
+Lockie Ferguson,L Ferguson,New Zealand,PACE,R,Right-arm fast,35,1,PBKS,200,52,72,153.20,52,9.21,,,,,,200,26,57,1,PowerplayPace|DeathPace,,,,,,29,59
+Vijaykumar Vyshak,V Vyshak,India,PACE,R,Right-arm medium,29,0,PBKS,180,26,16,100.00,26,10.47,,,,,,30,22,48,1,,,,,,,22,44
+Yash Thakur,Y Thakur,India,PACE,R,Right-arm fast-medium,27,1,PBKS,160,22,0,,27,10.60,,,,,,30,22,51,1,DeathPace,,,,,,22,49
+Harpreet Brar,H Brar,India,SPIN,L,Left-arm orthodox,31,0,PBKS,150,51,249,120.88,37,8.00,,,,,,30,37,66,1,FingerSpin,,,,,,43,67
+Vishnu Vinod,V Vinod,India,WK,R,Right-arm medium-fast,32,0,PBKS,95,7,71,109.24,0,,,,,,,30,52,10,1,,,,,,,51,10
+Xavier Bartlett,X Bartlett,Australia,PACE,R,Right-arm fast-medium,27,1,PBKS,80,13,40,142.86,7,11.13,,,,,,75,25,41,1,,,,,,,26,36
+Harnoor Pannu,H Pannu,India,BAT,L,Right-arm legbreak,23,0,PBKS,30,0,0,,0,,,,,,,30,60,20,1,,,,,,,60,20
+Musheer Khan,M Khan,India,AR,R,Left-arm orthodox,21,0,PBKS,30,1,0,0.00,1,13.50,,,,,,30,48,45,1,FingerSpin,,,,,,48,45
+Praveen Dubey,P Dubey,India,AR,R,Right-arm legbreak,33,0,PBKS,30,5,23,69.70,2,8.54,,,,,,30,47,45,0,WristSpin,,,,,,47,45
+Pyla Avinash,P Avinash,India,BAT,R,Right-arm fast-medium,26,0,PBKS,30,0,0,,0,,,,,,,30,60,20,1,,,,,,,60,20
+Suryansh Shedge,S Shedge,India,AR,R,Right-arm fast-medium,23,1,PBKS,30,12,165,163.37,0,13.33,,,,,,30,54,43,1,Finisher,,,,,,56,43
+Vishal Nishad,V Nishad,India,SPIN,R,Right-arm legbreak,21,0,PBKS,30,0,0,,0,,,,,,,30,25,55,0,WristSpin,,,,,,25,55
+Virat Kohli,V Kohli,India,BAT,R,Right-arm medium,37,1,RCB,2100,283,9336,134.80,4,8.80,,,,,,200,86,23,1,Opener|Captain,,,,,,91,30
+Josh Hazlewood,J Hazlewood,Australia,PACE,L,Right-arm fast-medium,35,1,RCB,1250,52,19,63.34,72,8.62,,,,,,200,22,73,1,PowerplayPace|DeathPace,,,,,,24,78
+Phil Salt,P Salt,England,WK,R,Right-arm offbreak,30,1,RCB,1150,40,1258,174.48,0,,,,,,,200,82,10,1,Opener|KeeperBat,,,,,,86,10
+Rajat Patidar,R Patidar,India,BAT,R,Right-arm offbreak,33,1,RCB,1100,57,1612,164.49,0,,,,,,,200,83,20,1,Opener|Captain,,,,,,84,20
+Jitesh Sharma,J Sharma,India,WK,R,,32,1,RCB,1100,71,1107,152.48,0,,,,,,,100,67,10,1,Finisher,,,,,,69,10
+Bhuvneshwar Kumar,B Kumar,India,PACE,R,Right-arm fast-medium,36,1,RCB,1075,206,354,93.90,226,7.71,,,,,,200,26,86,1,PowerplayPace,,,,,,33,89
+Venkatesh Iyer,V Iyer,India,AR,L,Right-arm medium,31,1,RCB,700,68,1677,142.00,3,10.59,,,,,,200,72,43,0,Opener|Captain,,,,,,73,42
+Rasikh Salam,R Salam,India,PACE,R,Right-arm fast-medium,26,0,RCB,600,25,43,102.39,29,10.01,,,,,,30,24,56,1,,,,,,,24,56
+Krunal Pandya,K Pandya,India,AR,L,Left-arm orthodox,35,1,RCB,575,158,1974,133.84,107,7.57,,,,,,200,62,73,1,FingerSpin,,,,,,64,76
+Mangesh Yadav,M Yadav,India,AR,L,Left-arm fast-medium,23,0,RCB,520,0,0,,0,,,,,,,30,48,45,0,LeftArmPace,,,,,,48,45
+Yash Dayal,Y Dayal,India,PACE,R,Left-arm fast-medium,28,0,RCB,500,43,4,44.45,41,9.58,,,,,,30,22,53,1,PowerplayPace|LeftArmPace,,,,,,22,53
+Tim David,T David,Australia,BAT,R,Right-arm offbreak,30,1,RCB,300,66,1151,177.08,0,18.00,,,,,,200,80,24,1,Finisher,,,,,,84,25
+Jacob Bethell,J Bethell,England,AR,L,Left-arm orthodox,22,1,RCB,260,9,163,140.52,0,,,,,,,125,66,50,1,FingerSpin,,,,,,73,50
+Suyash Sharma,S Sharma,India,SPIN,R,Right-arm legbreak,23,0,RCB,260,39,0,,27,8.89,,,,,,30,25,45,1,WristSpin,,,,,,25,42
+Devdutt Padikkal,D Padikkal,India,BAT,L,Right-arm offbreak,26,1,RCB,200,90,2270,133.14,0,,,,,,,200,68,20,1,Anchor,,,,,,68,20
+Jacob Duffy,J Duffy,New Zealand,PACE,R,Right-arm fast-medium,32,1,RCB,200,6,0,,9,10.96,,,,,,200,23,80,0,,,,,,,23,84
+Nuwan Thushara,N Thushara,Sri Lanka,PACE,R,Right-arm fast-medium,32,1,RCB,160,8,0,,9,9.43,,,,,,75,23,72,1,,,,,,,23,76
+Romario Shepherd,R Shepherd,West Indies,AR,R,Right-arm fast-medium,31,1,RCB,150,33,268,175.17,17,11.77,,,,,,150,58,42,1,Finisher,,,,,,62,41
+Jordan Cox,J Cox,England,WK,R,Right-arm offbreak,25,1,RCB,75,0,0,,0,,,,,,,75,55,10,0,,,,,,,55,10
+Swapnil Singh,S Singh,India,SPIN,R,Left-arm orthodox,35,0,RCB,50,14,51,113.34,7,8.93,,,,,,30,25,54,1,FingerSpin,,,,,,27,54
+Abhinandan Singh,A Singh,India,PACE,R,Right-arm fast-medium,29,0,RCB,30,3,0,,3,12.62,,,,,,30,22,53,1,,,,,,,22,53
+Kanishk Chouhan,K Chouhan,India,AR,R,Right-arm offbreak,20,0,RCB,30,0,0,,0,,,,,,,30,48,45,0,FingerSpin,,,,,,48,45
+Satvik Deswal,S Deswal,India,AR,L,Left-arm wrist-spin,19,0,RCB,30,0,0,,0,,,,,,,30,48,45,0,WristSpin,,,,,,48,45
+Vicky Ostwal,V Ostwal,India,SPIN,R,Left-arm orthodox,24,0,RCB,30,0,0,,0,,,,,,,30,25,55,0,FingerSpin,,,,,,25,55
+Vihaan Malhotra,V Malhotra,India,AR,L,Right-arm offbreak,19,0,RCB,30,0,0,,0,,,,,,,30,48,45,0,FingerSpin,,,,,,48,45
+Yashasvi Jaiswal,Y Jaiswal,India,BAT,L,Right-arm legbreak,24,1,RR,1800,82,2593,152.80,0,,,,,,,200,82,20,1,Opener,,,,,,82,20
+Dhruv Jurel,D Jurel,India,WK,R,,25,1,RR,1400,57,1195,154.20,0,,,,,,,200,75,10,1,Finisher|KeeperBat,,,,,,77,10
+Ravindra Jadeja,R Jadeja,India,AR,L,Left-arm orthodox,37,1,RR,1400,268,3526,130.60,180,7.71,,,,,,200,68,77,1,FingerSpin,,,,,,73,82
+Riyan Parag,R Parag,India,AR,R,Right-arm legbreak,24,1,RR,1400,97,1875,144.24,9,9.69,,,,,,200,69,36,1,WristSpin|Captain,,,,,,70,35
+Jofra Archer,J Archer,England,PACE,R,Right-arm fast,31,1,RR,1250,68,326,144.89,84,8.22,,,,,,200,38,78,1,PowerplayPace,,,,,,47,79
+Shimron Hetmyer,S Hetmyer,West Indies,BAT,L,,29,1,RR,1100,94,1560,149.29,0,,,,,,,200,72,12,1,,,,,,,73,12
+Ravi Bishnoi,R Bishnoi,India,SPIN,R,Right-arm legbreak,26,1,RR,720,86,45,65.22,83,8.36,,,,,,200,26,71,0,WristSpin,,,,,,26,71
+Tushar Deshpande,T Deshpande,India,PACE,L,Right-arm fast-medium,31,1,RR,650,53,54,150.00,55,10.11,,,,,,100,25,51,1,DeathPace,,,,,,26,51
+Sandeep Sharma,S Sharma,India,PACE,R,Right-arm fast-medium,33,0,RR,400,142,60,80.00,151,8.16,,,,,,50,24,83,1,DeathPace,,,,,,25,83
+Nandre Burger,N Burger,South Africa,PACE,L,Left-arm fast-medium,31,1,RR,350,18,14,155.56,21,9.67,,,,,,150,22,56,1,LeftArmPace,,,,,,22,57
+Adam Milne,A Milne,New Zealand,PACE,R,Right-arm fast,34,1,RR,240,11,25,80.65,7,9.73,,,,,,200,23,72,0,,,,,,,25,78
+Sam Curran,S Curran,England,AR,L,Left-arm fast-medium,28,1,RR,240,64,997,136.39,59,9.74,,,,,,200,61,52,1,LeftArmPace|Captain,,,,,,63,54
+Kwena Maphaka,K Maphaka,South Africa,PACE,L,Left-arm fast-medium,20,1,RR,150,4,8,400.00,2,13.00,,,,,,75,23,57,1,LeftArmPace,,,,,,23,57
+Vaibhav Sooryavanshi,V Sooryavanshi,India,BAT,L,Left-arm orthodox,15,1,RR,110,23,1028,228.96,0,,,,,,,30,84,20,1,Opener,,,,,,93,20
+Donovan Ferreira,D Ferreira,South Africa,WK,R,Right-arm offbreak,28,1,RR,100,18,326,170.69,1,13.67,,,,,,75,64,16,1,Finisher,,,,,,69,17
+Ravi Singh,R Singh,India,WK,L,Right-arm legbreak,25,0,RR,95,1,4,200.00,0,,,,,,,30,55,10,0,,,,,,,55,10
+Sushant Mishra,S Mishra,India,PACE,L,Left-arm fast-medium,25,0,RR,90,2,1,33.34,2,10.58,,,,,,30,22,54,0,LeftArmPace,,,,,,22,54
+Shubham Dubey,S Dubey,India,BAT,L,Right-arm offbreak,32,0,RR,80,20,220,153.85,0,,,,,,,30,62,20,1,Finisher,,,,,,63,20
+Kuldeep Sen,K Sen,India,PACE,R,Right-arm fast,29,1,RR,75,12,0,0.00,14,9.63,,,,,,75,22,56,0,,,,,,,22,56
+Yudhvir Singh,Y Singh,India,PACE,R,Right-arm fast-medium,29,0,RR,35,9,22,137.50,8,11.00,,,,,,30,23,53,1,,,,,,,23,53
+Lhuan-dre Pretorius,L Pretorius,South Africa,WK,L,,20,1,RR,30,2,7,87.50,0,,,,,,,100,65,10,1,,,,,,,67,10
+Aman Rao,A Rao,India,BAT,R,,22,0,RR,30,0,0,,0,,,,,,,30,60,12,0,,,,,,,60,12
+Brijesh Sharma,B Sharma,India,PACE,R,Right-arm medium,27,0,RR,30,13,2,50.00,14,9.89,,,,,,30,22,53,0,,,,,,,22,52
+Vignesh Puthur,V Puthur,India,SPIN,R,Left-arm wrist-spin,25,0,RR,30,5,0,,6,9.08,,,,,,30,25,57,0,WristSpin,,,,,,25,57
+Yash Raj Punja,YR Punja,India,SPIN,R,Right-arm legbreak,20,0,RR,30,8,0,,9,9.30,,,,,,30,25,55,0,WristSpin,,,,,,25,55
+Heinrich Klaasen,H Klaasen,South Africa,WK,R,Right-arm offbreak,35,1,SRH,2300,64,2104,166.72,0,,,,,,,200,90,10,1,Opener|KeeperBat|Captain,,,,,,93,10
+Pat Cummins,P Cummins,Australia,PACE,R,Right-arm fast,33,1,SRH,1800,80,642,152.50,87,8.89,,,,,,200,52,67,1,DeathPace|Captain,,,,,,65,67
+Abhishek Sharma,A Sharma,India,AR,L,Left-arm orthodox,26,1,SRH,1400,92,2378,171.21,11,9.04,,,,,,200,85,41,1,Opener|FingerSpin,,,,,,86,40
+Travis Head,T Head,Australia,BAT,L,Right-arm offbreak,32,1,SRH,1400,53,1556,170.06,3,11.25,,,,,,200,83,22,1,Opener|Captain,,,,,,85,22
+Liam Livingstone,L Livingstone,England,AR,R,Right-arm legbreak,33,1,SRH,1300,51,1066,155.17,13,9.02,,,,,,200,69,48,0,Finisher|WristSpin|Captain,,,,,,72,49
+Ishan Kishan,I Kishan,India,WK,L,Right-arm legbreak,28,1,SRH,1125,134,3600,143.55,0,,,,,,,200,79,10,1,Opener|KeeperBat|Captain,,,,,,79,10
+Harshal Patel,H Patel,India,PACE,R,Right-arm fast-medium,35,1,SRH,800,124,280,117.65,151,8.92,,,,,,200,29,81,1,DeathPace,,,,,,37,83
+Nitish Kumar Reddy,NK Reddy,India,AR,R,Right-arm fast-medium,23,1,SRH,600,42,787,145.48,13,10.65,,,,,,200,65,39,1,,,,,,,70,36
+Jack Edwards,J Edwards,Australia,AR,R,Right-arm medium,26,1,SRH,300,0,0,,0,,,,,,,50,48,45,0,,,,,,,48,45
+Salil Arora,S Arora,India,WK,R,,23,0,SRH,150,14,156,159.19,0,,,,,,,30,58,10,0,Finisher,,,,,,59,10
+Eshan Malinga,E Malinga,Sri Lanka,PACE,L,Right-arm fast-medium,25,1,SRH,120,22,7,41.18,33,9.20,,,,,,30,23,63,1,,,,,,,23,68
+Brydon Carse,B Carse,England,PACE,R,Right-arm fast,31,1,SRH,100,0,0,,0,,,,,,,100,25,61,1,,,,,,,25,61
+Jaydev Unadkat,J Unadkat,India,PACE,R,Left-arm fast-medium,34,1,SRH,100,116,201,118.94,114,8.94,,,,,,100,29,69,1,LeftArmPace,,,,,,34,70
+Kamindu Mendis,K Mendis,Sri Lanka,AR,L,Right-arm offbreak,27,1,SRH,75,5,92,133.34,2,8.57,,,,,,75,54,46,1,FingerSpin,,,,,,56,46
+Shivam Mavi,S Mavi,India,PACE,R,Right-arm fast-medium,27,1,SRH,75,32,51,91.08,30,8.71,,,,,,75,23,59,0,,,,,,,23,61
+Zeeshan Ansari,Z Ansari,India,SPIN,R,Right-arm legbreak,26,0,SRH,40,10,0,,6,9.84,,,,,,30,25,46,1,WristSpin,,,,,,25,44
+Harsh Dubey,H Dubey,India,AR,L,Left-arm orthodox,24,1,SRH,30,11,13,144.45,13,10.19,,,,,,100,48,48,1,FingerSpin,,,,,,48,49
+Amit Kumar,A Kumar,India,SPIN,R,Right-arm legbreak,23,0,SRH,30,0,0,,0,,,,,,,30,25,55,0,WristSpin,,,,,,25,55
+Aniket Verma,A Verma,India,BAT,R,Right-arm medium,24,0,SRH,30,24,315,160.72,0,,,,,,,30,63,20,1,Finisher,,,,,,65,20
+Krains Fuletra,K Fuletra,India,SPIN,R,Left-arm wrist-spin,22,0,SRH,30,0,0,,0,,,,,,,30,25,55,0,WristSpin,,,,,,25,55
+Onkar Tarmale,O Tarmale,India,PACE,R,Right-arm fast-medium,24,0,SRH,30,0,0,,0,,,,,,,30,22,55,0,,,,,,,22,55
+Praful Hinge,P Hinge,India,PACE,R,Right-arm fast-medium,24,0,SRH,30,7,3,33.34,14,11.73,,,,,,30,22,53,0,,,,,,,22,53
+Sakib Hussain,S Hussain,India,PACE,R,Right-arm fast-medium,21,0,SRH,30,11,5,71.43,15,9.45,,,,,,30,22,57,0,,,,,,,22,58
+Shivang Kumar,S Kumar,India,AR,R,Left-arm wrist-spin,24,0,SRH,30,13,53,115.22,9,9.62,,,,,,30,47,43,0,WristSpin,,,,,,47,42
+Smaran Ravichandran,S Ravichandran,India,BAT,L,Right-arm offbreak,23,0,SRH,30,6,19,76.00,0,,,,,,,30,58,20,1,,,,,,,57,20
+Adam Zampa,A Zampa,Australia,SPIN,R,Right-arm legbreak,34,1,,,22,15,62.50,31,8.38,,,,,,200,19,62,0,WristSpin,,,,,,25,76
+Alzarri Joseph,A Joseph,West Indies,PACE,R,Right-arm fast,29,1,,,22,27,84.38,21,9.55,,,,,,200,24,54,0,,,,,,,25,53
+Ben Stokes,B Stokes,England,AR,L,Right-arm fast-medium,35,1,,,45,935,133.95,28,8.64,,,,,,200,53,45,0,,,,,,,62,56
+Dan Lawrence,D Lawrence,England,BAT,R,Right-arm offbreak,29,1,,,0,0,,0,,,,,,,200,60,20,0,,,,,,,60,20
+Daryl Mitchell,D Mitchell,New Zealand,AR,R,Right-arm medium,35,1,,,15,351,131.46,1,12.12,,,,,,200,48,43,0,,,,,,,59,43
+David Warner,D Warner,Australia,BAT,L,Right-arm legbreak,39,1,,,184,6567,139.66,0,12.00,,,,,,200,79,20,0,Opener|Captain,,,,,,93,20
+Devon Conway,D Conway,New Zealand,WK,L,Right-arm medium,35,1,,,29,1080,139.72,0,,,,,,,200,69,10,0,Opener|KeeperBat,,,,,,79,10
+Faf du Plessis,F du Plessis,South Africa,BAT,R,Right-arm legbreak,42,1,,,154,4773,135.79,0,16.00,,,,,,200,61,20,0,Opener|Captain,,,,,,84,20
+Gerald Coetzee,G Coetzee,South Africa,PACE,R,Right-arm fast,25,1,,,14,31,93.94,15,10.37,,,,,,200,23,52,0,,,,,,,23,51
+Glenn Maxwell,G Maxwell,Australia,AR,R,Right-arm offbreak,37,1,,,141,2820,155.12,41,8.30,,,,,,200,67,49,0,Finisher|FingerSpin|Captain,,,,,,77,60
+Gus Atkinson,G Atkinson,England,PACE,R,Right-arm fast-medium,28,1,,,0,0,,0,,,,,,,200,22,55,0,,,,,,,22,55
+Harry Brook,H Brook,England,BAT,R,Right-arm medium,27,1,,,11,190,123.38,0,,,,,,,200,57,20,0,,,,,,,56,20
+Jake Fraser-McGurk,J Fraser-McGurk,Australia,BAT,R,Right-arm legbreak,24,1,,,15,385,199.48,0,,,,,,,200,67,20,0,Opener,,,,,,70,20
+Jamie Smith,J Smith,England,WK,R,,26,1,,,0,0,,0,,,,,,,200,55,10,0,,,,,,,55,10
+Kane Williamson,K Williamson,New Zealand,BAT,R,Right-arm offbreak,36,1,,,79,2132,125.63,0,10.33,,,,,,200,63,13,0,Anchor|Captain,,,,,,71,21
+Maheesh Theekshana,M Theekshana,Sri Lanka,SPIN,R,Right-arm offbreak,26,1,,,38,17,50.00,36,8.27,,,,,,200,26,60,0,FingerSpin|Mystery,,,,,,26,61
+Mayank Agarwal,M Agarwal,India,BAT,R,Right-arm offbreak,35,1,,,130,2764,133.79,0,,,,,,,200,65,20,0,,,,,,,67,20
+Michael Bracewell,M Bracewell,New Zealand,AR,L,Right-arm offbreak,35,1,,,5,58,123.40,6,8.64,,,,,,200,43,42,0,FingerSpin,,,,,,50,49
+Moeen Ali,M Ali,England,AR,L,Right-arm offbreak,39,1,,,73,1167,139.76,41,7.23,,,,,,200,48,61,0,FingerSpin,,,,,,63,81
+Mujeeb Ur Rahman,M Ur Rahman,Afghanistan,SPIN,R,Right-arm offbreak,25,1,,,20,12,80.00,20,8.34,,,,,,200,25,60,0,FingerSpin|Mystery,,,,,,25,62
+Sean Abbott,S Abbott,Australia,AR,R,Right-arm fast-medium,34,1,,,3,22,122.22,1,11.56,,,,,,200,42,42,0,,,,,,,48,42
+Shakib Al Hasan,S Al Hasan,Bangladesh,AR,L,Left-arm orthodox,39,1,,,71,795,124.41,63,7.44,,,,,,200,38,56,0,FingerSpin,,,,,,53,76
+Steve Smith,S Smith,Australia,BAT,R,Right-arm legbreak,37,1,,,103,2495,128.28,0,15.00,,,,,,200,62,20,0,Anchor,,,,,,72,20
+Umesh Yadav,U Yadav,India,PACE,R,Right-arm fast,38,1,,,148,208,103.48,144,8.51,,,,,,200,16,65,0,,,,,,,31,77
+Chris Jordan,C Jordan,England,PACE,R,Right-arm fast-medium,37,1,,,34,81,105.19,30,9.62,,,,,,150,14,50,0,,,,,,,25,49
+Chris Woakes,C Woakes,England,AR,R,Right-arm fast-medium,37,1,,,21,78,101.30,30,8.97,,,,,,150,36,52,0,,,,,,,45,68
+Evin Lewis,E Lewis,West Indies,BAT,L,Right-arm medium,34,1,,,27,654,137.11,0,,,,,,,150,57,20,0,Anchor,,,,,,64,20
+Jhye Richardson,J Richardson,Australia,PACE,R,Right-arm fast,30,1,,,4,17,65.38,3,10.47,,,,,,150,23,50,0,,,,,,,23,49
+Mohammad Nabi,M Nabi,Afghanistan,AR,R,Right-arm offbreak,41,1,,,24,221,145.39,15,7.44,,,,,,150,31,35,0,FingerSpin,,,,,,52,59
+Naveen-ul-Haq,Naveen-ul-Haq,Afghanistan,PACE,R,Right-arm medium-fast,27,1,,,18,18,72.00,25,9.16,,,,,,150,23,62,0,,,,,,,23,65
+Rahmanullah Gurbaz,R Gurbaz,Afghanistan,WK,R,,24,1,,,18,363,134.94,0,,,,,,,150,57,10,0,,,,,,,58,10
+Riley Meredith,R Meredith,Australia,PACE,R,Right-arm fast,30,1,,,18,0,0.00,19,9.46,,,,,,150,22,54,0,,,,,,,22,54
+Sam Billings,S Billings,England,WK,R,,35,1,,,30,503,129.64,0,,,,,,,150,47,10,0,,,,,,,54,10
+Spencer Johnson,S Johnson,Australia,PACE,L,Left-arm fast,30,1,,,12,8,66.67,7,10.33,,,,,,150,22,44,0,LeftArmPace,,,,,,22,40
+Aaron Hardie,A Hardie,Australia,AR,R,Right-arm medium-fast,27,1,,,0,0,,0,,,,,,,125,48,45,0,,,,,,,48,45
+Adil Rashid,A Rashid,England,SPIN,R,Right-arm legbreak,38,1,,,3,22,137.50,2,9.10,,,,,,100,14,53,0,WristSpin,,,,,,26,53
+Alex Hales,A Hales,England,BAT,R,Right-arm medium,37,1,,,6,148,125.42,0,,,,,,,100,49,20,0,,,,,,,58,20
+Ali Khan,A Khan,USA,PACE,R,Right-arm fast-medium,35,1,,,0,0,,0,,,,,,,100,20,55,0,,,,,,,22,55
+Ashton Agar,A Agar,Australia,SPIN,L,Left-arm orthodox,32,1,,,0,0,,0,,,,,,,100,25,55,0,FingerSpin,,,,,,25,55
+Bas de Leede,B de Leede,Netherlands,AR,R,Right-arm medium,26,1,,,0,0,,0,,,,,,,100,48,45,0,,,,,,,48,45
+Ben McDermott,B McDermott,Australia,BAT,R,Right-arm medium,31,1,,,0,0,,0,,,,,,,100,60,20,0,,,,,,,60,20
+Blessing Muzarabani,B Muzarabani,Zimbabwe,PACE,R,Right-arm fast-medium,29,1,,,2,0,,4,10.71,,,,,,100,22,54,0,,,,,,,22,54
+Brandon King,B King,West Indies,BAT,R,,31,1,,,0,0,,0,,,,,,,100,60,12,0,,,,,,,60,12
+Charith Asalanka,C Asalanka,Sri Lanka,AR,L,Right-arm offbreak,29,1,,,0,0,,0,,,,,,,100,48,45,0,FingerSpin,,,,,,48,45
+David Payne,D Payne,England,PACE,R,Left-arm fast-medium,35,1,,,2,6,120.00,2,14.00,,,,,,100,20,55,0,LeftArmPace,,,,,,22,55
+Dian Forrester,D Forrester,South Africa,AR,L,Right-arm fast,26,1,,,0,0,,0,,,,,,,100,48,45,0,,,,,,,48,45
+Dilshan Madushanka,D Madushanka,Sri Lanka,PACE,R,Left-arm fast-medium,26,1,,,1,0,,1,9.00,,,,,,100,22,55,0,LeftArmPace,,,,,,22,55
+Dunith Wellalage,D Wellalage,Sri Lanka,AR,L,Left-arm orthodox,23,1,,,0,0,,0,,,,,,,100,48,45,0,FingerSpin,,,,,,48,45
+Fazalhaq Farooqi,F Farooqi,Afghanistan,PACE,R,Left-arm fast,26,1,,,12,5,33.33,6,10.32,,,,,,100,22,42,0,LeftArmPace,,,,,,22,38
+George Linde,G Linde,South Africa,AR,L,Left-arm orthodox,34,1,,,3,31,147.62,1,8.92,,,,,,100,47,44,0,FingerSpin,,,,,,48,44
+Gudakesh Motie,G Motie,West Indies,AR,L,Left-arm orthodox,31,1,,,0,0,,0,,,,,,,100,48,45,0,FingerSpin,,,,,,48,45
+Gulbadin Naib,G Naib,Afghanistan,AR,R,Right-arm fast-medium,35,1,,,2,19,126.67,0,12.00,,,,,,100,41,45,0,,,,,,,48,45
+Ibrahim Zadran,I Zadran,Afghanistan,BAT,R,Right-arm medium-fast,24,1,,,0,0,,0,,,,,,,100,60,20,0,,,,,,,60,20
+Ish Sodhi,I Sodhi,New Zealand,SPIN,R,Right-arm legbreak,33,1,,,8,7,41.18,9,6.70,,,,,,100,20,59,0,WristSpin,,,,,,25,66
+Jimmy Neesham,J Neesham,New Zealand,AR,L,Right-arm medium-fast,36,1,,,14,92,98.92,8,9.28,,,,,,100,36,43,0,,,,,,,43,43
+Jonny Bairstow,J Bairstow,England,WK,R,,37,1,,,52,1674,146.07,0,,,,,,,100,66,10,0,Opener,,,,,,77,10
+Josh Little,J Little,Ireland,PACE,R,Left-arm fast,26,1,,,11,0,,11,8.92,,,,,,100,22,57,0,LeftArmPace,,,,,,22,57
+Josh Philippe,J Philippe,Australia,WK,R,,29,1,,,5,78,101.30,0,,,,,,,100,52,10,0,,,,,,,51,10
+Keshav Maharaj,K Maharaj,South Africa,SPIN,R,Left-arm orthodox,36,1,,,2,1,50.00,2,6.50,,,,,,100,22,55,0,FingerSpin,,,,,,25,58
+Kusal Mendis,K Mendis,Sri Lanka,WK,R,Right-arm legbreak,31,1,,,1,20,200.00,0,,,,,,,100,56,10,0,,,,,,,56,10
+Kusal Perera,K Perera,Sri Lanka,WK,L,Right-arm medium,36,1,,,2,14,107.69,0,,,,,,,100,46,10,0,,,,,,,54,10
+Kyle Mayers,K Mayers,West Indies,AR,L,Right-arm medium,34,1,,,13,379,144.11,0,8.43,,,,,,100,52,45,0,Opener,,,,,,65,45
+Litton Das,L Das,Bangladesh,WK,R,Right-arm offbreak,31,1,,,1,4,100.00,0,,,,,,,100,55,10,0,,,,,,,55,10
+Mark Chapman,M Chapman,New Zealand,AR,L,Left-arm orthodox,32,1,,,0,0,,0,,,,,,,100,48,45,0,FingerSpin,,,,,,48,45
+Mark Wood,M Wood,England,PACE,R,Right-arm fast,36,1,,,5,12,150.00,11,8.95,,,,,,100,15,50,0,,,,,,,23,58
+Navdeep Saini,N Saini,India,PACE,R,Right-arm fast,33,1,,,1,0,,0,17.00,,,,,,100,22,55,0,,,,,,,22,55
+Obed McCoy,O McCoy,West Indies,PACE,L,Left-arm fast-medium,29,1,,,8,8,160.00,11,9.32,,,,,,100,23,57,0,LeftArmPace,,,,,,23,58
+Ottneil Baartman,O Baartman,South Africa,PACE,R,Right-arm fast-medium,33,1,,,0,0,,0,,,,,,,100,22,55,0,,,,,,,22,55
+Paul Stirling,P Stirling,Ireland,BAT,R,Right-arm offbreak,36,1,,,0,0,,0,,,,,,,100,57,20,0,,,,,,,60,20
+Rassie van der Dussen,R van der Dussen,South Africa,BAT,R,Right-arm legbreak,37,1,,,3,22,91.67,0,,,,,,,100,48,20,0,,,,,,,58,20
+Reeza Hendricks,R Hendricks,South Africa,BAT,R,Right-arm offbreak,37,1,,,0,0,,0,,,,,,,100,55,20,0,,,,,,,60,20
+Rehan Ahmed,R Ahmed,England,AR,R,Right-arm legbreak,22,1,,,0,0,,0,,,,,,,100,48,45,0,WristSpin,,,,,,48,45
+Rishad Hossain,R Hossain,Bangladesh,AR,R,Right-arm legbreak,24,1,,,0,0,,0,,,,,,,100,48,45,0,WristSpin,,,,,,48,45
+Sandeep Warrier,S Warrier,India,PACE,R,Right-arm medium-fast,35,1,,,10,0,,8,9.04,,,,,,100,15,55,0,,,,,,,22,55
+Saurabh Netravalkar,S Netravalkar,USA,PACE,R,Left-arm fast-medium,34,1,,,0,0,,0,,,,,,,100,21,55,0,LeftArmPace,,,,,,22,55
+Shai Hope,S Hope,West Indies,WK,R,Left-arm medium,32,1,,,9,183,150.00,0,,,,,,,100,58,10,0,Finisher,,,,,,59,10
+Sikandar Raza,S Raza,Zimbabwe,AR,R,Right-arm offbreak,40,1,,,9,182,133.82,3,10.07,,,,,,100,35,42,0,FingerSpin,,,,,,54,42
+Tabraiz Shamsi,T Shamsi,South Africa,SPIN,R,Left-arm wrist-spin,36,1,,,5,2,50.00,3,9.05,,,,,,100,17,52,0,WristSpin,,,,,,25,51
+Tanveer Sangha,T Sangha,Australia,SPIN,R,Right-arm legbreak,24,1,,,0,0,,0,,,,,,,100,25,55,0,WristSpin,,,,,,25,55
+Tom Curran,T Curran,England,AR,R,Right-arm fast-medium,31,1,,,13,127,118.69,13,10.84,,,,,,100,49,45,0,,,,,,,50,45
+Towhid Hridoy,T Hridoy,Bangladesh,BAT,R,Right-arm offbreak,25,1,,,0,0,,0,,,,,,,100,60,20,0,,,,,,,60,20
+Tymal Mills,T Mills,England,PACE,R,Left-arm fast,34,1,,,10,8,57.14,11,9.85,,,,,,100,16,53,0,LeftArmPace,,,,,,22,53
+Waqar Salamkheil,W Salamkheil,Afghanistan,SPIN,R,Left-arm wrist-spin,24,1,,,0,0,,0,,,,,,,100,25,55,0,WristSpin,,,,,,25,55
+Wiaan Mulder,W Mulder,South Africa,AR,R,Right-arm medium,28,1,,,1,9,81.82,0,16.00,,,,,,100,47,45,0,,,,,,,47,45
+Will O'Rourke,W O'Rourke,New Zealand,PACE,R,Right-arm fast,25,1,,,3,0,,6,12.77,,,,,,100,22,54,0,,,,,,,22,54
+William Sutherland,W Sutherland,Australia,AR,R,Right-arm medium-fast,26,1,,,0,0,,0,,,,,,,100,48,45,0,,,,,,,48,45
+Chetan Sakariya,C Sakariya,India,PACE,L,Left-arm medium-fast,28,1,,,20,20,64.52,20,8.62,,,,,,75,23,58,0,LeftArmPace,,,,,,23,60
+Dasun Shanaka,D Shanaka,Sri Lanka,AR,R,Right-arm medium,35,1,,,10,89,123.61,1,10.00,,,,,,75,40,44,0,,,,,,,47,44
+Deepak Hooda,D Hooda,India,AR,R,Right-arm offbreak,31,1,,,125,1497,127.62,10,8.64,,,,,,75,56,43,0,FingerSpin,,,,,,56,43
+KS Bharat,KS Bharat,India,WK,R,,32,1,,,10,199,122.09,0,,,,,,,75,56,10,0,,,,,,,56,10
+Lizaad Williams,L Williams,South Africa,PACE,L,Right-arm medium-fast,32,1,,,2,1,50.00,1,12.00,,,,,,75,22,52,0,,,,,,,22,52
+Nathan Smith,N Smith,New Zealand,AR,R,Right-arm medium-fast,28,1,,,0,0,,0,,,,,,,75,48,45,0,,,,,,,48,45
+Reece Topley,R Topley,England,PACE,R,Left-arm fast-medium,32,1,,,6,3,50.00,5,11.10,,,,,,75,22,50,0,LeftArmPace,,,,,,22,49
+Richard Gleeson,R Gleeson,England,PACE,R,Right-arm fast-medium,38,1,,,3,2,100.00,2,9.71,,,,,,75,10,51,0,,,,,,,22,51
+Sediqullah Atal,S Atal,Afghanistan,BAT,L,,25,1,,,1,22,137.50,0,,,,,,,75,60,12,0,,,,,,,60,12
+Shamar Joseph,S Joseph,West Indies,PACE,L,Right-arm fast,27,1,,,1,0,,0,11.75,,,,,,75,22,54,0,,,,,,,22,54
+Taskin Ahmed,T Ahmed,Bangladesh,PACE,L,Right-arm fast,31,1,,,0,0,,0,,,,,,,75,22,55,0,,,,,,,22,55
+Karn Sharma,K Sharma,India,AR,L,Right-arm legbreak,38,0,,,90,352,119.32,83,8.38,,,,,,50,34,60,0,WristSpin,,,,,,45,76
+Mahipal Lomror,M Lomror,India,AR,L,Left-arm orthodox,26,0,,,40,527,141.29,1,8.47,,,,,,50,55,45,0,FingerSpin,,,,,,59,45
+Mandeep Singh,M Singh,India,AR,R,Right-arm medium,34,0,,,111,1706,122.91,0,13.00,,,,,,50,51,45,0,,,,,,,57,45
+Rajvardhan Hangargekar,R Hangargekar,India,AR,R,Right-arm fast,23,0,,,2,0,,3,10.00,,,,,,40,48,46,0,,,,,,,48,46
+Abhimanyu Easwaran,A Easwaran,India,BAT,R,Right-arm legbreak,31,0,,,0,0,,0,,,,,,,30,60,20,0,,,,,,,60,20
+Abhinav Manohar,A Manohar,India,AR,R,Right-arm legbreak,32,0,,,27,292,124.26,0,,,,,,,30,48,45,0,WristSpin,,,,,,48,45
+Akash Madhwal,A Madhwal,India,PACE,R,Right-arm medium-fast,32,0,,,17,8,57.14,23,10.06,,,,,,30,22,56,0,DeathPace,,,,,,22,56
+Anmolpreet Singh,A Singh,India,BAT,R,Right-arm offbreak,28,0,,,9,139,120.87,0,,,,,,,30,56,20,0,,,,,,,55,20
+Aryan Juyal,A Juyal,India,WK,R,,24,0,,,0,0,,0,,,,,,,30,55,10,0,,,,,,,55,10
+Atharva Taide,A Taide,India,BAT,L,Left-arm orthodox,26,0,,,10,260,146.89,0,24.00,,,,,,30,63,20,0,Opener,,,,,,64,20
+Avanish Rao Aravelly,AR Aravelly,India,WK,L,,21,0,,,0,0,,0,,,,,,,30,55,10,0,,,,,,,55,10
+Bevon Jacobs,B Jacobs,New Zealand,BAT,R,Right-arm medium,24,1,,,0,0,,0,,,,,,,30,60,20,0,,,,,,,60,20
+Chama Milind,C Milind,India,PACE,L,Left-arm medium,32,0,,,0,0,,0,,,,,,,30,22,55,0,LeftArmPace,,,,,,22,55
+Connor Esterhuizen,C Esterhuizen,South Africa,BAT,R,,25,1,,,0,0,,0,,,,,,,30,60,12,0,,,,,,,60,12
+Daniel Lategan,D Lategan,England,BAT,L,Right-arm offbreak,20,0,,,0,0,,0,,,,,,,30,60,20,0,,,,,,,60,20
+Darshan Nalkande,D Nalkande,India,PACE,R,Right-arm fast-medium,27,0,,,6,12,100.00,6,10.57,,,,,,30,22,54,0,,,,,,,22,54
+Emanjot Chahal,E Chahal,India,AR,R,Left-arm orthodox,22,0,,,0,0,,0,,,,,,,30,48,45,0,FingerSpin,,,,,,48,45
+Jalaj Saxena,J Saxena,India,AR,R,Right-arm offbreak,39,0,,,1,0,,0,9.00,,,,,,30,34,32,0,FingerSpin,,,,,,48,46
+KC Cariappa,KC Cariappa,India,SPIN,R,Right-arm legbreak,32,0,,,11,24,114.29,8,9.67,,,,,,30,26,49,0,WristSpin,,,,,,26,47
+KM Asif,KM Asif,India,PACE,R,Right-arm medium,33,0,,,7,0,0.00,7,10.42,,,,,,30,17,53,0,,,,,,,22,52
+Kamlesh Nagarkoti,K Nagarkoti,India,PACE,R,Right-arm fast,26,0,,,12,22,66.67,5,9.50,,,,,,30,23,48,0,,,,,,,23,46
+Karan Lal,K Lal,India,AR,R,Right-arm offbreak,25,0,,,0,0,,0,,,,,,,30,48,45,0,FingerSpin,,,,,,48,45
+Karim Janat,K Janat,Afghanistan,BAT,R,Right-arm medium-fast,28,1,,,1,0,,0,30.00,,,,,,30,60,20,0,,,,,,,60,20
+Krish Bhagat,K Bhagat,India,PACE,R,Right-arm medium,21,0,,,3,10,47.62,0,10.50,,,,,,30,23,52,0,,,,,,,23,52
+Krishnan Shrijith,K Shrijith,India,WK,L,,30,0,,,0,0,,0,,,,,,,30,55,10,0,,,,,,,55,10
+Kuldip Yadav,K Yadav,India,PACE,L,Left-arm fast-medium,29,0,,,3,0,0.00,2,9.33,,,,,,30,22,53,0,LeftArmPace,,,,,,22,53
+Kulwant Khejroliya,K Khejroliya,India,PACE,L,Left-arm medium-fast,34,0,,,9,0,,6,11.01,,,,,,30,16,49,0,LeftArmPace,,,,,,22,47
+Kumar Kartikeya,K Kartikeya,India,SPIN,R,Left-arm wrist-spin,28,0,,,16,12,70.59,12,8.66,,,,,,30,25,56,0,WristSpin,,,,,,25,56
+Kunal Rathore,K Rathore,India,WK,L,,23,0,,,1,0,0.00,0,,,,,,,30,54,10,0,,,,,,,54,10
+Luvnith Sisodia,L Sisodia,India,WK,L,Left-arm medium,26,0,,,0,0,,0,,,,,,,30,55,10,0,,,,,,,55,10
+Macneil Noronha,M Noronha,India,AR,R,Right-arm offbreak,25,0,,,0,0,,0,,,,,,,30,48,45,0,FingerSpin,,,,,,48,45
+Manan Vohra,M Vohra,India,BAT,R,Right-arm fast-medium,33,0,,,56,1083,130.64,0,,,,,,,30,54,20,0,,,,,,,59,20
+Manoj Bhandage,M Bhandage,India,AR,L,Right-arm medium-fast,27,0,,,1,1,25.00,0,,,,,,,30,48,45,0,,,,,,,48,45
+Mayank Dagar,M Dagar,India,SPIN,R,Left-arm orthodox,29,0,,,8,0,0.00,2,8.89,,,,,,30,25,51,0,FingerSpin,,,,,,25,50
+Mohit Rathee,M Rathee,India,AR,R,Right-arm legbreak,27,0,,,1,1,50.00,0,14.50,,,,,,30,48,45,0,WristSpin,,,,,,48,45
+Murugan Ashwin,M Ashwin,India,SPIN,R,Right-arm legbreak,36,0,,,44,35,70.00,35,8.01,,,,,,30,18,54,0,WristSpin,,,,,,26,63
+Priyam Garg,P Garg,India,BAT,R,Right-arm medium,25,0,,,23,273,113.28,0,,,,,,,30,52,20,0,,,,,,,47,20
+RS Ambrish,RS Ambrish,India,AR,L,Right-arm medium,19,0,,,0,0,,0,,,,,,,30,48,45,0,,,,,,,48,45
+Rohan Kunnummal,R Kunnummal,India,BAT,R,Right-arm offbreak,28,0,,,0,0,,0,,,,,,,30,60,20,0,,,,,,,60,20
+Sachin Baby,S Baby,India,BAT,L,Right-arm offbreak,37,0,,,20,144,122.03,2,4.80,,,,,,30,46,12,0,,,,,,,55,22
+Salman Nizar,S Nizar,India,BAT,L,Right-arm offbreak,29,0,,,0,0,,0,,,,,,,30,60,20,0,,,,,,,60,20
+Sanvir Singh,S Singh,India,AR,R,Right-arm medium,29,0,,,6,25,119.05,0,,,,,,,30,48,45,0,,,,,,,48,45
+Saurabh Dubey,S Dubey,India,PACE,R,Left-arm fast-medium,28,0,,,4,4,200.00,5,8.26,,,,,,30,22,58,0,LeftArmPace,,,,,,22,58
+Shaik Rasheed,S Rasheed,India,BAT,R,Right-arm legbreak,22,0,,,5,71,112.70,0,,,,,,,30,57,20,0,,,,,,,56,20
+Simarjeet Singh,S Singh,India,PACE,R,Right-arm medium-fast,28,0,,,14,10,66.67,11,10.00,,,,,,30,22,51,0,,,,,,,22,49
+Tanay Thyagarajan,T Thyagarajan,India,AR,L,Left-arm orthodox,30,0,,,0,0,,0,,,,,,,30,48,45,0,FingerSpin,,,,,,48,45
+Tanush Kotian,T Kotian,India,AR,R,Right-arm offbreak,27,0,,,1,24,77.42,0,,,,,,,30,48,45,0,FingerSpin,,,,,,48,45
+Tejas Baroka,T Baroka,India,SPIN,R,Right-arm legbreak,30,0,,,1,0,,0,9.43,,,,,,30,25,55,0,WristSpin,,,,,,25,55
+Utkarsh Singh,U Singh,India,AR,L,Right-arm offbreak,28,0,,,0,0,,0,,,,,,,30,48,45,0,FingerSpin,,,,,,48,45
+Vidwath Kaverappa,V Kaverappa,India,PACE,R,Right-arm fast-medium,27,0,,,1,0,,2,9.00,,,,,,30,22,56,0,,,,,,,22,56
+Vijay Shankar,V Shankar,India,AR,R,Right-arm medium,35,0,,,78,1233,129.79,9,8.67,,,,,,30,54,40,0,,,,,,,62,47
+Yash Dhull,Y Dhull,India,BAT,R,Right-arm offbreak,23,0,,,4,16,69.57,0,,,,,,,30,58,20,0,,,,,,,58,20
+Yuvraj Chaudhary,Y Chaudhary,India,AR,L,Left-arm orthodox,24,0,,,0,0,,0,,,,,,,30,48,45,0,FingerSpin,,,,,,48,45
