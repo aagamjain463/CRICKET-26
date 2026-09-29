@@ -795,7 +795,7 @@ void UFrontendRoot::BeginToss(bool bForSeason)
 void UFrontendRoot::CallToss(bool bHeads)
 {
 	if (TossStage != 0) return;
-	FRandomStream Coin(int32(FPlatformTime::Cycles()));
+	FRandomStream Coin(static_cast<int32>(FPlatformTime::Cycles()));
 	bTossHeads = RealTeams::FlipCoin(Coin);
 	bUserWonToss = bTossHeads == bHeads;
 	if (bUserWonToss)
