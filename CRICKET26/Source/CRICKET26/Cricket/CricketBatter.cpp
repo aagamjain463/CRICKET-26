@@ -403,11 +403,12 @@ namespace
 	// Pulls a bat's grip back within reach of the shoulders, then out from them and in front of the chest.
 	FBatL Reachable(FBatL B, const FPoseL& P)
 	{
+		B = OffChest(Uncramped(B, P), P);
 		FVector Sh[2];
 		Shoulders(P, Sh);
 		const float Short = ReachShort(B, Sh);
 		if (Short > 0.f) B.Grip += (0.5f * (Sh[0] + Sh[1]) - B.Grip).GetSafeNormal() * Short;
-		return OffChest(Uncramped(B, P), P);
+		return B;
 	}
 }
 
@@ -664,8 +665,8 @@ FBody Plan(const FInput& In)
 		FVector FinishGrip = FinishSh[0] + FrontOut * 0.05f + Facing(AtFinish.Chest) * 0.05f + FVector(0.f, 0.f, In.Shot == EShotType::Loft ? 0.46f : 0.4f);
 		if (In.bMiss)
 		{
-			ThroughGrip = Contact.Grip + ShotFlat * 0.14f + FVector(0.f, 0.f, 0.12f);
-			FinishGrip = Contact.Grip + ShotFlat * 0.18f + FVector(0.f, 0.f, 0.18f);
+			ThroughGrip = Contact.Grip + ShotFlat * 0.14f + Facing(AtThrough.Chest) * 0.05f + FVector(0.f, 0.f, 0.12f);
+			FinishGrip = Contact.Grip + ShotFlat * 0.18f + Facing(AtFinish.Chest) * 0.08f + FVector(0.f, 0.f, 0.18f);
 		}
 		else
 		{
