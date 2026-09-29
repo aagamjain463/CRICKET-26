@@ -7,6 +7,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "FrontendTypes.h"
+#include "RealTeams.h"
 #include "FrontendRoot.generated.h"
 
 class UBorder;
@@ -15,6 +16,9 @@ class UOverlay;
 class USizeBox;
 class UTextBlock;
 class UWidgetSwitcher;
+
+/** Match setup's steps: which competition, then the two teams, the user's playing XI, and the toss. */
+enum class EQuickStep : uint8 { Competition, Teams, PlayingXI, Toss };
 
 UCLASS()
 class UFrontendRoot : public UUserWidget
@@ -48,12 +52,44 @@ public:
 
 	// Covers the shell with the pre-match card for a moment, then travels into the Super Over.
 	void StartSuperOver();
+	/** The format screen's pick: on to match setup, starting with the competition. */
 	void SelectMatchOvers(int32 Overs);
 	int32 MatchOvers() const { return SelectedOvers; }
+
+	// ---- Quick match between two real teams (the choices persist in UFrontendSettingsSave) ----
+	EQuickStep QuickStep = EQuickStep::Competition;
+	/** The competition picked in match setup (kept in the settings save). */
+	ECompetition QuickCompetition() const;
+	TArray<int32> QuickXIOrder; // the user's XI as tapped, in batting order (player ids); empty: the team's real XI
+	void ChooseCompetition(uint8 Competition);
+	/** Steps the user's team (or the opponent) through the competition's teams, never onto the other side's. */
+	void StepQuickTeam(bool bOpponent, int32 Delta);
+	void ShowQuickStep(EQuickStep Step);
+	void ToggleQuickXIPlayer(int32 PlayerId);
+	void ResetQuickXI();
+	/** The XI the user's team takes in: the edited one when it is a full, valid XI, else their real XI. */
+	FIPLPlayingXI QuickUserXI() const;
+	/** Stages the quick match with the toss's result and travels into it. */
+	void StartQuickMatch();
+
+	// ---- The toss, before every match the user plays (quick match, or an IPL season fixture) ----
+	int32 TossStage = 0;          // 0: call it; 1: the user won and chooses; 2: decided
+	bool bTossForSeason = false;  // the toss is for the staged season fixture, not a quick match
+	bool bTossHeads = false, bUserWonToss = false, bUserBatsFirst = true;
+	void BeginToss(bool bForSeason);
+	void CallToss(bool bHeads);
+	void ElectToBat(bool bBat);
+	/** Plays the match the toss was for. */
+	void ConfirmToss();
+	/** The two sides the toss is between, for its panel: the user's first. */
+	void TossTeams(FString& OutUser, FString& OutOpponent) const;
+
+	/** Rebuilds one page from the current state (steps that change what a page shows). */
+	void RefreshPage(EFrontendTab Page);
 	bool IsStartingMatch() const { return LoadingT >= 0.f; }
 
 	// ---- IPL season hub (transient UI state; the season itself lives in UIPLSeasonSave) ----
-	int32 IPLView = 0; // 0 hub, 1 team select
+	int32 IPLView = 0; // 0 hub, 1 team select, 2 the toss
 	int32 IPLSelectFixture = INDEX_NONE;
 	TArray<int32> IPLXIOrder; // tapped player ids in batting order
 	int32 IPLLoadingFixture = INDEX_NONE;

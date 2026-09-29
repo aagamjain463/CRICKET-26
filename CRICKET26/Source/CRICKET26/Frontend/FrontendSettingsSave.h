@@ -1,6 +1,7 @@
 // Persisted frontend preferences. Only settings that really take effect live here: audio and frame-rate
 // apply engine-wide straight away; difficulty, venue, graphics tier and the timing bar travel to the
-// Super Over as URL options (ASuperOverGameMode reads them in StartPlay). Squads and balance are not stored.
+// Super Over as URL options (ASuperOverGameMode reads them in StartPlay). The last quick match's teams and format are
+// kept for the rematch; squads and balance are not stored.
 
 #pragma once
 
@@ -20,6 +21,11 @@ public:
 	UPROPERTY() int32 Difficulty = 2;       // CricketAI::EDifficulty, Hard as in the match
 	UPROPERTY() int32 Venue = -1;           // -1 random, else CricketStadium venue index
 	UPROPERTY() bool bTimingBar = true;
+	// The last quick match set up, so a rematch (or the next visit) starts from it.
+	UPROPERTY() int32 QuickCompetition = 1; // ECompetition: 0 international, 1 IPL
+	UPROPERTY() int32 QuickTeam = 0;        // the user's team, an index into RealTeams::Teams(QuickCompetition)
+	UPROPERTY() int32 QuickOpponent = 1;
+	UPROPERTY() int32 QuickOvers = 1;       // 1 (a Super Over), 3, 5, 10 or 20
 
 	static FString Slot() { return TEXT("Cricket26FrontendV2"); }
 

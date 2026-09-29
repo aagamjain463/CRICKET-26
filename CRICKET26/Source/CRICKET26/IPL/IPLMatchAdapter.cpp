@@ -156,14 +156,14 @@ namespace IPLMatchAdapter
 	}
 
 	TArray<int32> EligibleBowlers(const FIPLPlayingXI& XI, const TArray<int32>& BallsBowled, int32 LastBowlerSlot,
-		const TArray<FAuctionPlayer>& Players)
+		const TArray<FAuctionPlayer>& Players, int32 MaxBalls)
 	{
 		TArray<int32> Out;
 		for (int32 I = 0; I < XI.BattingOrder.Num(); ++I)
 		{
 			if (I == LastBowlerSlot) continue; // consecutive overs are illegal
 			const int32 Bowled = BallsBowled.IsValidIndex(I) ? BallsBowled[I] : 0;
-			if (Bowled >= IPLSeason::MaxBallsPerBowler) continue;
+			if (Bowled >= MaxBalls) continue;
 			Out.Add(I);
 		}
 		// Credible order: genuine bowlers first, so the list reads like a captain's options.
@@ -179,9 +179,9 @@ namespace IPLMatchAdapter
 	}
 
 	int32 ChooseAIBowler(const FIPLPlayingXI& XI, const TArray<int32>& BallsBowled, int32 LastBowlerSlot,
-		const TArray<FAuctionPlayer>& Players)
+		const TArray<FAuctionPlayer>& Players, int32 MaxBalls)
 	{
-		const TArray<int32> Options = EligibleBowlers(XI, BallsBowled, LastBowlerSlot, Players);
+		const TArray<int32> Options = EligibleBowlers(XI, BallsBowled, LastBowlerSlot, Players, MaxBalls);
 		if (Options.Num() == 0) return INDEX_NONE;
 		// Best rating with a pace/spin alternation where possible: reuse ratings, never pure random.
 		auto IsPace = [&](int32 Slot)

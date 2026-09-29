@@ -7,6 +7,7 @@
 
 #include "CoreMinimal.h"
 #include "IPLTypes.h"
+#include "IPLSeason.h"
 #include "CricketTypes.h"
 
 struct FAuctionPlayer;
@@ -40,14 +41,15 @@ namespace IPLMatchAdapter
 	/** XI slots that may walk out next: unused (no balls, not out), not at the crease. */
 	TArray<int32> EligibleBatters(const FSuperOverMatch& Match);
 	/**
-	 * XI slots that may bowl the next over: under the 4-over T20 limit and not the bowler of
-	 * the over just bowled (consecutive overs are illegal). BallsBowled is legal balls per XI slot.
+	 * XI slots that may bowl the next over: under the bowler's limit (MaxBalls legal balls: the 4-over T20 limit
+	 * unless a shorter match sets its own) and not the bowler of the over just bowled (consecutive overs are illegal).
+	 * BallsBowled is legal balls per XI slot.
 	 */
 	TArray<int32> EligibleBowlers(const FIPLPlayingXI& XI, const TArray<int32>& BallsBowled, int32 LastBowlerSlot,
-		const TArray<FAuctionPlayer>& Players);
+		const TArray<FAuctionPlayer>& Players, int32 MaxBalls = IPLSeason::MaxBallsPerBowler);
 	/** The AI's new-ball / next-over pick: best eligible bowling rating, pace/spin alternating. */
 	int32 ChooseAIBowler(const FIPLPlayingXI& XI, const TArray<int32>& BallsBowled, int32 LastBowlerSlot,
-		const TArray<FAuctionPlayer>& Players);
+		const TArray<FAuctionPlayer>& Players, int32 MaxBalls = IPLSeason::MaxBallsPerBowler);
 	/** Legal balls bowled per XI slot, read back from the innings' per-bowler cards. */
 	TArray<int32> BowlerBallsFromMatch(const FSuperOverMatch& Match);
 }
