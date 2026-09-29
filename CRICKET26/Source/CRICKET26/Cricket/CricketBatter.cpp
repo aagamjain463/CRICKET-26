@@ -380,7 +380,7 @@ namespace
 	FBatL OffChest(FBatL B, const FPoseL& P)
 	{
 		const FVector Up = ChestUp(P);
-		const float Along = FMath::Clamp((B.Grip.Z - (HipHeight - P.Drop)) / FMath::Max(Up.Z, 0.3f), 0.f, 0.49f);
+		const float Along = FMath::Clamp((B.Grip.Z - (HipHeight - P.Drop)) / FMath::Max(Up.Z, 0.3f), -0.1f, 0.49f);
 		const FVector2D Out = FVector2D(B.Grip) - (P.Pelvis + FVector2D(Up) * Along);
 		if (Out.Size() < 0.22f) B.Grip += FVector((Out.IsNearlyZero() ? FVector2D(Facing(P.Chest)) : Out.GetSafeNormal()) * (0.22f - Out.Size()), 0.f);
 		return B;
@@ -403,11 +403,18 @@ namespace
 	// Pulls a bat's grip back within reach of the shoulders, then out from them and in front of the chest.
 	FBatL Reachable(FBatL B, const FPoseL& P)
 	{
-		B = OffChest(Uncramped(B, P), P);
 		FVector Sh[2];
 		Shoulders(P, Sh);
 		const float Short = ReachShort(B, Sh);
 		if (Short > 0.f) B.Grip += (0.5f * (Sh[0] + Sh[1]) - B.Grip).GetSafeNormal() * Short;
+		B = OffChest(Uncramped(B, P), P);
+		const float Short2 = ReachShort(B, Sh);
+		if (Short2 > 0.f)
+		{
+			const FVector FrontMid = 0.5f * (Sh[0] + Sh[1]) + Facing(P.Chest) * 0.23f;
+			B.Grip += (FrontMid - B.Grip).GetSafeNormal() * Short2;
+			B = OffChest(Uncramped(B, P), P);
+		}
 		return B;
 	}
 }
@@ -726,7 +733,7 @@ FBody Plan(const FInput& In)
 			B.Grip += Anchor(P);
 			B = Reachable(B, P); // within reach between the keys, and never through the chest as the body closes on the hands
 		}
-		B = T > Impact ? Reachable(B, P) : Uncramped(B, P); // the contact is never cramped: no push there
+		B = T > Impact ? Reachable(B, P) : (FMath::IsNearlyEqual(T, Impact, 1e-4f) ? Uncramped(B, P) : OffChest(Uncramped(B, P), P)); // the contact is never cramped: no push there
 		// Recovering, the hands carry the finished bat with the body as it walks back into the stance, rather than
 		// leaving it where the stroke ended while the body steps away from it.
 		if (T > Settle)

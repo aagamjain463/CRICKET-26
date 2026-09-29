@@ -299,7 +299,14 @@ public:
 
 	bool HumanBats() const { return !bAutoPlay && Match.BattingTeam() == HumanTeam; }
 	bool HumanBowls() const { return !bAutoPlay && Match.BowlingTeam() == HumanTeam; }
-	const FCricketPlayer& StrikerPlayer() const { return Teams[Match.BattingTeam()].Batters[Match.Cur().Striker]; }
+	const FCricketPlayer& StrikerPlayer() const
+	{
+		if ((IsReplaying() || InReel()) && !Ctx.Striker.Name.IsEmpty())
+		{
+			return Ctx.Striker;
+		}
+		return Teams[Match.BattingTeam()].Batters[Match.Cur().Striker];
+	}
 	const FCricketPlayer& BowlerPlayer() const { return Teams[Match.BowlingTeam()].Bowler; }
 	FString DirectionName() const;
 

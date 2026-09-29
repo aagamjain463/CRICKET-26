@@ -442,35 +442,26 @@ namespace MatchHudPrivate
 		FPaint& P = F.P;
 		const float U = F.U;
 		const FBox2D R = F.Px(Hit);
-		const float TH = 6.f * U;
-		const float CY = R.Max.Y - 18.f * U;
+		const float TH = 4.f * U;
+		const float CY = R.Max.Y - 16.f * U;
 		const float HY = R.Min.Y + 16.f * U;
 
-		// Sporty card backing with subtle sleek border
-		P.Box(R, Glass(bDown ? 0.94f : 0.82f), 6.f * U, bDown ? Teal() : Hair(), bDown ? 1.5f * U : U);
+		// Clean, minimalist translucent card backing with fine hairline border
+		P.Box(R, Glass(bDown ? 0.90f : 0.82f), 5.f * U, bDown ? Teal() : Hair(), U);
 
-		// Sporty header: title and pill value badge
+		// Clean header: Title on the left in subtle muted ink, crisp Value on the right
 		const FLinearColor HeaderCol = bCentred ? Teal() : Gold();
-		P.Text(Title, FVector2D(R.Min.X + 14.f * U, HY), HudFont(11.f * U, EWeight::Bold, 160), HeaderCol);
+		P.Text(Title, FVector2D(R.Min.X + 14.f * U, HY), HudFont(10.5f * U, EWeight::Bold, 140), HeaderCol);
 
-		// Value in a sleek dark pill badge on the right
-		const FSlateFontInfo ValFont = HudFont(13.f * U, EWeight::Black, 40);
-		const float ValW = FPaint::Measure(Value, ValFont).X + 16.f * U;
-		const FBox2D Badge(FVector2D(R.Max.X - ValW - 10.f * U, HY - 9.f * U), FVector2D(R.Max.X - 10.f * U, HY + 9.f * U));
-		P.Box(Badge, Hex(0x0a1018, 0.75f), 4.f * U, Hair(), U);
-		P.Text(Value, Badge.GetCenter(), ValFont, Ink(), 0.5f);
+		// Value cleanly right-aligned without heavy badge boxes
+		const FSlateFontInfo ValFont = HudFont(12.f * U, EWeight::Bold, 40);
+		const float ValW = FPaint::Measure(Value, ValFont).X;
+		P.Text(Value, FVector2D(R.Max.X - ValW - 14.f * U, HY), ValFont, Ink());
 
-		// Track: athletic dark channel with tick marks
+		// Track: slim minimalist groove
 		const float X0 = R.Min.X + 14.f * U, X1 = R.Max.X - 14.f * U;
 		const FBox2D Track(FVector2D(X0, CY - 0.5f * TH), FVector2D(X1, CY + 0.5f * TH));
-		P.Box(Track, Hex(0x06090f, 0.85f), 0.5f * TH);
-
-		// Meter ticks for sporty gauge feel
-		for (float TickFrac : { 0.25f, 0.5f, 0.75f })
-		{
-			const float TX = X0 + TickFrac * (X1 - X0);
-			P.Box(FVector2D(TX - 0.5f * U, CY - 4.f * U), FVector2D(U, 8.f * U), Hex(0xffffff, 0.15f));
-		}
+		P.Box(Track, Hex(0x06090f, 0.75f), 0.5f * TH);
 
 		// Active filled bar
 		const float Level = X0 + FMath::Clamp(Fill, 0.f, 1.f) * (X1 - X0);
@@ -480,15 +471,14 @@ namespace MatchHudPrivate
 
 		if (bCentred)
 		{
-			// Center zero tick
-			P.Box(FVector2D(0.5f * (X0 + X1) - 0.75f * U, CY - 6.f * U), FVector2D(1.5f * U, 12.f * U), InkFaint());
+			// Subtle center zero mark
+			P.Box(FVector2D(0.5f * (X0 + X1) - 0.5f * U, CY - 4.f * U), FVector2D(U, 8.f * U), InkFaint());
 		}
 
-		// Sporty dial thumb: double-ring puck with inner glow
-		const float ThumbR = (bDown ? 10.f : 8.f) * U;
-		P.Circle(FVector2D(Level, CY), ThumbR + 3.f * U, FLinearColor::Transparent, FillCol * FLinearColor(1, 1, 1, 0.35f), 1.5f * U);
+		// Minimalist, elegant circular thumb puck
+		const float ThumbR = (bDown ? 8.5f : 7.f) * U;
+		P.Circle(FVector2D(Level, CY), ThumbR + U, FLinearColor::Transparent, FillCol, U);
 		P.Circle(FVector2D(Level, CY), ThumbR, Ink());
-		P.Circle(FVector2D(Level, CY), ThumbR * 0.45f, FillCol);
 	}
 
 	void DrawControls(FMatchFrame& F, EMode TM)
@@ -558,17 +548,12 @@ namespace MatchHudPrivate
 				const FLinearColor Hue = bRunUp ? Teal() : Gold();
 				const FVector2D C = T.GetCenter();
 
-				// Sporty energetic stadium action button
-				// Outer dynamic halo rings
-				P.Circle(C, 0.5f * S + 8.f * U, FLinearColor::Transparent, Hue * FLinearColor(1, 1, 1, 0.45f), 2.f * U);
-				P.Circle(C, 0.5f * S + 4.f * U, FLinearColor::Transparent, Hue * FLinearColor(1, 1, 1, 0.2f), U);
-				// Core button
+				// Minimalist, modern action button: crisp circle with subtle elegant rim
 				P.Circle(C, 0.5f * S, bDown ? Ink() : Hue);
-				// Sporty inner accent ring
-				P.Circle(C, 0.5f * S - 4.f * U, FLinearColor::Transparent, GoldInk() * FLinearColor(1, 1, 1, 0.35f), U);
+				P.Circle(C, 0.5f * S, FLinearColor::Transparent, bDown ? Hue : Hair(), 1.5f * U);
 
-				P.Text(bRunUp ? TEXT("RELEASE") : TEXT("BOWL"), C - FVector2D(0.f, 0.06f * S), HudFont((bRunUp ? 0.15f : 0.20f) * S, EWeight::Black, 80), GoldInk(), 0.5f);
-				P.Text(FString(TypeName(G.HumanPlan.Type)).ToUpper(), C + FVector2D(0.f, 0.22f * S), HudFont(0.08f * S, EWeight::Bold, 80), GoldInk() * FLinearColor(1, 1, 1, 0.85f), 0.5f);
+				P.Text(bRunUp ? TEXT("RELEASE") : TEXT("BOWL"), C - FVector2D(0.f, 0.07f * S), HudFont((bRunUp ? 0.15f : 0.19f) * S, EWeight::Black, 80), GoldInk(), 0.5f);
+				P.Text(FString(TypeName(G.HumanPlan.Type)).ToUpper(), C + FVector2D(0.f, 0.20f * S), HudFont(0.075f * S, EWeight::Bold, 80), GoldInk() * FLinearColor(1, 1, 1, 0.85f), 0.5f);
 				break;
 			}
 			case EButton::Play:
@@ -584,20 +569,20 @@ namespace MatchHudPrivate
 			{
 				const bool bOn = Rep.IsValidIndex(B.Index) && Rep[B.Index] == G.HumanPlan.Type;
 				const FBox2D T = F.Px(B.Rect);
-				// Sporty delivery chip: clean athletic pill badge
+				// Minimalist delivery chip: clean, organized segmented pill
 				if (bOn)
 				{
-					// Active: vibrant gold pill with thin halo and high-contrast ink
-					P.Box(T, Gold(), 5.f * U, GoldHi(), 1.5f * U);
+					// Active: solid clean gold pill, dark bold text
+					P.Box(T, Gold(), 4.f * U);
 					if (Rep.IsValidIndex(B.Index))
-						P.Text(FString(TypeName(Rep[B.Index])).ToUpper(), T.GetCenter(), HudFont(FMath::Min(14.f * U, 0.28f * T.GetSize().Y), EWeight::Black, 60), GoldInk(), 0.5f);
+						P.Text(FString(TypeName(Rep[B.Index])).ToUpper(), T.GetCenter(), HudFont(FMath::Min(13.f * U, 0.28f * T.GetSize().Y), EWeight::Black, 60), GoldInk(), 0.5f);
 				}
 				else
 				{
-					// Inactive: dark sporty glass chip with subtle athletic border
-					P.Box(T, Glass(bDown ? 0.94f : 0.8f), 5.f * U, bDown ? Teal() : Hair(), U);
+					// Inactive: subtle dark glass chip with clean hairline border
+					P.Box(T, Glass(bDown ? 0.90f : 0.75f), 4.f * U, bDown ? Teal() : Hair(), U);
 					if (Rep.IsValidIndex(B.Index))
-						P.Text(FString(TypeName(Rep[B.Index])).ToUpper(), T.GetCenter(), HudFont(FMath::Min(14.f * U, 0.26f * T.GetSize().Y), EWeight::Bold, 60), Ink(), 0.5f);
+						P.Text(FString(TypeName(Rep[B.Index])).ToUpper(), T.GetCenter(), HudFont(FMath::Min(13.f * U, 0.26f * T.GetSize().Y), EWeight::Bold, 60), InkDim(), 0.5f);
 				}
 				break;
 			}
@@ -799,23 +784,21 @@ namespace MatchHudPrivate
 		const float U = F.U;
 		const FVector2D C = Screen / FMath::Max(Geometry.Scale, KINDA_SMALL_NUMBER);
 		const bool bLocked = G.DPhase == EDeliveryPhase::RunUp;
-		const float R = 28.f * U;
+		const float R = 24.f * U;
 
-		// Sporty concentric pitch target
-		P.Circle(C, R + 4.f * U, FLinearColor::Transparent, Gold() * FLinearColor(1, 1, 1, 0.35f), U);
-		P.Circle(C, R, FLinearColor::Transparent, Gold(), 2.f * U);
-		P.Circle(C, 8.f * U, FLinearColor::Transparent, Gold(), 1.5f * U);
-		P.Circle(C, 3.f * U, Gold());
+		// Minimalist, clean pitch target: single crisp ring, center dot, subtle tick marks
+		P.Circle(C, R, FLinearColor::Transparent, Gold(), 1.5f * U);
+		P.Circle(C, 2.5f * U, Gold());
 
-		// Crosshair ticks
+		// Clean delicate crosshair ticks
 		for (const FVector2D& D : { FVector2D(1, 0), FVector2D(-1, 0), FVector2D(0, 1), FVector2D(0, -1) })
-			P.Line(C + D * (R + 2.f * U), C + D * (R + 10.f * U), Gold(), 2.f * U);
+			P.Line(C + D * (R + 2.f * U), C + D * (R + 7.f * U), Gold() * FLinearColor(1, 1, 1, 0.8f), 1.5f * U);
 
-		// Clean sporty floating badge
+		// Minimalist floating length badge
 		const FString What = FString::Printf(TEXT("%s  •  %.1f M"), LengthName(G.HumanPlan.Length), G.HumanPlan.Length);
-		const FSlateFontInfo Fn = HudFont(13.f * U, EWeight::Black, 60);
-		const float PW = FPaint::Measure(What, Fn).X + 22.f * U;
-		P.Pill(What, C + FVector2D(R + 18.f * U + 0.5f * PW, 0.f), Fn, Hex(0x0a1018, 0.9f), Gold(), 12.f * U, 26.f * U, 2.f * U, Gold() * FLinearColor(1, 1, 1, 0.6f));
+		const FSlateFontInfo Fn = HudFont(11.5f * U, EWeight::Bold, 60);
+		const float PW = FPaint::Measure(What, Fn).X + 16.f * U;
+		P.Pill(What, C + FVector2D(R + 14.f * U + 0.5f * PW, 0.f), Fn, Hex(0x06090f, 0.85f), Gold(), 10.f * U, 22.f * U, 2.f * U, Hair());
 		P.Alpha = 1.f;
 	}
 

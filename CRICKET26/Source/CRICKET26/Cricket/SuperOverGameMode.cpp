@@ -533,7 +533,7 @@ void ASuperOverGameMode::BuildReplayPackageForResult(const FDeliveryOutcome& Out
 	// Byes have no stroke: the reverse angle takes its station from where the ball ran instead.
 	if (!Result.Contact.HasContact() && Result.BallPath.Num() > 1)
 		Frame.ExitVel = Result.BallAt(Result.DeadTime) - Result.BallAt(Result.ContactTime);
-	Frame.OffSign = OffSideSign(StrikerPlayer().BatHand);
+	Frame.OffSign = OffSideSign((!Ctx.Striker.Name.IsEmpty() ? Ctx.Striker : StrikerPlayer()).BatHand);
 	Frame.ArmSign = BowlerPlayer().BowlHand == ECricketHand::Right ? 1.f : -1.f;
 	if (Result.Fielding.Boundary > 0)
 	{
@@ -683,6 +683,14 @@ void ASuperOverGameMode::TintOutfit(UMaterialInstanceDynamic* Cloth, const FLine
 	}
 	for (const TCHAR* Param : { TEXT("Paint Tint"), TEXT("LogoTint"), TEXT("diffuse_color_1"), TEXT("diffuse_color_2"), TEXT("B_diffuse_color_1") })
 		Cloth->SetVectorParameterValue(Param, Shade);
+}
+
+namespace
+{
+	int32 PlayerShirtNumber(const FCricketPlayer& P)
+	{
+		return P.Number > 0 ? P.Number : 1 + static_cast<int32>(GetTypeHash(P.Name) % 99);
+	}
 }
 
 UTexture* ASuperOverGameMode::ShirtPrint(const FString& Name, int32 Number, const FString& Sponsor, bool bBroad)
@@ -1981,10 +1989,9 @@ void ASuperOverGameMode::PlaceForDelivery()
 	}
 	for (AStaticMeshActor* U : Umpires) Paint(U, FLinearColor(0.14f, 0.16f, 0.18f)); // charcoal slate keeps officiating cloth readable under match light
 	// Shirt numbers: the squad's own, falling back to a stable hash of the name for sides without one.
-	auto Shirt = [](const FCricketPlayer& P) { return P.Number > 0 ? P.Number : 1 + static_cast<int32>(GetTypeHash(P.Name) % 99); };
-	Paint(Striker, BatCol, &Teams[Match.BattingTeam()], Batter.Name, Shirt(Batter));
-	Paint(NonStriker, BatCol, &Teams[Match.BattingTeam()], Ctx.NonStriker.Name, Shirt(Ctx.NonStriker));
-	Paint(Bowler, FieldCol, &Teams[Match.BowlingTeam()], Bwl.Name, Shirt(Bwl));
+	Paint(Striker, BatCol, &Teams[Match.BattingTeam()], Batter.Name, PlayerShirtNumber(Batter));
+	Paint(NonStriker, BatCol, &Teams[Match.BattingTeam()], Ctx.NonStriker.Name, PlayerShirtNumber(Ctx.NonStriker));
+	Paint(Bowler, FieldCol, &Teams[Match.BowlingTeam()], Bwl.Name, PlayerShirtNumber(Bwl));
 	for (int32 I = 0; I < Fielders.Num(); ++I)
 	{
 		const bool bUsed = Ctx.Field.IsValidIndex(I) && !Ctx.Field[I].bBowler;
@@ -2955,6 +2962,12 @@ void ASuperOverGameMode::PlayClip(int32 Clip)
 		// delivery, not the clip, so reel replays pose analytically from the stored result (same data).
 		ReelClip = Clip;
 		bReplayThis = true;
+		if (Teams.IsValidIndex(Match.BattingTeam()))
+		{
+			const FLinearColor BatCol = Teams[Match.BattingTeam()].Colour;
+			Paint(Striker, BatCol, &Teams[Match.BattingTeam()], Ctx.Striker.Name, PlayerShirtNumber(Ctx.Striker));
+			Paint(NonStriker, BatCol, &Teams[Match.BattingTeam()], Ctx.NonStriker.Name, PlayerShirtNumber(Ctx.NonStriker));
+		}
 		BuildReplayPackageForResult(Result.ToOutcome(), false);
 		if (!ActivePackage.IsValid()) ClearBroadcastReplay(); // legacy fallback timings still replay it
 		DPhase = EDeliveryPhase::DeadBall;
@@ -2968,6 +2981,14 @@ void ASuperOverGameMode::PlayClip(int32 Clip)
 	Highlights.Empty();
 	DPhase = EDeliveryPhase::Waiting;
 	PhaseTime = 0.f;
+	if (Teams.IsValidIndex(Match.BattingTeam()) && Match.Innings.IsValidIndex(Match.CurrentInnings))
+	{
+		const FCricketPlayer& Batter = Teams[Match.BattingTeam()].Batters[Match.Cur().Striker];
+		const FCricketPlayer& NonStk = Teams[Match.BattingTeam()].Batters[Match.Cur().NonStriker];
+		const FLinearColor BatCol = Teams[Match.BattingTeam()].Colour;
+		Paint(Striker, BatCol, &Teams[Match.BattingTeam()], Batter.Name, PlayerShirtNumber(Batter));
+		Paint(NonStriker, BatCol, &Teams[Match.BattingTeam()], NonStk.Name, PlayerShirtNumber(NonStk));
+	}
 }
 
 void ASuperOverGameMode::Emit(const TArray<ECricketEvent>& Events)

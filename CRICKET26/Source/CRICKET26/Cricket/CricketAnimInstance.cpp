@@ -464,12 +464,15 @@ void FCricketAnimProxy::SolveBatter(FCompactPose& Out)
 	const FVector Pelvis0 = Now(R.Pelvis), Neck0 = R.Neck.Num() > 0 ? Now(R.Neck[0]) : Now(R.Head);
 	const FVector TorsoAxis = (Neck0 - Pelvis0).GetSafeNormal(), Wide = QChest.RotateVector(FVector(1.f, 0.f, 0.f)), Deep = QChest.RotateVector(FVector(0.f, 1.f, 0.f));
 	const float TorsoLength = FVector::Dist(Neck0, Pelvis0);
-	auto Inside = [&](const FVector& P)
+	auto TorsoDistance = [&](const FVector& P) -> float
 	{
 		const float T = FMath::Clamp((P - Pelvis0) | TorsoAxis, 0.f, TorsoLength);
 		const FVector V = P - Pelvis0 - TorsoAxis * T;
-		const float E = FMath::Sqrt(FMath::Square((V | Wide) / (16.f * Size)) + FMath::Square((V | Deep) / (12.f * Size)));
-		return FMath::Max(1.15f - E, 0.f);
+		return FMath::Sqrt(FMath::Square((V | Wide) / (16.f * Size)) + FMath::Square((V | Deep) / (12.f * Size)));
+	};
+	auto Inside = [&](const FVector& P)
+	{
+		return FMath::Max(1.15f - TorsoDistance(P), 0.f);
 	};
 	for (int32 H = 0; H < 2; ++H)
 	{
@@ -559,8 +562,19 @@ void FCricketAnimProxy::SolveBatter(FCompactPose& Out)
 			A.Cost += FMath::Square(Bent / 40.f) + FMath::Square(FMath::Max(Turned - 55.f, 0.f) / 10.f);
 			if (Turned > MaxTwist) A.Cost += 1000.f + Turned;
 			if (Bent > MaxBend) A.Cost += 1000.f + Bent;
-			for (const float T : { 0.f, 0.35f, 0.7f }) A.Cost += 60.f * FMath::Square(Inside(FMath::Lerp(A.Elbow, A.Wrist, T)));
-			A.Cost += 60.f * FMath::Square(Inside(FMath::Lerp(Shoulder, A.Elbow, 0.7f)));
+			// Torso penetration check: no body part should ever move inside another body part.
+			for (const float T : { 0.f, 0.25f, 0.5f, 0.75f, 1.0f })
+			{
+				const float E = TorsoDistance(FMath::Lerp(A.Elbow, A.Wrist, T));
+				if (E < 1.0f) A.Cost += 25000.f + (1.0f - E) * 50000.f;
+				else if (E < 1.15f) A.Cost += 200.f * FMath::Square(1.15f - E);
+			}
+			for (const float T : { 0.4f, 0.7f })
+			{
+				const float E = TorsoDistance(FMath::Lerp(Shoulder, A.Elbow, T));
+				if (E < 1.0f) A.Cost += 25000.f + (1.0f - E) * 50000.f;
+				else if (E < 1.15f) A.Cost += 200.f * FMath::Square(1.15f - E);
+			}
 			// Both elbows hang under the hands: the upper arm down from the shoulder and the forearm rising to the
 			// grip, never the elbow lifted with the forearm dropping to the handle. The top elbow leans a little out
 			// toward the bowler; with the hand raised it points forward under the hands instead, as in a high finish.
@@ -600,9 +614,9 @@ void FCricketAnimProxy::SolveBatter(FCompactPose& Out)
 			const float S1 = Swivel[H] + FMath::Clamp(FMath::FindDeltaAngleRadians(Swivel[H], BestSwivel), -SwivelRate * Dt, SwivelRate * Dt);
 			if (!FMath::IsNearlyEqual(R1, BestRoll) || !FMath::IsNearlyEqual(S1, BestSwivel))
 			{
-				// Never through a twisted arm: a pop beats a wrung-out forearm.
+				// Never through a twisted arm or torso penetration: a pop beats a body penetration or wrung-out forearm.
 				const FArm Limited = Try(R1, S1);
-				if (Limited.Cost < 1000.f || Best.Cost >= 1000.f)
+				if ((Limited.Cost < 1000.f || Best.Cost >= 1000.f) && (Limited.Cost < 20000.f || Best.Cost >= 20000.f))
 				{
 					Best = Limited;
 					BestRoll = R1;
@@ -612,6 +626,17 @@ void FCricketAnimProxy::SolveBatter(FCompactPose& Out)
 		}
 		Roll[H] = FMath::UnwindRadians(BestRoll);
 		Swivel[H] = FMath::UnwindRadians(BestSwivel);
+
+		// Hard physical clearance: ensure Best.Elbow is strictly outside the torso ellipse.
+		const float DistElbow = TorsoDistance(Best.Elbow);
+		if (DistElbow < 1.03f)
+		{
+			const float TE = FMath::Clamp((Best.Elbow - Pelvis0) | TorsoAxis, 0.f, TorsoLength);
+			const FVector VE = Best.Elbow - Pelvis0 - TorsoAxis * TE;
+			const FVector RadialOut = (VE.IsNearlyZero() ? Outward : (VE | Wide) * Wide + (VE | Deep) * Deep).GetSafeNormal(UE_SMALL_NUMBER, Outward);
+			const float Push = (1.05f - DistElbow) * (14.f * Size);
+			Best.Elbow = Joint(Shoulder, Best.Wrist, L1, L2, (Best.Elbow - Shoulder) + RadialOut * Push);
+		}
 
 		const FVector Hinge = FVector::CrossProduct(Best.Elbow - Shoulder, Best.Wrist - Best.Elbow).GetSafeNormal(UE_SMALL_NUMBER, RefHinge);
 		const FQuat QUpper = Map(RefUpper, RefHinge, Best.Elbow - Shoulder, Hinge), QLower = Map(RefLower, RefHinge, Best.Wrist - Best.Elbow, Hinge);
