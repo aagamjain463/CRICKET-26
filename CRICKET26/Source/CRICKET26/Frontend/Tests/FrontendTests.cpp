@@ -151,6 +151,51 @@ bool FFrontendShellNavigationTest::RunTest(const FString&)
 	Root->SelectMatchOvers(1);
 	TestEqual(TEXT("Super Over replaces prior selection"), Root->MatchOvers(), 1);
 
+	// Match setup's steps: competition, teams, the XI and the toss, each backing out to the one before. The saved
+	// quick-match choices are put back afterwards.
+	UFrontendSettingsSave* Saved = UFrontendSettingsSave::Get();
+	const int32 Was[] = { Saved->QuickCompetition, Saved->QuickTeam, Saved->QuickOpponent, Saved->QuickOvers };
+	Root->SelectMatchOvers(5);
+	TestTrue(TEXT("a format opens the competition choice"), Root->QuickStep == EQuickStep::Competition);
+	Root->ChooseCompetition(uint8(ECompetition::International));
+	TestTrue(TEXT("a competition opens the teams"), Root->QuickStep == EQuickStep::Teams);
+	TestTrue(TEXT("international cricket picked"), Root->QuickCompetition() == ECompetition::International);
+	TestTrue(TEXT("two different teams"), Saved->QuickTeam != Saved->QuickOpponent);
+	Root->StepQuickTeam(true, 1);
+	TestTrue(TEXT("the opponent never becomes the user's team"), Saved->QuickTeam != Saved->QuickOpponent);
+	Root->ShowQuickStep(EQuickStep::PlayingXI);
+	TestEqual(TEXT("the XI editor starts from the real XI"), Root->QuickXIOrder.Num(), 11);
+	const int32 Dropped = Root->QuickXIOrder.Last();
+	Root->ToggleQuickXIPlayer(Dropped);
+	TestEqual(TEXT("a tap takes a player out"), Root->QuickXIOrder.Num(), 10);
+	TestEqual(TEXT("an incomplete XI falls back to the real XI"), Root->QuickUserXI().BattingOrder.Num(), 11);
+	Root->ToggleQuickXIPlayer(Dropped);
+	TestTrue(TEXT("back from the XI"), Root->Back());
+	TestTrue(TEXT("the XI backs out to the teams"), Root->QuickStep == EQuickStep::Teams);
+	Root->BeginToss(false);
+	TestTrue(TEXT("the toss follows the teams"), Root->QuickStep == EQuickStep::Toss && Root->TossStage == 0);
+	Root->CallToss(true);
+	TestTrue(TEXT("the coin lands"), Root->TossStage == 1 || Root->TossStage == 2);
+	TestTrue(TEXT("the winner is whoever called it right"), Root->bUserWonToss == Root->bTossHeads);
+	if (Root->TossStage == 1)
+	{
+		Root->ElectToBat(false);
+		TestFalse(TEXT("the user chose to bowl"), Root->bUserBatsFirst);
+	}
+	TestEqual(TEXT("the toss is decided"), Root->TossStage, 2);
+	const int32 Decided = Root->TossStage;
+	Root->CallToss(false);
+	TestEqual(TEXT("a decided toss is not called again"), Root->TossStage, Decided);
+	TestTrue(TEXT("back from the toss"), Root->Back() && Root->QuickStep == EQuickStep::Teams);
+	TestTrue(TEXT("back from the teams"), Root->Back() && Root->QuickStep == EQuickStep::Competition);
+	TestTrue(TEXT("back from the competition"), Root->Back());
+	TestEqual(TEXT("the competition returns to formats"), Root->CurrentTab(), EFrontendTab::MatchFormat);
+	Saved->QuickCompetition = Was[0];
+	Saved->QuickTeam = Was[1];
+	Saved->QuickOpponent = Was[2];
+	Saved->QuickOvers = Was[3];
+	Saved->Persist();
+
 	Root->ShowTab(EFrontendTab::Store);
 	UFrontendRoot::FSheet Sheet;
 	Sheet.Title = TEXT("Test");

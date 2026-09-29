@@ -15,7 +15,6 @@
 namespace CricketHUD
 {
 	FString HowOutName(EDismissal D);
-	FString RoleName(const FCricketPlayer& P, bool bBatting);
 }
 
 namespace MatchHudPrivate
@@ -1262,27 +1261,7 @@ int32 SCricketMatchHUD::OnPaint(const FPaintArgs& Args, const FGeometry& Geometr
 			P.Box(Chip.Min, FVector2D(5.f * U, Chip.GetSize().Y), G->Teams[M.BowlingTeam()].Colour, 2.f * U);
 		}
 
-		// Player cards: a batter walking in and a bowler starting the over, until the ball is bowled.
-		if (G->DPhase == EDeliveryPhase::Waiting && bInPlay)
-		{
-			const FInningsState& In = M.Cur();
-			float CY = F.Safe.T * F.H + 0.03f * F.H + 78.f * U;
-			auto Card = [&](const FLinearColor& Colour, const FString& Name, const FString& Role)
-			{
-				const float CX = F.Safe.L * F.H + 0.03f * F.H;
-				P.Box(FVector2D(CX, CY), FVector2D(300.f * U, 70.f * U), Glass(0.9f), 3.f * U, Hair(), U);
-				P.Box(FVector2D(CX, CY), FVector2D(5.f * U, 70.f * U), Colour, 2.f * U);
-				P.Text(Name.ToUpper(), FVector2D(CX + 20.f * U, CY + 24.f * U), HudFont(20.f * U, EWeight::Black, 60), Ink());
-				P.Text(Role, FVector2D(CX + 20.f * U, CY + 50.f * U), HudFont(14.f * U, EWeight::Medium), InkDim());
-				CY += 78.f * U;
-			};
-			const FCricketTeam& Bat = G->Teams[M.BattingTeam()];
-			const FCricketTeam& Bowl = G->Teams[M.BowlingTeam()];
-			if (In.Batters.IsValidIndex(In.Striker) && In.Batters[In.Striker].Balls == 0)
-				Card(Bat.Colour, Bat.Batters[In.Striker].Name, CricketHUD::RoleName(Bat.Batters[In.Striker], true));
-			if (In.Bowler.Balls == 0 && In.Deliveries == 0) Card(Bowl.Colour, Bowl.Bowler.Name, CricketHUD::RoleName(Bowl.Bowler, false));
-		}
-
+		// No player cards under the pause button: the score strip already names the batters and the bowler.
 		if (G->HumanBowls() && (G->DPhase == EDeliveryPhase::Waiting || G->DPhase == EDeliveryPhase::RunUp) && bInPlay) DrawReticle(F, Geometry);
 		if (G->HumanBats() && (G->DPhase == EDeliveryPhase::RunUp || G->DPhase == EDeliveryPhase::BallInPlay)) DrawPitchMarker(F, Geometry);
 

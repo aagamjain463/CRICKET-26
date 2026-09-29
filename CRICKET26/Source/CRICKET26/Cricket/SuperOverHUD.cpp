@@ -46,14 +46,6 @@ namespace CricketHUD
 		default: return FString();
 		}
 	}
-
-	FString RoleName(const FCricketPlayer& P, bool bBatting)
-	{
-		if (bBatting) return P.BatHand == ECricketHand::Right ? TEXT("Right-hand bat") : TEXT("Left-hand bat");
-		const TCHAR* Arm = P.BowlHand == ECricketHand::Right ? TEXT("Right-arm") : TEXT("Left-arm");
-		const TCHAR* Kind = P.BowlerType == EBowlerType::OffSpin ? TEXT("off spin") : P.BowlerType == EBowlerType::LegSpin ? TEXT("leg spin") : TEXT("fast");
-		return FString::Printf(TEXT("%s %s"), Arm, Kind);
-	}
 }
 
 void ASuperOverHUD::BeginPlay()

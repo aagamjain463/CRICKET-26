@@ -9,6 +9,7 @@
 #include "IPLPending.h"
 #include "IPLMatchAdapter.h"
 #include "AuctionTypes.h"
+#include "RealTeams.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/HorizontalBox.h"
@@ -32,6 +33,21 @@ namespace
 	float EaseOut(float T) { T = FMath::Clamp(T, 0.f, 1.f); return 1.f - FMath::Cube(1.f - T); }
 
 	constexpr float SplashLength = 0.65f, SplashFade = 0.25f, LoadingHold = 0.6f;
+
+	/** Keeps the saved quick-match teams inside their competition and apart. */
+	void ClampQuickTeams(UFrontendSettingsSave* S, ECompetition C)
+	{
+		const int32 N = RealTeams::Teams(C).Num();
+		if (N < 2) return;
+		S->QuickTeam = FMath::Clamp(S->QuickTeam, 0, N - 1);
+		S->QuickOpponent = FMath::Clamp(S->QuickOpponent, 0, N - 1);
+		if (S->QuickOpponent == S->QuickTeam) S->QuickOpponent = (S->QuickTeam + 1) % N;
+	}
+
+	int32 ValidOvers(int32 Overs)
+	{
+		return Overs == 3 || Overs == 5 || Overs == 10 || Overs == 20 ? Overs : 1;
+	}
 }
 
 bool UFrontendRoot::Initialize()
@@ -100,6 +116,13 @@ bool UFrontendRoot::Initialize()
 
 void UFrontendRoot::Configure(EFrontendTab InStartTab, bool bAllowSplash)
 {
+	if (InStartTab == EFrontendTab::MatchSetup)
+	{
+		// Back from a quick match for a rematch: the same format and teams, ready for a new toss.
+		SelectedOvers = ValidOvers(UFrontendSettingsSave::Get()->QuickOvers);
+		QuickStep = EQuickStep::Teams;
+		RefreshPage(EFrontendTab::MatchSetup);
+	}
 	bSplash = bAllowSplash;
 	Splash->SetVisibility(bSplash ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	SplashT = bSplash ? 0.f : -1.f;
@@ -246,10 +269,33 @@ UWidget* UFrontendRoot::BuildLoading()
 	Add(Layers, Versus(T, 900.f), HAlign_Fill, VAlign_Bottom, FMargin(0.f, 0.f, 0.f, 0.f));
 	Add(Layers, Sized(T, Fade(T, Hex(0x050913, 1.f), true), 0.f, 420.f), HAlign_Fill, VAlign_Bottom);
 
-	Add(Layers, Text(T, IPLLoadingFixture != INDEX_NONE ? TEXT("IPL  /  MATCH DAY") : (SelectedOvers == 1 ? TEXT("SUPER OVER  /  MATCH DAY") : TEXT("CRICKET 26  /  MATCH DAY")), 20, Gold(), EWeight::Bold, 300), HAlign_Center, VAlign_Top, FMargin(0.f, 70.f));
+	// A staged quick match names its two real teams and who the toss sent in to bat.
+	FString Title = IPLLoadingFixture != INDEX_NONE ? TEXT("IPL  /  MATCH DAY") : (SelectedOvers == 1 ? TEXT("SUPER OVER  /  MATCH DAY") : TEXT("CRICKET 26  /  MATCH DAY"));
+	FString HomeName = TEXT("HOME XI"), AwayName = TEXT("AWAY XI");
+	FLinearColor HomeTint = Blue(), AwayTint = Red();
+	bool bHomeBats = true;
+	const UIPLPendingMatch* Staged = UIPLPendingMatch::Get();
+	if (Staged && Staged->bActive && Staged->bQuick)
+	{
+		const ECompetition C = Staged->QuickCompetition == uint8(ECompetition::International) ? ECompetition::International : ECompetition::IPL;
+		const TArray<FRealTeam>& All = RealTeams::Teams(C);
+		if (All.IsValidIndex(Staged->QuickHome) && All.IsValidIndex(Staged->QuickAway))
+		{
+			// Long names (the IPL's) give way to the team code, so the plates never run off the card.
+			auto Plate = [](const FRealTeam& Team) { return Team.Name.Len() > 16 ? Team.Code : Team.Name; };
+			HomeName = Plate(All[Staged->QuickHome]);
+			AwayName = Plate(All[Staged->QuickAway]);
+			HomeTint = All[Staged->QuickHome].Primary;
+			AwayTint = All[Staged->QuickAway].Primary;
+			bHomeBats = Staged->QuickBatFirst == 0;
+			Title = FString::Printf(TEXT("%s  /  %s"), RealTeams::CompetitionName(C),
+				SelectedOvers == 1 ? TEXT("SUPER OVER") : *FString::Printf(TEXT("%d OVERS"), SelectedOvers));
+		}
+	}
+	Add(Layers, Text(T, Title, 20, Gold(), EWeight::Bold, 300), HAlign_Center, VAlign_Top, FMargin(0.f, 70.f));
 	UHorizontalBox* Plates = HBox(T);
-	Add(Plates, NamePlate(T, TEXT("HOME XI"), TEXT("Batting first"), Blue(), false), FMargin(0.f), 1.f, VAlign_Bottom);
-	Add(Plates, NamePlate(T, TEXT("AWAY XI"), TEXT("Bowling first"), Red(), true), FMargin(0.f), 1.f, VAlign_Bottom);
+	Add(Plates, NamePlate(T, HomeName, bHomeBats ? TEXT("Batting first") : TEXT("Bowling first"), HomeTint, false), FMargin(0.f), 1.f, VAlign_Bottom);
+	Add(Plates, NamePlate(T, AwayName, bHomeBats ? TEXT("Bowling first") : TEXT("Batting first"), AwayTint, true), FMargin(0.f), 1.f, VAlign_Bottom);
 	Add(Layers, Plates, HAlign_Fill, VAlign_Bottom, FMargin(110.f, 0.f, 110.f, 170.f));
 
 	UVerticalBox* Foot = VBox(T);
@@ -506,7 +552,10 @@ bool UFrontendRoot::Back()
 	}
 	if (Tab == EFrontendTab::MatchSetup)
 	{
-		ShowTab(EFrontendTab::MatchFormat);
+		// Match setup's steps back out one at a time: the XI or the toss to the teams, the teams to the competition.
+		if (QuickStep == EQuickStep::PlayingXI || QuickStep == EQuickStep::Toss) ShowQuickStep(EQuickStep::Teams);
+		else if (QuickStep == EQuickStep::Teams) ShowQuickStep(EQuickStep::Competition);
+		else ShowTab(EFrontendTab::MatchFormat);
 		return true;
 	}
 	if (Tab == EFrontendTab::MatchFormat)
@@ -517,7 +566,7 @@ bool UFrontendRoot::Back()
 	// IPL: the team-select view backs out to the hub, not to Home.
 	if (Tab == EFrontendTab::IPLSeason && IPLView != 0)
 	{
-		IPLView = 0;
+		IPLView = IPLView == 2 ? 1 : 0; // the toss backs out to team selection
 		RefreshSeasonHub();
 		return true;
 	}
@@ -630,8 +679,210 @@ void UFrontendRoot::StartSuperOver()
 
 void UFrontendRoot::SelectMatchOvers(int32 Overs)
 {
-	SelectedOvers = Overs;
+	SelectedOvers = ValidOvers(Overs);
+	UFrontendSettingsSave* S = UFrontendSettingsSave::Get();
+	S->QuickOvers = SelectedOvers;
+	S->Persist();
+	QuickStep = EQuickStep::Competition;
+	RefreshPage(EFrontendTab::MatchSetup);
 	ShowTab(EFrontendTab::MatchSetup);
+}
+
+// ---- Quick match between two real teams ----
+
+ECompetition UFrontendRoot::QuickCompetition() const
+{
+	return UFrontendSettingsSave::Get()->QuickCompetition == int32(ECompetition::International) ? ECompetition::International : ECompetition::IPL;
+}
+
+void UFrontendRoot::ChooseCompetition(uint8 Competition)
+{
+	UFrontendSettingsSave* S = UFrontendSettingsSave::Get();
+	const ECompetition C = Competition == uint8(ECompetition::International) ? ECompetition::International : ECompetition::IPL;
+	if (S->QuickCompetition != int32(C))
+	{
+		// A new competition starts from its first two teams, or in the IPL from the user's own franchise when a season
+		// has given them one.
+		S->QuickCompetition = int32(C);
+		S->QuickTeam = 0;
+		S->QuickOpponent = 1;
+		const UIPLSeasonSave* Save = UIPLSeasonSave::Get();
+		if (C == ECompetition::IPL && Save && Save->bHasSeason && Save->Season.UserTeam != INDEX_NONE) S->QuickTeam = Save->Season.UserTeam;
+		QuickXIOrder.Reset();
+	}
+	ClampQuickTeams(S, C);
+	S->Persist();
+	ShowQuickStep(EQuickStep::Teams);
+}
+
+void UFrontendRoot::StepQuickTeam(bool bOpponent, int32 Delta)
+{
+	UFrontendSettingsSave* S = UFrontendSettingsSave::Get();
+	const int32 N = RealTeams::Teams(QuickCompetition()).Num();
+	if (N < 2) return;
+	int32& Pick = bOpponent ? S->QuickOpponent : S->QuickTeam;
+	const int32 Other = bOpponent ? S->QuickTeam : S->QuickOpponent;
+	Pick = ((Pick + Delta) % N + N) % N;
+	if (Pick == Other) Pick = ((Pick + Delta) % N + N) % N; // never both sides the same team
+	if (!bOpponent) QuickXIOrder.Reset(); // a new team, a new XI
+	S->Persist();
+	RefreshPage(EFrontendTab::MatchSetup);
+}
+
+void UFrontendRoot::ShowQuickStep(EQuickStep Step)
+{
+	QuickStep = Step;
+	if (Step == EQuickStep::PlayingXI && QuickXIOrder.IsEmpty()) QuickXIOrder = QuickUserXI().BattingOrder;
+	RefreshPage(EFrontendTab::MatchSetup);
+}
+
+void UFrontendRoot::ToggleQuickXIPlayer(int32 PlayerId)
+{
+	// Tap in batting order: the first tap opens, the eleventh finishes the tail; a second tap takes a player out.
+	if (QuickXIOrder.Remove(PlayerId) == 0 && QuickXIOrder.Num() < IPLSeason::PlayingXI)
+		QuickXIOrder.Add(PlayerId);
+	RefreshPage(EFrontendTab::MatchSetup);
+}
+
+void UFrontendRoot::ResetQuickXI()
+{
+	QuickXIOrder = RealTeams::DefaultXI(QuickCompetition(), UFrontendSettingsSave::Get()->QuickTeam).BattingOrder;
+	RefreshPage(EFrontendTab::MatchSetup);
+}
+
+FIPLPlayingXI UFrontendRoot::QuickUserXI() const
+{
+	const ECompetition C = QuickCompetition();
+	const int32 Team = UFrontendSettingsSave::Get()->QuickTeam;
+	const TArray<FRealTeam>& All = RealTeams::Teams(C);
+	FIPLPlayingXI Edited;
+	Edited.BattingOrder = QuickXIOrder;
+	if (All.IsValidIndex(Team) && RealTeams::ValidXI(All[Team], Edited)) return Edited;
+	return RealTeams::DefaultXI(C, Team);
+}
+
+void UFrontendRoot::StartQuickMatch()
+{
+	if (IsStartingMatch()) return;
+	UFrontendSettingsSave* S = UFrontendSettingsSave::Get();
+	const ECompetition C = QuickCompetition();
+	ClampQuickTeams(S, C);
+	UIPLPendingMatch::Get()->SetQuick(uint8(C), S->QuickTeam, S->QuickOpponent, QuickUserXI(), RealTeams::DefaultXI(C, S->QuickOpponent),
+		SelectedOvers, bUserBatsFirst ? 0 : 1);
+	IPLLoadingFixture = INDEX_NONE;
+	StartSuperOver();
+}
+
+// ---- The toss ----
+
+void UFrontendRoot::BeginToss(bool bForSeason)
+{
+	bTossForSeason = bForSeason;
+	TossStage = 0;
+	bTossHeads = bUserWonToss = false;
+	bUserBatsFirst = true;
+	if (bForSeason)
+	{
+		IPLView = 2;
+		RefreshSeasonHub();
+	}
+	else
+	{
+		ShowQuickStep(EQuickStep::Toss);
+	}
+}
+
+void UFrontendRoot::CallToss(bool bHeads)
+{
+	if (TossStage != 0) return;
+	FRandomStream Coin(int32(FPlatformTime::Cycles()));
+	bTossHeads = RealTeams::FlipCoin(Coin);
+	bUserWonToss = bTossHeads == bHeads;
+	if (bUserWonToss)
+	{
+		TossStage = 1;
+	}
+	else
+	{
+		// The opponent's captain decides from their own XI: bat with the stronger batting, else chase.
+		float BatStrength = 0.f, BowlStrength = 0.f;
+		if (bTossForSeason)
+		{
+			const UIPLSeasonSave* Save = UIPLSeasonSave::Get();
+			const FIPLFixture* Fx = Save && Save->bHasSeason ? IPLSeason::FindFixture(Save->Season, IPLSelectFixture) : nullptr;
+			if (Fx)
+			{
+				const int32 Opp = Fx->Home == Save->Season.UserTeam ? Fx->Away : Fx->Home;
+				FIPLPlayingXI OppXI = Save->Season.LastXI.IsValidIndex(Opp) ? Save->Season.LastXI[Opp] : FIPLPlayingXI();
+				if (OppXI.BattingOrder.IsEmpty() && Save->Season.Squads.IsValidIndex(Opp))
+					OppXI = IPLSeason::MakeDefaultXI(Save->Season.Squads[Opp].Players, AuctionData::Players());
+				RealTeams::XIStrength(OppXI, AuctionData::Players(), BatStrength, BowlStrength);
+			}
+		}
+		else
+		{
+			const ECompetition C = QuickCompetition();
+			RealTeams::XIStrength(RealTeams::DefaultXI(C, UFrontendSettingsSave::Get()->QuickOpponent), RealTeams::Players(C), BatStrength, BowlStrength);
+		}
+		bUserBatsFirst = !RealTeams::AIElectsToBat(Coin, BatStrength, BowlStrength);
+		TossStage = 2;
+	}
+	if (bTossForSeason) RefreshSeasonHub();
+	else RefreshPage(EFrontendTab::MatchSetup);
+}
+
+void UFrontendRoot::ElectToBat(bool bBat)
+{
+	if (TossStage != 1) return;
+	bUserBatsFirst = bBat;
+	TossStage = 2;
+	if (bTossForSeason) RefreshSeasonHub();
+	else RefreshPage(EFrontendTab::MatchSetup);
+}
+
+void UFrontendRoot::ConfirmToss()
+{
+	if (TossStage != 2) return;
+	if (bTossForSeason) StartIPLMatch();
+	else StartQuickMatch();
+}
+
+void UFrontendRoot::TossTeams(FString& OutUser, FString& OutOpponent) const
+{
+	OutUser = TEXT("You");
+	OutOpponent = TEXT("Opponent");
+	if (bTossForSeason)
+	{
+		const UIPLSeasonSave* Save = UIPLSeasonSave::Get();
+		const FIPLFixture* Fx = Save && Save->bHasSeason ? IPLSeason::FindFixture(Save->Season, IPLSelectFixture) : nullptr;
+		const TArray<FAuctionFranchise>& Fr = AuctionData::Franchises();
+		if (!Fx) return;
+		const int32 User = Save->Season.UserTeam;
+		const int32 Opp = Fx->Home == User ? Fx->Away : Fx->Home;
+		if (Fr.IsValidIndex(User)) OutUser = Fr[User].Name;
+		if (Fr.IsValidIndex(Opp)) OutOpponent = Fr[Opp].Name;
+		return;
+	}
+	const UFrontendSettingsSave* S = UFrontendSettingsSave::Get();
+	const TArray<FRealTeam>& All = RealTeams::Teams(QuickCompetition());
+	if (All.IsValidIndex(S->QuickTeam)) OutUser = All[S->QuickTeam].Name;
+	if (All.IsValidIndex(S->QuickOpponent)) OutOpponent = All[S->QuickOpponent].Name;
+}
+
+void UFrontendRoot::RefreshPage(EFrontendTab Page)
+{
+	if (!Pages || Page >= EFrontendTab::Count) return;
+	UWidget* Existing = Pages->GetChildAt(int32(Page));
+	UWidget* Fresh = FrontendScreens::Build(this, Page);
+	if (UScrollBox* Scroll = Cast<UScrollBox>(Existing))
+	{
+		Scroll->ClearChildren();
+		Scroll->AddChild(Box(WidgetTree, Flat(FLinearColor::Transparent), FMargin(S4, 0.f, S4, S2), Fresh));
+	}
+	else if (UBorder* Pad = Cast<UBorder>(Existing))
+	{
+		Pad->SetContent(Fresh);
+	}
 }
 
 void UFrontendRoot::NativeTick(const FGeometry& Geometry, float DeltaTime)
@@ -835,6 +1086,8 @@ void UFrontendRoot::StartIPLMatch()
 	FString Why;
 	if (!IPLMatchAdapter::ValidateXI(Save->Season, User, UserXI, &Why)) return;
 	Save->Season.LastXI[User] = UserXI; // remembered for the next fixture
+	// The toss just played for this fixture decides who bats first (0: the home side).
+	if (bTossForSeason && TossStage == 2) Fx.BatFirst = bUserBatsFirst == (Fx.Home == User) ? 0 : 1;
 	const int32 Opp = Fx.Home == User ? Fx.Away : Fx.Home;
 	FIPLPlayingXI OppXI = Save->Season.LastXI.IsValidIndex(Opp) ? Save->Season.LastXI[Opp] : FIPLPlayingXI();
 	if (!IPLMatchAdapter::ValidateXI(Save->Season, Opp, OppXI, nullptr))

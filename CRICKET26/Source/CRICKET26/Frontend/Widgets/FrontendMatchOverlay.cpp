@@ -36,7 +36,8 @@ void UFrontendMatchOverlay::NativeOnInitialized()
 	UVerticalBox* Col = VBox(T);
 	Add(Col, Eyebrow(T, TEXT("CRICKET 26 / LIVE MATCH"), Gold()), FMargin(0.f, 0.f, 0.f, S2));
 	Add(Col, Text(T, TEXT("MATCH PAUSED"), 54, Ink(), EWeight::Black), FMargin(0.f, 0.f, 0.f, S1));
-	Add(Col, Para(T, TEXT("HOME XI  /  AWAY XI"), 20, InkDim()), FMargin(0.f, 0.f, 0.f, S3));
+	PauseTeams = Para(T, TEXT("HOME XI  /  AWAY XI"), 20, InkDim());
+	Add(Col, PauseTeams, FMargin(0.f, 0.f, 0.f, S3));
 	Add(Col, CTA(T, TEXT("RESUME MATCH  ›"), EButtonKind::Primary, [this]() { SetConfirmOpen(false); }, 62.f));
 	Add(Col, Eyebrow(T, TEXT("AUDIO"), InkDim()), FMargin(0.f, S3, 0.f, S1));
 	UFrontendSettingsSave* Settings = UFrontendSettingsSave::Get();
@@ -53,7 +54,7 @@ void UFrontendMatchOverlay::NativeOnInitialized()
 		UGameplayStatics::SetGamePaused(this, false);
 		if (ASuperOverGameMode* GM = GetWorld()->GetAuthGameMode<ASuperOverGameMode>())
 		{
-			// IPL: replay this exact fixture (or leave a committed one to the hub).
+			// Eleven-a-side: replay this exact fixture or quick match (or leave a committed fixture to the hub).
 			if (GM->IsIPLMatch()) { GM->RestartIPLFixture(); return; }
 			UFrontendStatics::OpenMatch(this, GM->SelectedMatchOvers);
 		}
@@ -61,7 +62,7 @@ void UFrontendMatchOverlay::NativeOnInitialized()
 	Add(Actions, CTA(T, TEXT("EXIT MATCH"), EButtonKind::Ghost, [this]()
 	{
 		UGameplayStatics::SetGamePaused(this, false);
-		if (ASuperOverGameMode* GM = GetWorld()->GetAuthGameMode<ASuperOverGameMode>(); GM && GM->IsIPLMatch())
+		if (ASuperOverGameMode* GM = GetWorld()->GetAuthGameMode<ASuperOverGameMode>(); GM && GM->IsSeasonMatch())
 			UFrontendStatics::OpenFrontend(this, EFrontendTab::IPLSeason);
 		else
 			UFrontendStatics::OpenFrontend(this, EFrontendTab::Play);
@@ -102,7 +103,8 @@ void UFrontendMatchOverlay::CheckForResult()
 	Add(Col, Eyebrow(T, TEXT("CRICKET 26  /  MATCH RESULT"), Gold()), FMargin(0.f, 0.f, 0.f, S2));
 	// Victory is the user's side winning (HumanTeam is 0 in standalone, so that read is unchanged).
 	const bool bWon = GM->Match.Winner == GM->HumanTeam;
-	const bool bIPL = GM->IsIPLMatch();
+	const bool bIPL = GM->IsSeasonMatch();
+	const bool bQuick = GM->bQuickMatch;
 	const FString Winner = GM->Match.Winner >= 0 && GM->Match.Winner < 2 ? GM->Teams[GM->Match.Winner].Name.ToUpper() : TEXT("MATCH TIED");
 	Add(Col, Eyebrow(T, bWon ? TEXT("VICTORY") : TEXT("FINAL RESULT"), bWon ? Gold() : InkDim()));
 	Add(Col, Text(T, Winner, 84, Ink(), EWeight::Black), FMargin(0.f, 4.f, 0.f, S3));
@@ -132,10 +134,12 @@ void UFrontendMatchOverlay::CheckForResult()
 		Add(Col, Text(T, FString::Printf(TEXT("TOP SCORE  /  %s  %d (%d)"), *BestName.ToUpper(), BestRuns, BestBalls), 17, InkDim(), EWeight::Bold), FMargin(0.f, S2));
 	Add(Col, Eyebrow(T, GM->Match.Rules.MaxLegalBalls == 6 ? TEXT("THE DECIDER  /  SUPER OVER") : TEXT("CRICKET 26  /  MATCH"), InkDim()), FMargin(0.f, S2, 0.f, S3));
 	UHorizontalBox* Actions = HBox(T);
-	// IPL: the result already belongs to the season, so REMATCH becomes the season hub.
-	Add(Actions, CTA(T, bIPL ? TEXT("SEASON HUB  ›") : TEXT("REMATCH  ›"), EButtonKind::Primary, [this, bIPL, Overs = GM->SelectedMatchOvers]()
+	// IPL season: the result already belongs to the season, so REMATCH becomes the season hub. A quick match's rematch
+	// goes back to match setup with the same teams, so the new match gets its own toss.
+	Add(Actions, CTA(T, bIPL ? TEXT("SEASON HUB  ›") : TEXT("REMATCH  ›"), EButtonKind::Primary, [this, bIPL, bQuick, Overs = GM->SelectedMatchOvers]()
 	{
 		if (bIPL) UFrontendStatics::OpenFrontend(this, EFrontendTab::IPLSeason);
+		else if (bQuick) UFrontendStatics::OpenFrontend(this, EFrontendTab::MatchSetup);
 		else UFrontendStatics::OpenMatch(this, Overs);
 	}, 62.f), FMargin(0.f, 0.f, S2, 0.f));
 	Add(Actions, CTA(T, TEXT("CONTINUE"), EButtonKind::Secondary, [this, bIPL]()
@@ -157,6 +161,10 @@ void UFrontendMatchOverlay::CheckForResult()
 void UFrontendMatchOverlay::SetConfirmOpen(bool bOpen)
 {
 	if (Confirm) Confirm->SetVisibility(bOpen ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	// The sides are only known once the match has started, after this overlay was built.
+	const ASuperOverGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<ASuperOverGameMode>() : nullptr;
+	if (bOpen && PauseTeams && GM && GM->Teams.Num() == 2)
+		PauseTeams->SetText(FText::FromString(FString::Printf(TEXT("%s  /  %s"), *GM->Teams[0].Name.ToUpper(), *GM->Teams[1].Name.ToUpper())));
 	UGameplayStatics::SetGamePaused(this, bOpen);
 }
 

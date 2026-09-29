@@ -1,0 +1,184 @@
+Name,Short,Country,Role,BatHand,BowlStyle,Age,Capped,Team,XI,Captain,BatRating,BowlRating,Rated
+Shreyas Iyer,S Iyer,India,BAT,R,Right-arm legbreak,31,1,IND,4,1,83,21,ipl
+Abhishek Sharma,A Sharma,India,AR,L,Left-arm orthodox,26,1,IND,1,0,86,40,ipl
+Vaibhav Sooryavanshi,V Sooryavanshi,India,BAT,L,Left-arm orthodox,15,1,IND,,0,93,20,ipl-light
+Sanju Samson,S Samson,India,WK,R,Right-arm offbreak,31,1,IND,2,0,84,10,ipl
+Ishan Kishan,I Kishan,India,WK,L,Right-arm legbreak,28,1,IND,3,0,79,10,ipl
+Tilak Varma,T Varma,India,BAT,L,Right-arm offbreak,23,1,IND,5,0,78,30,ipl
+Shivam Dube,S Dube,India,AR,L,Right-arm medium,33,1,IND,7,0,76,60,ipl
+Nitish Kumar Reddy,NK Reddy,India,AR,R,Right-arm fast-medium,23,1,IND,6,0,70,36,ipl
+Axar Patel,A Patel,India,AR,L,Left-arm orthodox,32,1,IND,8,0,63,80,ipl
+Washington Sundar,W Sundar,India,AR,L,Right-arm offbreak,26,1,IND,,0,60,57,ipl
+Varun Chakravarthy,V Chakravarthy,India,SPIN,R,Right-arm legbreak,35,1,IND,11,0,26,87,ipl
+Ravi Bishnoi,R Bishnoi,India,SPIN,R,Right-arm legbreak,26,1,IND,,0,26,71,ipl
+Jasprit Bumrah,J Bumrah,India,PACE,R,Right-arm fast,32,1,IND,10,0,25,95,ipl
+Arshdeep Singh,A Singh,India,PACE,L,Left-arm fast-medium,27,1,IND,9,0,25,72,ipl
+Harshit Rana,H Rana,India,PACE,R,Right-arm fast-medium,24,1,IND,,0,28,64,ipl
+Mitchell Marsh,M Marsh,Australia,AR,R,Right-arm fast-medium,34,1,AUS,1,1,76,76,ipl
+Xavier Bartlett,X Bartlett,Australia,PACE,R,Right-arm fast-medium,27,1,AUS,8,0,26,36,ipl-light
+Nikhil Chaudhary,N Chaudhary,Australia,AR,R,Right-arm legbreak,30,1,AUS,6,0,50,55,estimate
+Cooper Connolly,C Connolly,Australia,AR,L,Left-arm orthodox,23,1,AUS,3,0,88,42,ipl-light
+Tim David,T David,Australia,BAT,R,Right-arm offbreak,30,1,AUS,5,0,84,25,ipl
+Joel Davies,J Davies,Australia,SPIN,R,Left-arm orthodox,24,1,AUS,7,0,22,62,estimate
+Nathan Ellis,N Ellis,Australia,PACE,R,Right-arm fast-medium,32,1,AUS,9,0,24,62,ipl-light
+Cameron Green,C Green,Australia,AR,R,Right-arm fast-medium,27,1,AUS,,0,80,46,ipl
+Aaron Hardie,A Hardie,Australia,AR,R,Right-arm fast-medium,27,1,AUS,,0,56,58,estimate
+Travis Head,T Head,Australia,BAT,L,Right-arm offbreak,32,1,AUS,,0,85,22,ipl
+Josh Inglis,J Inglis,Australia,WK,R,,31,1,AUS,2,0,87,10,ipl-light
+Spencer Johnson,S Johnson,Australia,PACE,L,Left-arm fast,30,1,AUS,10,0,22,40,ipl-light
+Matthew Kuhnemann,M Kuhnemann,Australia,SPIN,L,Left-arm orthodox,30,1,AUS,,0,22,66,estimate
+Riley Meredith,R Meredith,Australia,PACE,R,Right-arm fast,30,1,AUS,,0,22,54,ipl-light
+Josh Philippe,J Philippe,Australia,WK,R,,29,1,AUS,,0,62,10,estimate
+Matthew Renshaw,M Renshaw,Australia,BAT,L,Right-arm offbreak,30,1,AUS,4,0,70,30,estimate
+Adam Zampa,A Zampa,Australia,SPIN,R,Right-arm legbreak,34,1,AUS,11,0,25,82,estimate
+Harry Brook,H Brook,England,BAT,R,Right-arm medium,27,1,ENG,3,1,80,20,estimate
+Ben Duckett,B Duckett,England,BAT,L,,31,1,ENG,,0,70,10,estimate
+James Coles,J Coles,England,AR,R,Left-arm orthodox,22,1,ENG,,0,55,52,estimate
+Will Jacks,W Jacks,England,AR,R,Right-arm offbreak,27,1,ENG,6,0,74,66,ipl
+Gus Atkinson,G Atkinson,England,PACE,R,Right-arm fast,28,1,ENG,,0,22,68,estimate
+Liam Dawson,L Dawson,England,AR,R,Left-arm orthodox,36,1,ENG,9,0,45,72,estimate
+Jamie Overton,J Overton,England,AR,R,Right-arm fast,32,1,ENG,7,0,55,66,estimate
+Tom Banton,T Banton,England,WK,R,,27,1,ENG,4,0,66,10,estimate
+Jos Buttler,J Buttler,England,WK,R,,36,1,ENG,2,0,93,10,ipl
+Jordan Cox,J Cox,England,WK,R,,26,1,ENG,5,0,62,10,estimate
+Aneurin Donald,A Donald,England,BAT,R,,29,1,ENG,1,0,64,10,estimate
+Jofra Archer,J Archer,England,PACE,R,Right-arm fast,31,1,ENG,8,0,47,79,ipl
+Sonny Baker,S Baker,England,PACE,R,Right-arm fast,23,1,ENG,10,0,18,66,estimate
+Saqib Mahmood,S Mahmood,England,PACE,R,Right-arm fast-medium,29,1,ENG,,0,20,72,estimate
+Josh Tongue,J Tongue,England,PACE,R,Right-arm fast-medium,29,1,ENG,,0,18,64,estimate
+Adil Rashid,A Rashid,England,SPIN,R,Right-arm legbreak,38,1,ENG,11,0,26,82,estimate
+Aiden Markram,A Markram,South Africa,BAT,R,Right-arm offbreak,31,1,SA,1,1,69,45,ipl
+Corbin Bosch,C Bosch,South Africa,AR,R,Right-arm fast-medium,32,1,SA,8,0,45,80,ipl-light
+Dewald Brevis,D Brevis,South Africa,BAT,R,Right-arm legbreak,23,1,SA,4,0,66,21,ipl
+Quinton de Kock,Q de Kock,South Africa,WK,L,,33,1,SA,2,0,76,10,ipl
+Marco Jansen,M Jansen,South Africa,AR,R,Left-arm fast,26,1,SA,7,0,43,50,ipl
+George Linde,G Linde,South Africa,AR,L,Left-arm orthodox,34,1,SA,,0,48,44,ipl-light
+Keshav Maharaj,K Maharaj,South Africa,SPIN,R,Left-arm orthodox,36,1,SA,10,0,25,58,ipl-light
+Kwena Maphaka,K Maphaka,South Africa,PACE,L,Left-arm fast-medium,20,1,SA,,0,23,57,ipl-light
+David Miller,D Miller,South Africa,BAT,L,Right-arm offbreak,37,1,SA,5,0,81,20,ipl
+Lungi Ngidi,L Ngidi,South Africa,PACE,R,Right-arm fast,30,1,SA,11,0,25,78,ipl
+Anrich Nortje,A Nortje,South Africa,PACE,R,Right-arm fast,32,1,SA,,0,23,67,ipl
+Kagiso Rabada,K Rabada,South Africa,PACE,L,Right-arm fast,31,1,SA,9,0,36,85,ipl
+Ryan Rickelton,R Rickelton,South Africa,WK,L,Left-arm orthodox,30,1,SA,3,0,84,10,ipl
+Jason Smith,J Smith,South Africa,AR,R,Right-arm medium,32,1,SA,,0,60,30,estimate
+Tristan Stubbs,T Stubbs,South Africa,WK,R,Right-arm offbreak,26,1,SA,6,0,81,13,ipl
+Mitchell Santner,M Santner,New Zealand,AR,L,Left-arm orthodox,34,1,NZ,7,1,58,72,ipl
+Finn Allen,F Allen,New Zealand,BAT,R,Right-arm offbreak,27,1,NZ,2,0,73,20,ipl-light
+Michael Bracewell,M Bracewell,New Zealand,AR,L,Right-arm offbreak,35,1,NZ,8,0,50,49,ipl-light
+Mark Chapman,M Chapman,New Zealand,AR,L,Left-arm orthodox,32,1,NZ,5,0,48,45,ipl-light
+Devon Conway,D Conway,New Zealand,WK,L,Right-arm medium,35,1,NZ,3,0,79,10,ipl
+Jacob Duffy,J Duffy,New Zealand,PACE,R,Right-arm fast-medium,32,1,NZ,9,0,23,84,ipl-light
+Lockie Ferguson,L Ferguson,New Zealand,PACE,R,Right-arm fast,35,1,NZ,11,0,29,59,ipl
+Zak Foulkes,Z Foulkes,New Zealand,AR,R,Right-arm medium,24,1,NZ,,0,50,60,ipl-light
+Matt Henry,M Henry,New Zealand,PACE,R,Right-arm fast-medium,34,1,NZ,10,0,23,77,ipl-light
+Bevon Jacobs,B Jacobs,New Zealand,BAT,R,Right-arm medium,24,1,NZ,,0,60,20,ipl-light
+Kyle Jamieson,K Jamieson,New Zealand,PACE,R,Right-arm fast-medium,31,1,NZ,,0,28,51,ipl-light
+Adam Milne,A Milne,New Zealand,PACE,R,Right-arm fast,34,1,NZ,,0,25,78,ipl-light
+Daryl Mitchell,D Mitchell,New Zealand,AR,R,Right-arm medium,35,1,NZ,6,0,59,43,ipl-light
+Glenn Phillips,G Phillips,New Zealand,WK,R,Right-arm offbreak,29,1,NZ,4,0,76,31,ipl-light
+Tim Seifert,T Seifert,New Zealand,WK,R,,31,1,NZ,1,0,77,10,ipl-light
+Nathan Smith,N Smith,New Zealand,AR,R,Right-arm medium-fast,28,1,NZ,,0,48,45,ipl-light
+Salman Agha,S Agha,Pakistan,AR,R,Right-arm offbreak,32,1,PAK,3,1,64,50,estimate
+Abrar Ahmed,A Ahmed,Pakistan,SPIN,R,Right-arm legbreak,28,1,PAK,,0,18,76,estimate
+Babar Azam,B Azam,Pakistan,BAT,R,Right-arm offbreak,31,1,PAK,4,0,82,10,estimate
+Faheem Ashraf,F Ashraf,Pakistan,AR,L,Right-arm fast-medium,32,1,PAK,,0,52,62,estimate
+Fakhar Zaman,F Zaman,Pakistan,BAT,L,Left-arm orthodox,36,1,PAK,5,0,74,10,estimate
+Khawaja Mohammad Nafay,K Mohammad Nafay,Pakistan,WK,R,,24,1,PAK,,0,60,10,estimate
+Mohammad Nawaz,M Nawaz,Pakistan,AR,L,Left-arm orthodox,32,1,PAK,8,0,58,72,estimate
+Salman Mirza,S Mirza,Pakistan,PACE,L,Left-arm fast-medium,31,1,PAK,10,0,18,70,estimate
+Naseem Shah,N Shah,Pakistan,PACE,R,Right-arm fast,23,1,PAK,,0,22,74,estimate
+Sahibzada Farhan,S Farhan,Pakistan,WK,R,,30,1,PAK,1,0,76,10,estimate
+Saim Ayub,S Ayub,Pakistan,AR,L,Right-arm offbreak,24,1,PAK,2,0,72,45,estimate
+Shaheen Afridi,S Afridi,Pakistan,PACE,L,Left-arm fast,26,1,PAK,9,0,25,82,estimate
+Shadab Khan,S Khan,Pakistan,AR,R,Right-arm legbreak,28,1,PAK,7,0,58,72,estimate
+Usman Khan,U Khan,Pakistan,WK,R,,31,1,PAK,6,0,64,10,estimate
+Usman Tariq,U Tariq,Pakistan,SPIN,R,Right-arm offbreak,30,1,PAK,11,0,15,76,estimate
+Charith Asalanka,C Asalanka,Sri Lanka,BAT,L,Right-arm offbreak,29,1,SL,4,1,68,30,estimate
+Pathum Nissanka,P Nissanka,Sri Lanka,BAT,R,,28,1,SL,1,0,78,12,estimate
+Kamil Mishara,K Mishara,Sri Lanka,WK,L,,25,1,SL,3,0,60,10,estimate
+Lahiru Udara,L Udara,Sri Lanka,WK,R,,33,1,SL,2,0,58,10,estimate
+Kamindu Mendis,K Mendis,Sri Lanka,AR,L,Right-arm offbreak,27,1,SL,5,0,56,46,ipl-light
+Janith Liyanage,J Liyanage,Sri Lanka,AR,R,Right-arm medium,30,1,SL,,0,58,40,estimate
+Dasun Shanaka,D Shanaka,Sri Lanka,AR,R,Right-arm medium,35,1,SL,6,0,58,52,estimate
+Dunith Wellalage,D Wellalage,Sri Lanka,AR,L,Left-arm orthodox,23,1,SL,,0,48,45,ipl-light
+Wanindu Hasaranga,W Hasaranga,Sri Lanka,AR,R,Right-arm legbreak,29,1,SL,7,0,49,75,ipl
+Maheesh Theekshana,M Theekshana,Sri Lanka,SPIN,R,Right-arm offbreak,26,1,SL,,0,26,61,ipl
+Tharindu Rathnayake,T Rathnayake,Sri Lanka,SPIN,L,Right-arm offbreak,30,1,SL,8,0,25,62,estimate
+Dushmantha Chameera,D Chameera,Sri Lanka,PACE,R,Right-arm fast,34,1,SL,,0,26,36,ipl-light
+Eshan Malinga,E Malinga,Sri Lanka,PACE,R,Right-arm fast-medium,25,1,SL,9,0,16,64,estimate
+Nuwan Thushara,N Thushara,Sri Lanka,PACE,R,Right-arm fast-medium,32,1,SL,11,0,23,76,ipl-light
+Dilshan Madushanka,D Madushanka,Sri Lanka,PACE,R,Left-arm fast-medium,26,1,SL,10,0,22,55,ipl-light
+Shai Hope,S Hope,West Indies,WK,R,,32,1,WI,1,1,76,10,estimate
+Jewel Andrew,J Andrew,West Indies,WK,R,,19,1,WI,2,0,58,10,estimate
+Roston Chase,R Chase,West Indies,AR,R,Right-arm offbreak,34,1,WI,6,0,60,60,estimate
+Matthew Forde,M Forde,West Indies,PACE,R,Right-arm fast-medium,24,1,WI,8,0,30,68,estimate
+Shimron Hetmyer,S Hetmyer,West Indies,BAT,L,,29,1,WI,3,0,73,12,ipl
+Akeal Hosein,A Hosein,West Indies,SPIN,L,Left-arm orthodox,33,1,WI,9,0,30,76,estimate
+Shamar Joseph,S Joseph,West Indies,PACE,L,Right-arm fast,27,1,WI,11,0,22,54,ipl-light
+Gudakesh Motie,G Motie,West Indies,SPIN,L,Left-arm orthodox,31,1,WI,10,0,28,72,estimate
+Keemo Paul,K Paul,West Indies,AR,R,Right-arm fast-medium,28,1,WI,,0,44,62,estimate
+Kamil Pooran,K Pooran,West Indies,BAT,R,Right-arm medium,30,1,WI,,0,60,20,estimate
+Rovman Powell,R Powell,West Indies,BAT,R,Right-arm fast-medium,33,1,WI,5,0,62,24,ipl
+Sherfane Rutherford,S Rutherford,West Indies,AR,L,Right-arm fast-medium,28,1,WI,4,0,64,43,ipl
+Quentin Sampson,Q Sampson,West Indies,BAT,R,Right-arm medium-fast,26,1,WI,,0,56,26,estimate
+Romario Shepherd,R Shepherd,West Indies,AR,R,Right-arm fast-medium,31,1,WI,7,0,62,41,ipl
+Shamar Springer,S Springer,West Indies,AR,R,Right-arm medium-fast,28,1,WI,,0,52,58,estimate
+Litton Das,L Das,Bangladesh,WK,R,,31,1,BAN,,1,68,10,estimate
+Parvez Hossain Emon,P Hossain Emon,Bangladesh,BAT,L,,24,1,BAN,3,0,62,10,estimate
+Tanzid Hasan,T Hasan,Bangladesh,BAT,L,,25,1,BAN,1,0,66,10,estimate
+Saif Hassan,S Hassan,Bangladesh,BAT,R,Right-arm offbreak,28,1,BAN,2,0,60,25,estimate
+Shamim Hossain,S Hossain,Bangladesh,AR,L,Right-arm offbreak,26,1,BAN,6,0,58,30,estimate
+Towhid Hridoy,T Hridoy,Bangladesh,BAT,R,Right-arm offbreak,25,1,BAN,4,0,68,20,estimate
+Nurul Hasan,N Hasan,Bangladesh,WK,R,,33,1,BAN,5,0,56,10,estimate
+Mahedi Hasan,M Hasan,Bangladesh,AR,R,Right-arm offbreak,32,1,BAN,,0,45,68,estimate
+Nasum Ahmed,N Ahmed,Bangladesh,SPIN,L,Left-arm orthodox,32,1,BAN,8,0,24,70,estimate
+Rishad Hossain,R Hossain,Bangladesh,SPIN,R,Right-arm legbreak,24,1,BAN,7,0,40,72,estimate
+Shoriful Islam,S Islam,Bangladesh,PACE,L,Left-arm fast-medium,25,1,BAN,9,0,18,70,estimate
+Mustafizur Rahman,M Rahman,Bangladesh,PACE,L,Left-arm fast-medium,31,1,BAN,10,0,23,73,ipl
+Taskin Ahmed,T Ahmed,Bangladesh,PACE,L,Right-arm fast,31,1,BAN,11,0,22,74,estimate
+Nahid Rana,N Rana,Bangladesh,PACE,R,Right-arm fast,23,1,BAN,,0,12,66,estimate
+Abdul Gaffar Saqlain,A Gaffar Saqlain,Bangladesh,PACE,R,Right-arm fast-medium,26,1,BAN,,0,25,58,estimate
+Ibrahim Zadran,I Zadran,Afghanistan,BAT,R,Right-arm medium-fast,24,1,AFG,3,1,60,20,ipl-light
+Rahmanullah Gurbaz,R Gurbaz,Afghanistan,WK,R,,24,1,AFG,2,0,58,10,ipl-light
+Noor Rahman,N Rahman,Afghanistan,WK,R,,22,1,AFG,,0,52,10,estimate
+Sediqullah Atal,S Atal,Afghanistan,BAT,L,,24,1,AFG,1,0,66,10,estimate
+Darwish Rasooli,D Rasooli,Afghanistan,BAT,R,Right-arm offbreak,27,1,AFG,4,0,60,20,estimate
+Azmatullah Omarzai,A Omarzai,Afghanistan,AR,R,Right-arm fast-medium,26,1,AFG,5,0,55,45,ipl-light
+Gulbadin Naib,G Naib,Afghanistan,AR,R,Right-arm medium,35,1,AFG,,0,54,52,estimate
+Mohammad Nabi,M Nabi,Afghanistan,AR,R,Right-arm offbreak,41,1,AFG,6,0,60,68,estimate
+Rashid Khan,R Khan,Afghanistan,AR,R,Right-arm legbreak,28,1,AFG,7,0,62,95,ipl
+Nangyal Kharoti,N Kharoti,Afghanistan,SPIN,L,Left-arm orthodox,22,1,AFG,,0,30,64,estimate
+Noor Ahmad,N Ahmad,Afghanistan,SPIN,R,Left-arm wrist-spin,21,1,AFG,8,0,28,78,ipl
+Mujeeb Ur Rahman,M Ur Rahman,Afghanistan,SPIN,R,Right-arm offbreak,25,1,AFG,9,0,25,62,ipl-light
+Fazalhaq Farooqi,F Farooqi,Afghanistan,PACE,R,Left-arm fast,26,1,AFG,10,0,22,38,ipl-light
+Abdullah Ahmadzai,A Ahmadzai,Afghanistan,PACE,R,Right-arm medium-fast,23,1,AFG,,0,18,64,estimate
+Naveen-ul-Haq,Naveen-ul-Haq,Afghanistan,PACE,R,Right-arm medium-fast,27,1,AFG,11,0,23,65,ipl-light
+Lorcan Tucker,L Tucker,Ireland,WK,R,,30,1,IRE,4,1,66,10,estimate
+Ross Adair,R Adair,Ireland,BAT,R,,32,1,IRE,2,0,60,10,estimate
+Ben Calitz,B Calitz,Ireland,BAT,R,Right-arm offbreak,24,1,IRE,5,0,56,20,estimate
+Gareth Delany,G Delany,Ireland,AR,R,Right-arm legbreak,29,1,IRE,6,0,56,55,estimate
+George Dockrell,G Dockrell,Ireland,AR,L,Left-arm orthodox,34,1,IRE,7,0,55,58,estimate
+Stephen Doheny,S Doheny,Ireland,WK,R,,28,1,IRE,,0,50,10,estimate
+Matthew Humphreys,M Humphreys,Ireland,SPIN,R,Left-arm orthodox,24,1,IRE,8,0,15,62,estimate
+Gavin Hoey,G Hoey,Ireland,SPIN,R,Right-arm legbreak,26,1,IRE,,0,15,58,estimate
+Matthew Hollard,M Hollard,Ireland,PACE,R,Right-arm fast-medium,24,1,IRE,9,0,15,60,estimate
+Liam McCarthy,L McCarthy,Ireland,PACE,R,Right-arm fast-medium,24,1,IRE,10,0,20,60,estimate
+Jai Moondra,J Moondra,Ireland,PACE,L,Left-arm fast-medium,27,1,IRE,11,0,15,62,estimate
+Harry Tector,H Tector,Ireland,BAT,R,Right-arm offbreak,27,1,IRE,3,0,68,20,estimate
+Tim Tector,T Tector,Ireland,BAT,R,Right-arm offbreak,23,1,IRE,1,0,56,20,estimate
+Reuben Wilson,R Wilson,Ireland,AR,R,Right-arm medium,24,1,IRE,,0,45,50,estimate
+Sikandar Raza,S Raza,Zimbabwe,AR,R,Right-arm offbreak,40,1,ZIM,4,1,68,66,estimate
+Brian Bennett,B Bennett,Zimbabwe,BAT,R,Right-arm offbreak,22,1,ZIM,1,0,66,30,estimate
+Ryan Burl,R Burl,Zimbabwe,AR,L,Right-arm legbreak,32,1,ZIM,6,0,56,52,estimate
+Tanaka Chivanga,T Chivanga,Zimbabwe,PACE,R,Right-arm fast-medium,27,1,ZIM,11,0,12,58,estimate
+Ben Curran,B Curran,Zimbabwe,BAT,L,,29,1,ZIM,,0,55,10,estimate
+Brad Evans,B Evans,Zimbabwe,PACE,R,Right-arm fast-medium,29,1,ZIM,7,0,30,62,estimate
+Wessly Madhevere,W Madhevere,Zimbabwe,AR,R,Right-arm offbreak,26,1,ZIM,5,0,58,45,estimate
+Tadiwanashe Marumani,T Marumani,Zimbabwe,WK,L,,24,1,ZIM,2,0,58,10,estimate
+Wellington Masakadza,W Masakadza,Zimbabwe,SPIN,L,Left-arm orthodox,33,1,ZIM,8,0,22,64,estimate
+Blessing Muzarabani,B Muzarabani,Zimbabwe,PACE,R,Right-arm fast-medium,29,1,ZIM,10,0,18,70,estimate
+Dion Myers,D Myers,Zimbabwe,AR,R,Right-arm medium,24,1,ZIM,3,0,55,35,estimate
+Richard Ngarava,R Ngarava,Zimbabwe,PACE,L,Left-arm fast-medium,28,1,ZIM,9,0,18,68,estimate
+Newman Nyamhuri,N Nyamhuri,Zimbabwe,PACE,L,Left-arm fast-medium,20,1,ZIM,,0,12,58,estimate
+Milton Shumba,M Shumba,Zimbabwe,AR,L,Left-arm orthodox,26,1,ZIM,,0,50,45,estimate
+Tafadzwa Tsiga,T Tsiga,Zimbabwe,WK,R,,32,1,ZIM,,0,48,10,estimate

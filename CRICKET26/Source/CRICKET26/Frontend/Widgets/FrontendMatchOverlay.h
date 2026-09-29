@@ -9,6 +9,7 @@
 #include "FrontendMatchOverlay.generated.h"
 
 class UOverlay;
+class UTextBlock;
 
 UCLASS()
 class UFrontendMatchOverlay : public UUserWidget
@@ -25,6 +26,7 @@ protected:
 private:
 	UPROPERTY(Transient) TObjectPtr<UOverlay> Confirm;
 	UPROPERTY(Transient) TObjectPtr<UOverlay> ResultLayer;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> PauseTeams; // "INDIA  /  AUSTRALIA", filled when the menu opens
 	FTimerHandle ResultPoll;
 	void CheckForResult();
 };

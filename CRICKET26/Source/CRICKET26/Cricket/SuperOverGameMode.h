@@ -10,6 +10,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
 #include "IPLTypes.h"
+#include "IPLSeason.h"
 #include "CricketAI.h"
 #include "CricketAudio.h"
 #include "CricketAudioDirector.h"
@@ -19,6 +20,7 @@
 #include "CricketKeeper.h"
 #include "CricketPose.h"
 #include "CricketReplayBuffer.h"
+#include "RealTeams.h"
 #include "SuperOverGameMode.generated.h"
 
 class AStaticMeshActor;
@@ -55,6 +57,9 @@ public:
 	static constexpr float IdealRelease = 0.f; // bowling meter value of a perfectly timed release
 	/** Metres of approach before the crease: a quick's 15 m at about 6 m/s, a spinner's 7 m jog. */
 	float RunUpLength() const { return BowlerPlayer().BowlerType == EBowlerType::Pace ? 15.f : 7.f; }
+	/** The bowler's-end umpire: metres behind the stumps, and to the side away from the bowler's arm. The run-up passes
+	 *  about a metre from them and the non-striker backs up more than four metres away. */
+	static constexpr float UmpireBack = 2.4f, UmpireSide = 0.45f;
 	/** Pauses in the flow (s): before an AI-started ball, and after a dead ball with no replay. */
 	static constexpr float BetweenBalls = 2.f, AfterDeadBall = 2.5f;
 	UPROPERTY(EditAnywhere, Category = "Super Over") float ExposureEV100 = 15.f; // fixed camera exposure: the sunny-16 rule for a 100000 lux sun
@@ -303,9 +308,16 @@ public:
 	const FCricketPlayer& BowlerPlayer() const { return Teams[Match.BowlingTeam()].Bowler; }
 	FString DirectionName() const;
 
-	// ---- IPL tournament context (additive: standalone matches never set IPLFixtureId) ----
-	/** Season fixture being played, or -1 for a standalone match. */
+	// ---- Eleven-a-side context: an IPL season fixture, or a quick match between two real teams ----
+	// (additive: a match started without either keeps the placeholder squads exactly as before)
+	/** Season fixture being played, or -1 outside a season. */
 	int32 IPLFixtureId = INDEX_NONE;
+	/** A quick match between two real teams (international or IPL original squads): Teams[0] is the user's. */
+	bool bQuickMatch = false;
+	ECompetition QuickCompetition = ECompetition::IPL;
+	int32 QuickTeam[2] = { INDEX_NONE, INDEX_NONE }; // indices into RealTeams::Teams(QuickCompetition), by match side
+	/** Legal balls one bowler may bowl this match: a fifth of the overs (a T20's 24). */
+	int32 IPLMaxBowlerBalls = IPLSeason::MaxBallsPerBowler;
 	/** The user's franchise index (season space), or -1 outside a season. */
 	int32 IPLUserTeam = INDEX_NONE;
 	int32 IPLHomeTeam = INDEX_NONE, IPLAwayTeam = INDEX_NONE; // season-space franchises
@@ -322,7 +334,12 @@ public:
 	TArray<int32> IPLAwaitingCandidates; // XI slots offered (includes the auto pick for batters)
 	bool bIPLCommitted = false;          // the result reached the season exactly once
 
-	bool IsIPLMatch() const { return IPLFixtureId != INDEX_NONE; }
+	/** Two XIs with bowling changes and batter/bowler picks: a season fixture or a real-teams quick match. */
+	bool IsIPLMatch() const { return IPLFixtureId != INDEX_NONE || bQuickMatch; }
+	/** A season fixture, whose result belongs to the season. */
+	bool IsSeasonMatch() const { return IPLFixtureId != INDEX_NONE; }
+	/** The player records the XIs' ids index: the national squads, or the IPL roster. */
+	const TArray<FAuctionPlayer>& XIPlayers() const { return bQuickMatch ? RealTeams::Players(QuickCompetition) : AuctionData::Players(); }
 	bool IsAwaitingPick() const { return bAwaitingBatter || bAwaitingBowler; }
 	const FIPLPlayingXI& IPLXIForSide(int32 Side) const { return Side == 0 ? IPLHomeXI : IPLAwayXI; }
 	/** The selector panel: title plus one line per candidate, in touch-layout order. */
@@ -330,7 +347,8 @@ public:
 	TArray<FString> IPLPickNames() const;
 	bool ChooseNextBatter(int32 Candidate);
 	bool ChooseNextBowler(int32 Candidate);
-	/** Pause-menu restart: re-stages this exact fixture (same XIs) before its result commits. */
+	/** Pause-menu restart and rematch: re-stages this exact fixture (same XIs) before its result commits, or this quick
+	 *  match (same teams, XIs and toss). */
 	void RestartIPLFixture();
 
 private:
@@ -488,6 +506,8 @@ private:
 	void ScoreDelivery(FDeliveryOutcome Outcome);
 	// IPL tournament wiring (all no-ops without a staged fixture).
 	void SetupIPLMatch();
+	/** A staged quick match: the two real teams' XIs, the overs and the toss. False when the staging is unusable. */
+	bool SetupQuickMatch(const class UIPLPendingMatch& Pending);
 	void AfterIPLDelivery(const FDeliveryOutcome& Outcome, const TArray<ECricketEvent>& Events, int32 PreNext);
 	void IPLNewInningsSetup();
 	void ApplyIPLBowler(int32 Side, int32 Slot);
