@@ -33,8 +33,8 @@ using namespace AuctionRoomLayout;
 namespace
 {
 	constexpr float Cm = 100.f;
-	const FLinearColor Gold(1.f, 0.66f, 0.18f), Teal(0.02f, 0.45f, 0.4f), Ink(0.004f, 0.022f, 0.022f);
-	const FVector Up = FVector::UpVector;
+	const FLinearColor RoomGold(1.f, 0.66f, 0.18f), RoomTeal(0.02f, 0.45f, 0.4f), RoomInk(0.004f, 0.022f, 0.022f);
+	const FVector WorldUp = FVector::UpVector;
 	// About 450 lux on the tables and 1500 on the auctioneer (E = I / d^2), the exposure set for the tables.
 	constexpr float TableLux = 450.f;
 
@@ -57,7 +57,7 @@ namespace
 	/** A flat disc of N sides in the plane across Normal, seen from the Normal side. */
 	void Disc(FColouredMesh& M, const FVector& C, const FVector& Normal, float R, const FLinearColor& Col, int32 N = 20)
 	{
-		const FVector A = FVector::CrossProduct(Normal, FMath::Abs(Normal.Z) > 0.9f ? FVector::ForwardVector : Up).GetSafeNormal();
+		const FVector A = FVector::CrossProduct(Normal, FMath::Abs(Normal.Z) > 0.9f ? FVector::ForwardVector : WorldUp).GetSafeNormal();
 		const FVector B = FVector::CrossProduct(Normal, A);
 		for (int32 I = 0; I < N; ++I)
 		{
@@ -67,7 +67,7 @@ namespace
 		}
 	}
 
-	FVector Across(const FVector& D) { return FVector::CrossProduct(Up, D); }
+	FVector Across(const FVector& D) { return FVector::CrossProduct(WorldUp, D); }
 	const FVector AuctioneerFloor(-0.55f, 0.f, StageHeight);
 	FVector AuctioneerHead() { return AuctioneerFloor + FVector(0.05f, 0.f, 1.62f); }
 
@@ -121,7 +121,7 @@ namespace AuctionRoomLayout
 AAuctionRoom::AAuctionRoom()
 {
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
-	Accent = AccentGoal = Teal;
+	Accent = AccentGoal = RoomTeal;
 }
 
 double AAuctionRoom::Now() const { return GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0; }
@@ -195,7 +195,7 @@ void AAuctionRoom::BuildHall()
 		C->SetCastShadow(false);
 		C->SetupAttachment(RootComponent);
 		C->RegisterComponent();
-		const FVector Right = FVector::CrossProduct(Up, -Facing);
+		const FVector Right = FVector::CrossProduct(WorldUp, -Facing);
 		C->SetWorldLocationAndRotation((Centre + Facing * 0.01f) * Cm, FRotationMatrix::MakeFromZX(Facing, Right).Rotator());
 		C->SetWorldScale3D(FVector(Width, Height, 1.f));
 	};
@@ -203,10 +203,10 @@ void AAuctionRoom::BuildHall()
 	// ---- The hall ---------------------------------------------------------------------------------------------
 	FColouredMesh Hall, Lit;
 	const FLinearColor Carpet(0.016f, 0.02f, 0.04f), Wall(0.01f, 0.012f, 0.02f), Black(0.012f, 0.012f, 0.015f), White(0.78f, 0.78f, 0.76f);
-	Hall.AddQuad({ -8, -26, 0 }, { 34, -26, 0 }, { 34, 26, 0 }, { -8, 26, 0 }, Carpet, Up);
+	Hall.AddQuad({ -8, -26, 0 }, { 34, -26, 0 }, { 34, 26, 0 }, { -8, 26, 0 }, Carpet, WorldUp);
 	for (float Side : { -1.f, 1.f })
 		Box(Hall, FVector(15.f, Side * 8.2f, RearRowHeight * 0.5f), FVector(2.2f, 4.4f, RearRowHeight * 0.5f), Black);
-	Hall.AddQuad({ -8, -26, 13 }, { 34, -26, 13 }, { 34, 26, 13 }, { -8, 26, 13 }, Wall * 0.5f, -Up);
+	Hall.AddQuad({ -8, -26, 13 }, { 34, -26, 13 }, { 34, 26, 13 }, { -8, 26, 13 }, Wall * 0.5f, -WorldUp);
 	Hall.AddQuad({ -8, -26, 0 }, { -8, 26, 0 }, { -8, 26, 13 }, { -8, -26, 13 }, Wall, FVector::ForwardVector);
 	Hall.AddQuad({ 34, -26, 0 }, { 34, 26, 0 }, { 34, 26, 13 }, { 34, -26, 13 }, Wall, -FVector::ForwardVector);
 	for (float Y : { -26.f, 26.f })
@@ -220,16 +220,16 @@ void AAuctionRoom::BuildHall()
 	Box(Lit, FVector(1.005f, 0.f, StageHeight * 0.5f), FVector(0.01f, 11.f, StageHeight * 0.2f), FLinearColor::White);
 	Box(Hall, FVector(-0.05f, 0.f, StageHeight + 0.55f), FVector(0.25f, 0.45f, 0.55f), FLinearColor(0.03f, 0.026f, 0.026f));
 	Box(Hall, FVector(-0.08f, 0.f, StageHeight + 1.12f), FVector(0.3f, 0.5f, 0.02f), FLinearColor(0.1f, 0.05f, 0.025f));
-	Box(Hall, FVector(0.21f, 0.f, StageHeight + 0.95f), FVector(0.01f, 0.45f, 0.03f), Gold);
+	Box(Hall, FVector(0.21f, 0.f, StageHeight + 0.95f), FVector(0.01f, 0.45f, 0.03f), RoomGold);
 	Box(Lit, FVector(0.21f, 0.f, StageHeight + 0.35f), FVector(0.01f, 0.4f, 0.015f), FLinearColor::White);
 	// The trophy on its plinth, stage left of the lectern. ponytail: stacked gold boxes; a modelled cup when there is one.
 	const FVector Plinth(-1.2f, 2.4f, StageHeight);
 	Box(Hall, Plinth + FVector(0, 0, 0.5f), FVector(0.3f, 0.3f, 0.5f), Black);
 	const FVector Cup = Plinth + FVector(0, 0, 1.f);
 	Box(Hall, Cup + FVector(0, 0, 0.05f), FVector(0.14f, 0.14f, 0.05f), FLinearColor(0.08f, 0.04f, 0.02f));
-	Box(Hall, Cup + FVector(0, 0, 0.22f), FVector(0.03f, 0.03f, 0.12f), Gold);
-	for (int32 I = 0; I < 4; ++I) { const float R = 0.06f + 0.028f * I; Box(Hall, Cup + FVector(0, 0, 0.37f + 0.07f * I), FVector(R, R, 0.035f), Gold); }
-	for (float S : { -1.f, 1.f }) Box(Hall, Cup + FVector(0, S * 0.19f, 0.5f), FVector(0.015f, 0.04f, 0.08f), Gold);
+	Box(Hall, Cup + FVector(0, 0, 0.22f), FVector(0.03f, 0.03f, 0.12f), RoomGold);
+	for (int32 I = 0; I < 4; ++I) { const float R = 0.06f + 0.028f * I; Box(Hall, Cup + FVector(0, 0, 0.37f + 0.07f * I), FVector(R, R, 0.035f), RoomGold); }
+	for (float S : { -1.f, 1.f }) Box(Hall, Cup + FVector(0, S * 0.19f, 0.5f), FVector(0.015f, 0.04f, 0.08f), RoomGold);
 
 	// The LED wall's frame and pillars, and the arches of light over the stage.
 	const float WallZ = StageHeight + 0.4f + 3.4f;
@@ -255,35 +255,35 @@ void AAuctionRoom::BuildHall()
 		const FAuctionFranchise& F = Teams[T];
 		const FVector D = -TableFacing(T), A = Across(D), Front = TableFront(T);
 		const FVector Top = Front + D * TableHalfDepth;
-		Solid(Hall, Top + Up * (TableTop - 0.02f), D * TableHalfDepth, A * TableHalfLength, Up * 0.02f, White);
-		Solid(Hall, Top + Up * 0.37f, D * (TableHalfDepth - 0.05f), A * (TableHalfLength - 0.03f), Up * 0.37f, F.Primary * 0.35f);
+		Solid(Hall, Top + WorldUp * (TableTop - 0.02f), D * TableHalfDepth, A * TableHalfLength, WorldUp * 0.02f, White);
+		Solid(Hall, Top + WorldUp * 0.37f, D * (TableHalfDepth - 0.05f), A * (TableHalfLength - 0.03f), WorldUp * 0.37f, F.Primary * 0.35f);
 		// Keep the team-colour backdrop below shoulder height so neither rank hides the people behind it.
 		const FVector Back = Front + D * (2.f * TableHalfDepth + 1.3f);
-		Solid(Hall, Back + Up * 0.42f, D * 0.05f, A * 1.6f, Up * 0.42f, F.Primary * 0.6f);
-		Solid(Hall, Back - D * 0.01f + Up * 0.8f, D * 0.05f, A * 1.6f, Up * 0.04f, F.Secondary);
-		Solid(Hall, Back - D * 0.02f + Up * 0.85f, D * 0.05f, A * 1.6f, Up * 0.01f, Gold);
+		Solid(Hall, Back + WorldUp * 0.42f, D * 0.05f, A * 1.6f, WorldUp * 0.42f, F.Primary * 0.6f);
+		Solid(Hall, Back - D * 0.01f + WorldUp * 0.8f, D * 0.05f, A * 1.6f, WorldUp * 0.04f, F.Secondary);
+		Solid(Hall, Back - D * 0.02f + WorldUp * 0.85f, D * 0.05f, A * 1.6f, WorldUp * 0.01f, RoomGold);
 		// The team's placard in the middle of the table, and a line of light on the floor in front.
-		Solid(Hall, Front + D * 0.18f + Up * (TableTop + 0.09f), D * 0.01f, A * 0.24f, Up * 0.09f, F.Primary);
-		Solid(Lit, Front - D * 0.35f + Up * 0.005f, D * 0.03f, A * (TableHalfLength + 0.2f), Up * 0.005f, FLinearColor::White);
+		Solid(Hall, Front + D * 0.18f + WorldUp * (TableTop + 0.09f), D * 0.01f, A * 0.24f, WorldUp * 0.09f, F.Primary);
+		Solid(Lit, Front - D * 0.35f + WorldUp * 0.005f, D * 0.03f, A * (TableHalfLength + 0.2f), WorldUp * 0.005f, FLinearColor::White);
 		for (int32 S = 0; S < SeatsPerTable; ++S)
 		{
 			const FVector P = SeatAt(T, S);
 			// Chair: seat and back.
-			Solid(Hall, P + Up * 0.45f, D * 0.24f, A * 0.24f, Up * 0.03f, Black);
-			Solid(Hall, P + D * 0.24f + Up * 0.78f, D * 0.03f, A * 0.24f, Up * 0.3f, Black);
+			Solid(Hall, P + WorldUp * 0.45f, D * 0.24f, A * 0.24f, WorldUp * 0.03f, Black);
+			Solid(Hall, P + D * 0.24f + WorldUp * 0.78f, D * 0.03f, A * 0.24f, WorldUp * 0.3f, Black);
 			// Laptop open toward its user, a water bottle, a name tent.
-			const FVector Laptop = P - D * 0.6f + Up * (TableTop + 0.008f);
-			Solid(Hall, Laptop, D * 0.12f, A * 0.17f, Up * 0.008f, FLinearColor(0.35f, 0.36f, 0.38f));
+			const FVector Laptop = P - D * 0.6f + WorldUp * (TableTop + 0.008f);
+			Solid(Hall, Laptop, D * 0.12f, A * 0.17f, WorldUp * 0.008f, FLinearColor(0.35f, 0.36f, 0.38f));
 			const float Tilt = FMath::DegreesToRadians(15.f);
-			const FVector LidUp = Up * FMath::Cos(Tilt) + D * FMath::Sin(Tilt), LidOut = FVector::CrossProduct(A, LidUp).GetSafeNormal();
+			const FVector LidUp = WorldUp * FMath::Cos(Tilt) + D * FMath::Sin(Tilt), LidOut = FVector::CrossProduct(A, LidUp).GetSafeNormal();
 			Solid(Hall, Laptop - D * 0.12f + LidUp * 0.12f, LidOut * 0.006f, A * 0.17f, LidUp * 0.12f, FLinearColor(0.35f, 0.36f, 0.38f));
 			Solid(Hall, Laptop - D * 0.12f + LidUp * 0.12f + D * 0.008f, LidOut * 0.001f, A * 0.155f, LidUp * 0.105f, FLinearColor(0.02f, 0.035f, 0.06f));
 			const float Side = S == 0 ? -1.f : 1.f;
-			Solid(Hall, P - D * 0.5f + A * Side * 0.34f + Up * (TableTop + 0.11f), D * 0.03f, A * 0.03f, Up * 0.11f, FLinearColor(0.45f, 0.62f, 0.8f));
-			Solid(Hall, P - D * 0.5f + A * Side * 0.34f + Up * (TableTop + 0.235f), D * 0.015f, A * 0.015f, Up * 0.015f, White);
-			const FVector Tent = Front + D * 0.12f + A * Side * 0.62f + Up * TableTop;
-			Hall.AddQuad(Tent - D * 0.05f - A * 0.12f, Tent - D * 0.05f + A * 0.12f, Tent + Up * 0.1f + A * 0.12f, Tent + Up * 0.1f - A * 0.12f, White, -D + Up * 0.5f);
-			Hall.AddQuad(Tent + D * 0.05f - A * 0.12f, Tent + D * 0.05f + A * 0.12f, Tent + Up * 0.1f + A * 0.12f, Tent + Up * 0.1f - A * 0.12f, White, D + Up * 0.5f);
+			Solid(Hall, P - D * 0.5f + A * Side * 0.34f + WorldUp * (TableTop + 0.11f), D * 0.03f, A * 0.03f, WorldUp * 0.11f, FLinearColor(0.45f, 0.62f, 0.8f));
+			Solid(Hall, P - D * 0.5f + A * Side * 0.34f + WorldUp * (TableTop + 0.235f), D * 0.015f, A * 0.015f, WorldUp * 0.015f, White);
+			const FVector Tent = Front + D * 0.12f + A * Side * 0.62f + WorldUp * TableTop;
+			Hall.AddQuad(Tent - D * 0.05f - A * 0.12f, Tent - D * 0.05f + A * 0.12f, Tent + WorldUp * 0.1f + A * 0.12f, Tent + WorldUp * 0.1f - A * 0.12f, White, -D + WorldUp * 0.5f);
+			Hall.AddQuad(Tent + D * 0.05f - A * 0.12f, Tent + D * 0.05f + A * 0.12f, Tent + WorldUp * 0.1f + A * 0.12f, Tent + WorldUp * 0.1f - A * 0.12f, White, D + WorldUp * 0.5f);
 		}
 		// The skirt across the table's front: the franchise's colour and name, drawn once.
 		if (ScreenMaterial && Plane)
@@ -292,8 +292,8 @@ void AAuctionRoom::BuildHall()
 			SkirtTargets.Add(Skirt);
 			DrawSkirt(T);
 			UMaterialInstanceDynamic* Brand = Glowing(Skirt, 60.f);
-			Panel(Front + Up * 0.38f, -D, 2.f * TableHalfLength, 0.72f, Brand);
-			Panel(Back + D * 0.07f + Up * 0.4f, D, 2.8f, 0.5f, Brand);
+			Panel(Front + WorldUp * 0.38f, -D, 2.f * TableHalfLength, 0.72f, Brand);
+			Panel(Back + D * 0.07f + WorldUp * 0.4f, D, 2.8f, 0.5f, Brand);
 		}
 		// The paddle: a disc in the team's colours, rimmed in its second colour, on a black handle along +Z.
 		FColouredMesh PaddleMesh;
@@ -359,11 +359,11 @@ void AAuctionRoom::BuildHall()
 	for (int32 T = 0; T < 10; ++T)
 	{
 		const FVector Mid = TableFront(T) + (-TableFacing(T)) * 0.8f;
-		Spot(Mid - TableFacing(T) * 1.5f + Up * 8.f, Mid + Up * 0.8f, TableLux * 55.f, 24.f, true);
+		Spot(Mid - TableFacing(T) * 1.5f + WorldUp * 8.f, Mid + WorldUp * 0.8f, TableLux * 55.f, 24.f, true);
 		// The key is behind the staff, so their faces need a soft fill from the stage side, as TV lights a room. It
 		// lights the people only (lighting channel 1, SpawnPeople): past their heads it would make a hot spot on the
 		// backdrop and wash the franchise colour out of it.
-		Spot(Mid + TableFacing(T) * 5.f + Up * 3.f, Mid + Up * 1.15f, TableLux * 16.f, 18.f, false)->SetLightingChannels(false, true, false);
+		Spot(Mid + TableFacing(T) * 5.f + WorldUp * 3.f, Mid + WorldUp * 1.15f, TableLux * 16.f, 18.f, false)->SetLightingChannels(false, true, false);
 	}
 	// The LED wall lights the hall in its colour.
 	WallLight = NewObject<URectLightComponent>(this);
@@ -539,7 +539,7 @@ void AAuctionRoom::DrawSkirt(int32 Team)
 	Draw(this, SkirtTargets.IsValidIndex(Team) ? SkirtTargets[Team].Get() : nullptr, F.Primary, [&](UCanvas* C, float W, float H)
 	{
 		Tile(C, 0, H * 0.84f, W, H * 0.1f, F.Secondary);
-		Tile(C, 0, H * 0.94f, W, H * 0.02f, Gold);
+		Tile(C, 0, H * 0.94f, W, H * 0.02f, RoomGold);
 		CanvasText(C, F.Name.ToUpper(), W / 2, H * 0.4f, H * 0.34f, FLinearColor::White, 0.5f);
 	});
 }
@@ -548,23 +548,23 @@ void AAuctionRoom::DrawWall(const FAuction* A, const FAuctionEventRecord* E)
 {
 	const TArray<FAuctionFranchise>& Teams = AuctionData::Franchises();
 	const bool bSold = A && A->Phase == EAuctionPhase::Hammer && Teams.IsValidIndex(A->LastSoldTo);
-	const FLinearColor Back = bSold ? Teams[A->LastSoldTo].Primary * 0.8f : Ink;
+	const FLinearColor Back = bSold ? Teams[A->LastSoldTo].Primary * 0.8f : RoomInk;
 	Draw(this, WallTarget, Back, [&](UCanvas* C, float W, float H)
 	{
-		// Gold rules top and bottom, like the broadcast's frames.
-		Tile(C, 0, H * 0.04f, W, 4, Gold);
-		Tile(C, 0, H * 0.96f - 4, W, 4, Gold);
+		// RoomGold rules top and bottom, like the broadcast's frames.
+		Tile(C, 0, H * 0.04f, W, 4, RoomGold);
+		Tile(C, 0, H * 0.96f - 4, W, 4, RoomGold);
 		if (!A || A->Phase == EAuctionPhase::Retention)
 		{
 			const bool bMini = A && A->IsMini();
 			CanvasText(C, bMini ? FString::Printf(TEXT("IPL %d AUCTION"), A->Config.Season) : FString(TEXT("IPL MEGA AUCTION")), W / 2, H * 0.42f, H * 0.2f, FLinearColor::White, 0.5f);
-			CanvasText(C, bMini ? FString(TEXT("TEN FRANCHISES  ·  TOPPING UP TO 25")) : FString(TEXT("TEN FRANCHISES  ·  ₹120 CRORE EACH")), W / 2, H * 0.64f, H * 0.07f, Gold, 0.5f);
+			CanvasText(C, bMini ? FString(TEXT("TEN FRANCHISES  ·  TOPPING UP TO 25")) : FString(TEXT("TEN FRANCHISES  ·  ₹120 CRORE EACH")), W / 2, H * 0.64f, H * 0.07f, RoomGold, 0.5f);
 			return;
 		}
 		if (A->Phase == EAuctionPhase::Break)
 		{
 			CanvasText(C, TEXT("END OF DAY ONE"), W / 2, H * 0.42f, H * 0.18f, FLinearColor::White, 0.5f);
-			CanvasText(C, TEXT("THE AUCTION RESUMES WITH THE UNCAPPED SETS"), W / 2, H * 0.62f, H * 0.06f, Gold, 0.5f);
+			CanvasText(C, TEXT("THE AUCTION RESUMES WITH THE UNCAPPED SETS"), W / 2, H * 0.62f, H * 0.06f, RoomGold, 0.5f);
 			return;
 		}
 		if (A->Phase == EAuctionPhase::Finished)
@@ -575,7 +575,7 @@ void AAuctionRoom::DrawWall(const FAuction* A, const FAuctionEventRecord* E)
 		const FAuctionSet* Set = A->CurrentSet();
 		if (A->Phase == EAuctionPhase::SetIntro && Set)
 		{
-			CanvasText(C, TEXT("NEXT SET"), W / 2, H * 0.3f, H * 0.07f, Gold, 0.5f);
+			CanvasText(C, TEXT("NEXT SET"), W / 2, H * 0.3f, H * 0.07f, RoomGold, 0.5f);
 			CanvasText(C, Set->Name, W / 2, H * 0.5f, H * 0.17f, FLinearColor::White, 0.5f);
 			return;
 		}
@@ -583,45 +583,45 @@ void AAuctionRoom::DrawWall(const FAuction* A, const FAuctionEventRecord* E)
 		const FAuctionPlayer& P = FAuction::Player(A->Lot);
 		if (A->Phase == EAuctionPhase::Hammer)
 		{
-			CanvasText(C, bSold ? TEXT("SOLD") : TEXT("UNSOLD"), W / 2, H * 0.2f, H * 0.12f, bSold ? Gold : FLinearColor(0.9f, 0.3f, 0.3f), 0.5f);
+			CanvasText(C, bSold ? TEXT("SOLD") : TEXT("UNSOLD"), W / 2, H * 0.2f, H * 0.12f, bSold ? RoomGold : FLinearColor(0.9f, 0.3f, 0.3f), 0.5f);
 			CanvasText(C, P.Name.ToUpper(), W / 2, H * 0.44f, H * 0.16f, FLinearColor::White, 0.5f);
 			if (bSold)
 			{
 				CanvasText(C, Teams[A->LastSoldTo].Name.ToUpper(), W / 2, H * 0.66f, H * 0.08f, FLinearColor::White, 0.5f);
-				CanvasText(C, AuctionRules::Money(A->Price), W / 2, H * 0.83f, H * 0.12f, Gold, 0.5f);
+				CanvasText(C, AuctionRules::Money(A->Price), W / 2, H * 0.83f, H * 0.12f, RoomGold, 0.5f);
 			}
 			return;
 		}
 		// The player card: set and lot, name, details, base price and the live bid with the holder's colour.
-		CanvasText(C, FString::Printf(TEXT("%s  ·  LOT %d"), Set ? *Set->Name : TEXT(""), A->LotsHeld), W * 0.05f, H * 0.12f, H * 0.055f, Gold);
-		CanvasText(C, P.IsOverseas() ? TEXT("OVERSEAS") : P.bCapped ? TEXT("CAPPED") : TEXT("UNCAPPED"), W * 0.95f, H * 0.12f, H * 0.055f, Gold, 1.f);
+		CanvasText(C, FString::Printf(TEXT("%s  ·  LOT %d"), Set ? *Set->Name : TEXT(""), A->LotsHeld), W * 0.05f, H * 0.12f, H * 0.055f, RoomGold);
+		CanvasText(C, P.IsOverseas() ? TEXT("OVERSEAS") : P.bCapped ? TEXT("CAPPED") : TEXT("UNCAPPED"), W * 0.95f, H * 0.12f, H * 0.055f, RoomGold, 1.f);
 		CanvasText(C, P.Name.ToUpper(), W * 0.05f, H * 0.3f, H * 0.16f, FLinearColor::White);
 		FString Detail = FString::Printf(TEXT("%s  ·  %s  ·  AGE %d"), *FString(AuctionRules::RoleName(P.Role)).ToUpper(), *P.Country.ToUpper(), P.Age);
 		if (!P.Team2026.IsEmpty()) Detail += FString::Printf(TEXT("  ·  IPL 2026: %s"), *P.Team2026);
 		CanvasText(C, Detail, W * 0.05f, H * 0.46f, H * 0.055f, FLinearColor(0.75f, 0.85f, 0.85f), 0.f, false);
 		// Base price, left; current bid, right, on the holding side's colour.
 		Tile(C, W * 0.05f, H * 0.58f, W * 0.3f, H * 0.3f, FLinearColor(0.01f, 0.06f, 0.06f));
-		CanvasText(C, TEXT("BASE PRICE"), W * 0.2f, H * 0.65f, H * 0.05f, Gold, 0.5f);
+		CanvasText(C, TEXT("BASE PRICE"), W * 0.2f, H * 0.65f, H * 0.05f, RoomGold, 0.5f);
 		CanvasText(C, AuctionRules::Money(P.Base), W * 0.2f, H * 0.78f, H * 0.1f, FLinearColor::White, 0.5f);
 		const bool bHeld = Teams.IsValidIndex(A->Holder) && A->Price > 0;
 		Tile(C, W * 0.4f, H * 0.58f, W * 0.55f, H * 0.3f, bHeld ? Teams[A->Holder].Primary * 0.8f : FLinearColor(0.01f, 0.06f, 0.06f));
-		CanvasText(C, bHeld ? FString::Printf(TEXT("CURRENT BID  ·  %s"), *Teams[A->Holder].Short) : FString(TEXT("AWAITING OPENING BID")), W * 0.675f, H * 0.65f, H * 0.05f, Gold, 0.5f);
+		CanvasText(C, bHeld ? FString::Printf(TEXT("CURRENT BID  ·  %s"), *Teams[A->Holder].Short) : FString(TEXT("AWAITING OPENING BID")), W * 0.675f, H * 0.65f, H * 0.05f, RoomGold, 0.5f);
 		CanvasText(C, bHeld ? AuctionRules::Money(A->Price) : TEXT("—"), W * 0.675f, H * 0.78f, H * 0.12f, FLinearColor::White, 0.5f);
 		if (Teams.IsValidIndex(A->RtmTeam))
-			CanvasText(C, FString::Printf(TEXT("RTM  ·  %s"), *Teams[A->RtmTeam].Short), W * 0.95f, H * 0.3f, H * 0.07f, Gold, 1.f);
+			CanvasText(C, FString::Printf(TEXT("RTM  ·  %s"), *Teams[A->RtmTeam].Short), W * 0.95f, H * 0.3f, H * 0.07f, RoomGold, 1.f);
 	});
 }
 
 void AAuctionRoom::DrawSideScreens(const FAuction* A)
 {
 	const TArray<FAuctionFranchise>& Teams = AuctionData::Franchises();
-	Draw(this, SideTarget, Ink, [&](UCanvas* C, float W, float H)
+	Draw(this, SideTarget, RoomInk, [&](UCanvas* C, float W, float H)
 	{
-		CanvasText(C, TEXT("TEAMS"), W * 0.08f, H * 0.07f, H * 0.045f, Gold);
-		CanvasText(C, TEXT("PURSE REMAINING"), W * 0.62f, H * 0.07f, H * 0.045f, Gold, 1.f);
-		CanvasText(C, TEXT("PLAYERS"), W * 0.8f, H * 0.07f, H * 0.045f, Gold, 0.5f);
-		CanvasText(C, TEXT("OS"), W * 0.93f, H * 0.07f, H * 0.045f, Gold, 0.5f);
-		Tile(C, W * 0.04f, H * 0.11f, W * 0.92f, 3, Gold);
+		CanvasText(C, TEXT("TEAMS"), W * 0.08f, H * 0.07f, H * 0.045f, RoomGold);
+		CanvasText(C, TEXT("PURSE REMAINING"), W * 0.62f, H * 0.07f, H * 0.045f, RoomGold, 1.f);
+		CanvasText(C, TEXT("PLAYERS"), W * 0.8f, H * 0.07f, H * 0.045f, RoomGold, 0.5f);
+		CanvasText(C, TEXT("OS"), W * 0.93f, H * 0.07f, H * 0.045f, RoomGold, 0.5f);
+		Tile(C, W * 0.04f, H * 0.11f, W * 0.92f, 3, RoomGold);
 		for (int32 T = 0; T < Teams.Num() && T < 10; ++T)
 		{
 			const float Y = H * (0.18f + 0.082f * T);
@@ -709,12 +709,12 @@ AAuctionRoom::FShot AAuctionRoom::OnTable(int32 Team) const
 {
 	if (Team < 0 || Team >= 10) return Wide();
 	const FVector D = -TableFacing(Team), A = Across(D);
-	const FVector Heads = 0.5f * (SeatAt(Team, 0) + SeatAt(Team, 1)) + Up * 1.1f;
+	const FVector Heads = 0.5f * (SeatAt(Team, 0) + SeatAt(Team, 1)) + WorldUp * 1.1f;
 	// Rear-row shots come from the aisle gap, clear of the front-row desks.
 	const bool bRear = TableFront(Team).Z > 0.f;
-	const FVector From = bRear ? Heads - D * 4.f - A * FMath::Sign(Heads.Y) * 3.f + Up * 0.3f
-		: Heads - D * 5.8f + A * 0.9f + Up * 0.3f;
-	return { From, Heads - Up * 0.12f, A * 0.05f, 38.f };
+	const FVector From = bRear ? Heads - D * 4.f - A * FMath::Sign(Heads.Y) * 3.f + WorldUp * 0.3f
+		: Heads - D * 5.8f + A * 0.9f + WorldUp * 0.3f;
+	return { From, Heads - WorldUp * 0.12f, A * 0.05f, 38.f };
 }
 
 void AAuctionRoom::Present(const FAuction& A, const FAuctionEventRecord& E)
@@ -843,19 +843,19 @@ void AAuctionRoom::PoseStaff(FPerson& P, double T)
 	// every body; per-body heights if a tall or short MetaHuman sits visibly wrong.
 	B.PelvisOffset = FVector(0.f, 0.f, -40.f);
 	B.FootWeight = 1.f;
-	B.Foot[0] = (Floor + F * 0.42f - R * 0.14f + Up * 0.09f) * Cm;
-	B.Foot[1] = (Floor + F * 0.42f + R * 0.14f + Up * 0.09f) * Cm;
+	B.Foot[0] = (Floor + F * 0.42f - R * 0.14f + WorldUp * 0.09f) * Cm;
+	B.Foot[1] = (Floor + F * 0.42f + R * 0.14f + WorldUp * 0.09f) * Cm;
 	B.ChestFacing = F;
 	B.ChestBend = 8.f;
 	B.LookWeight = 0.7f;
 	B.LookAt = AuctioneerHead() * Cm;
-	FVector Hand[2] = { Floor + F * 0.4f - R * 0.2f + Up * (TableTop + 0.04f), Floor + F * 0.4f + R * 0.2f + Up * (TableTop + 0.04f) };
-	FVector Elbow[2] = { Floor - R * 0.6f + Up * 0.7f, Floor + R * 0.6f + Up * 0.7f };
-	FVector Palm[2] = { -Up, -Up };
+	FVector Hand[2] = { Floor + F * 0.4f - R * 0.2f + WorldUp * (TableTop + 0.04f), Floor + F * 0.4f + R * 0.2f + WorldUp * (TableTop + 0.04f) };
+	FVector Elbow[2] = { Floor - R * 0.6f + WorldUp * 0.7f, Floor + R * 0.6f + WorldUp * 0.7f };
+	FVector Palm[2] = { -WorldUp, -WorldUp };
 	FVector Finger[2] = { F, F };
 	// Who they turn to: the one beside them (the middle seat, when there is one, confers with the paddle).
 	const int32 Beside = SeatsPerTable > 2 ? (P.Seat == 2 ? 0 : 2) : 1 - P.Seat;
-	const FVector Partner = SeatAt(P.Team, Beside) + Up * 1.15f;
+	const FVector Partner = SeatAt(P.Team, Beside) + WorldUp * 1.15f;
 
 	// A huddle: turned to the colleague, heads together.
 	if (const float H = Envelope(float(T - Act.HuddleAt), 3.5f, 0.5f, 0.6f); H > 0.f)
@@ -868,25 +868,25 @@ void AAuctionRoom::PoseStaff(FPerson& P, double T)
 	if (const float O = Envelope(float(T - Act.OutAt), 2.5f, 0.4f, 0.6f); O > 0.f)
 	{
 		B.ChestBend = FMath::Lerp(B.ChestBend, -4.f, O);
-		B.LookAt = FMath::Lerp(B.LookAt / Cm, Floor + F * 0.6f + Up * 0.8f, O) * Cm;
+		B.LookAt = FMath::Lerp(B.LookAt / Cm, Floor + F * 0.6f + WorldUp * 0.8f, O) * Cm;
 	}
 	// The paddle up (seat 0 holds it), high and toward the lectern.
 	const float Raise = P.Seat == 0 ? Envelope(float(T - Act.RaiseAt), 1.4f, 0.22f, 0.4f) : 0.f;
-	Hand[1] = FMath::Lerp(Hand[1], Floor + F * 0.25f + R * 0.25f + Up * 1.5f, Raise);
-	Elbow[1] = FMath::Lerp(Elbow[1], Floor + R * 0.7f + Up * 1.0f, Raise);
+	Hand[1] = FMath::Lerp(Hand[1], Floor + F * 0.25f + R * 0.25f + WorldUp * 1.5f, Raise);
+	Elbow[1] = FMath::Lerp(Elbow[1], Floor + R * 0.7f + WorldUp * 1.0f, Raise);
 	Palm[1] = FMath::Lerp(Palm[1], -R, Raise).GetSafeNormal();
-	Finger[1] = FMath::Lerp(Finger[1], Up, Raise).GetSafeNormal();
+	Finger[1] = FMath::Lerp(Finger[1], WorldUp, Raise).GetSafeNormal();
 	// A buy: the table applauds.
 	if (const float Cheer = Envelope(float(T - Act.CheerAt), 2.6f, 0.2f, 0.4f); Cheer > 0.f)
 	{
-		const FVector Clap = Floor + F * 0.36f + Up * 1.12f;
+		const FVector Clap = Floor + F * 0.36f + WorldUp * 1.12f;
 		const float Gap = 0.03f + 0.09f * FMath::Abs(FMath::Sin(float(T - Act.CheerAt) * 11.f));
 		Hand[0] = FMath::Lerp(Hand[0], Clap - R * Gap, Cheer);
 		Hand[1] = FMath::Lerp(Hand[1], Clap + R * Gap, Cheer);
 		Palm[0] = FMath::Lerp(Palm[0], R, Cheer).GetSafeNormal();
 		Palm[1] = FMath::Lerp(Palm[1], -R, Cheer).GetSafeNormal();
-		Finger[0] = FMath::Lerp(Finger[0], Up, Cheer).GetSafeNormal();
-		Finger[1] = FMath::Lerp(Finger[1], Up, Cheer).GetSafeNormal();
+		Finger[0] = FMath::Lerp(Finger[0], WorldUp, Cheer).GetSafeNormal();
+		Finger[1] = FMath::Lerp(Finger[1], WorldUp, Cheer).GetSafeNormal();
 		B.LookAt = FMath::Lerp(B.LookAt / Cm, Partner, Cheer) * Cm;
 	}
 	for (int32 S = 0; S < 2; ++S)
@@ -901,9 +901,9 @@ void AAuctionRoom::PoseStaff(FPerson& P, double T)
 	if (P.Seat == 0 && Paddles.IsValidIndex(P.Team))
 	{
 		if (Raise > 0.05f)
-			Paddles[P.Team]->SetWorldLocationAndRotation(P.Body->GetSocketLocation(TEXT("hand_r")) - Up * 5.f, FRotationMatrix::MakeFromXZ(F, Up).Rotator());
+			Paddles[P.Team]->SetWorldLocationAndRotation(P.Body->GetSocketLocation(TEXT("hand_r")) - WorldUp * 5.f, FRotationMatrix::MakeFromXZ(F, WorldUp).Rotator());
 		else
-			Paddles[P.Team]->SetWorldLocationAndRotation((Floor + F * 0.45f + R * 0.42f + Up * (TableTop + 0.012f)) * Cm, FRotationMatrix::MakeFromXZ(Up, F).Rotator());
+			Paddles[P.Team]->SetWorldLocationAndRotation((Floor + F * 0.45f + R * 0.42f + WorldUp * (TableTop + 0.012f)) * Cm, FRotationMatrix::MakeFromXZ(WorldUp, F).Rotator());
 	}
 }
 
@@ -914,22 +914,22 @@ void AAuctionRoom::PoseAuctioneer(FPerson& P, double T)
 	FCricketBodyPose& B = Anim->Pose;
 	B.ClearActions();
 	const FVector F = P.Facing, R = Across(F), Floor = P.Floor;
-	const FVector Look = LookTeam >= 0 ? 0.5f * (SeatAt(LookTeam, 0) + SeatAt(LookTeam, 1)) + Up * 1.1f : FVector(12.f, 0.f, 1.1f);
+	const FVector Look = LookTeam >= 0 ? 0.5f * (SeatAt(LookTeam, 0) + SeatAt(LookTeam, 1)) + WorldUp * 1.1f : FVector(12.f, 0.f, 1.1f);
 	B.LookWeight = 0.85f;
 	B.LookAt = Look * Cm;
 	B.ChestFacing = FMath::Lerp(F, (Look - Floor).GetSafeNormal2D(), 0.35f).GetSafeNormal();
 	const float Top = StageHeight + 1.14f;
 	FVector Hand[2] = { FVector(-0.22f, -0.22f, Top), FVector(-0.22f, 0.22f, Top) };
-	FVector Elbow[2] = { Floor - R * 0.5f + Up * 0.9f, Floor + R * 0.5f + Up * 0.9f };
+	FVector Elbow[2] = { Floor - R * 0.5f + WorldUp * 0.9f, Floor + R * 0.5f + WorldUp * 0.9f };
 	FVector Finger[2] = { F, F };
 	// Pointing to the paddle, with the hand on that side.
 	if (const float Pt = Envelope(float(T - PointAt), 1.1f, 0.2f, 0.35f); Pt > 0.f && PointTeam >= 0)
 	{
-		const FVector Target = 0.5f * (SeatAt(PointTeam, 0) + SeatAt(PointTeam, 1)) + Up * 1.3f;
+		const FVector Target = 0.5f * (SeatAt(PointTeam, 0) + SeatAt(PointTeam, 1)) + WorldUp * 1.3f;
 		const int32 S = FVector::DotProduct(Target - Floor, R) < 0.f ? 0 : 1;
-		const FVector Shoulder = Floor + R * (S == 0 ? -0.2f : 0.2f) + Up * 1.42f;
+		const FVector Shoulder = Floor + R * (S == 0 ? -0.2f : 0.2f) + WorldUp * 1.42f;
 		Hand[S] = FMath::Lerp(Hand[S], Shoulder + (Target - Shoulder).GetSafeNormal() * 0.58f, Pt);
-		Elbow[S] = FMath::Lerp(Elbow[S], Shoulder + R * (S == 0 ? -0.5f : 0.5f) - Up * 0.2f, Pt);
+		Elbow[S] = FMath::Lerp(Elbow[S], Shoulder + R * (S == 0 ? -0.5f : 0.5f) - WorldUp * 0.2f, Pt);
 		Finger[S] = FMath::Lerp(Finger[S], (Target - Shoulder).GetSafeNormal(), Pt).GetSafeNormal();
 	}
 	// The gavel: raised, brought down on the block, lifted away.
@@ -937,19 +937,19 @@ void AAuctionRoom::PoseAuctioneer(FPerson& P, double T)
 	const float Lift = G < 0.f || G > 1.f ? 0.f : G < 0.35f ? G / 0.35f : G < 0.45f ? 1.f - (G - 0.35f) / 0.1f : 0.f;
 	const float Hold = Envelope(G, 1.f, 0.2f, 0.3f);
 	Hand[1] = FMath::Lerp(Hand[1], FVector(-0.1f, 0.25f, Top + 0.02f + 0.3f * Lift), Hold);
-	Finger[1] = FMath::Lerp(Finger[1], Up, Hold).GetSafeNormal();
+	Finger[1] = FMath::Lerp(Finger[1], WorldUp, Hold).GetSafeNormal();
 	for (int32 S = 0; S < 2; ++S)
 	{
 		B.HandWeight[S] = 1.f;
 		B.Hand[S] = Hand[S] * Cm;
 		B.Elbow[S] = Elbow[S] * Cm;
-		B.PalmFacing[S] = S == 1 ? FMath::Lerp(-Up, -R, Hold).GetSafeNormal() : -Up;
+		B.PalmFacing[S] = S == 1 ? FMath::Lerp(-WorldUp, -R, Hold).GetSafeNormal() : -WorldUp;
 		B.FingerFacing[S] = Finger[S];
 	}
 	if (Gavel)
 	{
 		if (Hold > 0.05f) Gavel->SetWorldLocationAndRotation(P.Body->GetSocketLocation(TEXT("hand_r")), FRotator(0.f, 180.f, 0.f));
-		else Gavel->SetWorldLocationAndRotation(FVector(-0.05f, 0.3f, Top) * Cm + Up * 3.f, FRotator(0.f, 160.f, 0.f));
+		else Gavel->SetWorldLocationAndRotation(FVector(-0.05f, 0.3f, Top) * Cm + WorldUp * 3.f, FRotator(0.f, 160.f, 0.f));
 	}
 }
 
@@ -957,7 +957,7 @@ void AAuctionRoom::Update(const FAuction* A, float Dt, int32 HumanTeam)
 {
 	const double T = Now();
 	// The arches and the wall's light: teal and gold at rest, the buyer's colour after a sale.
-	const FLinearColor Goal = T < AccentUntil ? AccentGoal : FLinearColor::LerpUsingHSV(Teal, Gold, 0.5f + 0.5f * FMath::Sin(float(T) * 0.3f)) * 0.8f;
+	const FLinearColor Goal = T < AccentUntil ? AccentGoal : FLinearColor::LerpUsingHSV(RoomTeal, RoomGold, 0.5f + 0.5f * FMath::Sin(float(T) * 0.3f)) * 0.8f;
 	Accent = FMath::Lerp(Accent, Goal, 1.f - FMath::Exp(-4.f * Dt));
 	if (AccentTarget) UKismetRenderingLibrary::ClearRenderTarget2D(this, AccentTarget, Accent);
 	if (WallLight) WallLight->SetLightColor(Accent);

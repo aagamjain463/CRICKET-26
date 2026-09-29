@@ -12,7 +12,7 @@ namespace
 	 *  patient with experience and spin, MI and RR scouting youth, KKR all-rounders and mystery spin, PBKS and LSG the
 	 *  big early spenders, SRH batting firepower, GT pace and spin. */
 	struct FStyleRow { const TCHAR* Code; float Aggression, Star, Youth, Overseas, Loyalty, Patience, Tempo, Enforcer, Ba, Wk, Al, Fa, Sp; };
-	const FStyleRow Styles[] = {
+	const FStyleRow FrontOfficeStyles[] = {
 		{ TEXT("CSK"),  0.95f, 1.0f,  0.85f, 1.0f,  1.35f, 0.7f,  0.85f, 0.15f, 1.0f,  1.0f,  1.15f, 0.95f, 1.25f },
 		{ TEXT("MI"),   1.05f, 1.15f, 1.15f, 1.0f,  1.2f,  0.6f,  1.0f,  0.35f, 1.0f,  1.0f,  1.05f, 1.2f,  0.95f },
 		{ TEXT("RCB"),  1.1f,  1.2f,  1.0f,  1.05f, 1.1f,  0.35f, 1.1f,  0.3f,  1.15f, 1.0f,  1.0f,  1.1f,  0.95f },
@@ -197,7 +197,7 @@ namespace AuctionData
 			F.Primary = ParseHex(Table.Get(Cells, TEXT("PrimaryHex")));
 			F.Secondary = ParseHex(Table.Get(Cells, TEXT("SecondaryHex")));
 			F.Titles = FCString::Atoi(*Table.Get(Cells, TEXT("Titles")));
-			for (const FStyleRow& S : Styles)
+			for (const FStyleRow& S : FrontOfficeStyles)
 			{
 				if (F.Code != S.Code) continue;
 				F.Aggression = S.Aggression; F.StarBias = S.Star; F.YouthBias = S.Youth; F.OverseasBias = S.Overseas;
