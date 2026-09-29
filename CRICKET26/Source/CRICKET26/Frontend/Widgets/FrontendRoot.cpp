@@ -417,6 +417,18 @@ void UFrontendRoot::OpenAuctionWithTransition()
 	}, TEXT("MEGA AUCTION"), TEXT("THE ₹120 CR BIDDING WAR"));
 }
 
+void UFrontendRoot::OpenCareerAuctionWithTransition()
+{
+	const UIPLSeasonSave* Save = UIPLSeasonSave::Get();
+	const int32 Next = Save && Save->bHasSeason ? Save->Season.Year + 1 : 2028;
+	const bool bMega = AuctionRules::IsMegaSeason(Next);
+	PlayTransition([this]()
+	{
+		UFrontendStatics::OpenAuction(this, true);
+	}, FString::Printf(TEXT("IPL %d %s"), Next, bMega ? TEXT("MEGA AUCTION") : TEXT("AUCTION")),
+		bMega ? FString(TEXT("RETENTIONS, RTM CARDS AND A FULL POOL")) : FString(TEXT("KEEP, RELEASE AND TOP UP TO 25")));
+}
+
 void UFrontendRoot::ShowTab(EFrontendTab NewTab)
 {
 	if (NewTab >= EFrontendTab::Count) return;

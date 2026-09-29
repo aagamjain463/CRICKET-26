@@ -4,7 +4,7 @@ A review of the IPL auction (`Source/CRICKET26/Auction`, `Scripts/auction`) agai
 (Jeddah, 24–25 Nov 2024), and the order of work to make it feel like the real room. Read with
 `Docs/AUCTION_REFERENCE.md`.
 
-## 1. Where it stands (2026-09-29): 7/10
+## 1. Where it stood before this work (2026-09-29): 7/10
 
 | Area | Score | Why |
 | --- | --- | --- |
@@ -35,7 +35,39 @@ Method: I read the engine, data, calls, game mode, HUD and tests, and ported `Ba
 9. **No RTM strategy.** The former side bids like everyone else, and if it wins, no RTM is used. Real sides often sit out and then use the card. The buyer's final raise is a random 25–85% of its own limit, when it should be priced against what the RTM side can pay (its purse and its need).
 10. **No price-enforcing.** Real sides bid on players they do not want, to drain a rival's purse.
 
-## 3. The plan
+## 3. Status (2026-09-29): implemented on `claude/ecstatic-cray-iqf22n`
+
+Every phase below is in the code. The engine, the AI and the auctioneer's lines are verified headless
+(`Scripts/auction/sim/run.sh`: 19 engine tests and a script-coverage check, all passing; `Scripts/auction/test_ratings.py`
+passing). The Unreal-side pieces (HUD, game mode, room, front end, IPL season) were written against the same APIs but
+could not be compiled in the cloud container: build and run `Scripts/run_tests.sh CRICKET26.` on the Mac before merging.
+
+Calibration, twelve AI-only mega auctions against 2025 (`CRICKET26.Auction.Calibration`):
+
+| Metric | 2025 | Mean now |
+| --- | --- | --- |
+| Retained | 46 | 40.8 |
+| Retention spend | ₹558 Cr | ₹555 Cr |
+| Sold | 182 | 180.6 |
+| Auction spend | ₹639 Cr | ₹610 Cr |
+| Overseas sold | 62 | 53.9 |
+| Top price | ₹27 Cr | ₹26.4 Cr |
+| Buys at 10 Cr+ | ~18 | 14.8 |
+| RTMs used | 8 | 7.6 |
+
+The mini auction (`CRICKET26.Auction.MiniAuction`) lands at 70 buys for ₹240 Cr against December 2025's 77 for ₹215 Cr.
+
+Not done, and why:
+- **Cricsheet data.** The container's network policy blocks cricsheet.org, so the committed ratings are the fallback
+  (shrinkage, age, unattached veterans). Put the Cricsheet zips in `Scripts/auction/cache/` and run `ratings.py` then
+  `roster.py` to get recency and phase-adjusted ratings, real tags and the form strip. Some prices stay off until then
+  (a finisher or a T20I-only quick rated 80 on thin data can go for 20 Cr+).
+- **Online rooms.** Multiplayer is local pass-the-paddle (up to four tables). Online needs a server and replication.
+- **New voice clips.** 14 new pieces (timeouts, the day break, day two, the overseas cap, round-number pauses, the
+  all-time record, the mini welcome and close) are captions until `Scripts/audio/auctioneer.py` records them.
+- **The thin 10-15 Cr band** (15 buys at 10 Cr+ against 18) is inside its band but below 2025.
+
+## 4. The plan
 
 Order of work: calibration first, so every later change can be measured; then the AI brain, which is the biggest gain; then modes and the player's own tools; then polish.
 

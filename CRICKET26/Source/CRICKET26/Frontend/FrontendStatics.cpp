@@ -24,9 +24,10 @@ void UFrontendStatics::OpenMatch(UObject* Ctx, int32 Overs)
 	UGameplayStatics::OpenLevel(Ctx, EntryMap(), bAbsoluteTravel, SuperOverOptions(Overs));
 }
 
-void UFrontendStatics::OpenAuction(UObject* Ctx)
+void UFrontendStatics::OpenAuction(UObject* Ctx, bool bCareer)
 {
-	if (Ctx) UGameplayStatics::OpenLevel(Ctx, EntryMap(), bAbsoluteTravel, TEXT("game=/Script/CRICKET26.AuctionGameMode"));
+	if (Ctx) UGameplayStatics::OpenLevel(Ctx, EntryMap(), bAbsoluteTravel,
+		bCareer ? TEXT("game=/Script/CRICKET26.AuctionGameMode?career=1") : TEXT("game=/Script/CRICKET26.AuctionGameMode"));
 }
 
 FString UFrontendStatics::SuperOverOptions(int32 Overs)

@@ -60,7 +60,7 @@ namespace AuctionHudPrivate
 	enum class EBtn : uint8 { Primary, Secondary, Quiet, Danger };
 
 	// Material Icons codepoints the HUD uses beyond FrontendStyle::Glyph (Barlow has no ✕, ★ or −).
-	constexpr TCHAR IconClose = 0xe5cd, IconStarLine = 0xe83a, IconAdd = 0xe145, IconRemove = 0xe15b;
+	constexpr TCHAR IconClose = 0xe5cd, IconStarLine = 0xe83a, IconAdd = 0xe145, IconRemove = 0xe15b, IconCheck = 0xe5ca;
 
 	/** One paint pass: the painter, the game, the touch targets, the screen in design units (1 unit = 1 px at 1080p). */
 	struct FFrame
@@ -144,11 +144,25 @@ namespace AuctionHudPrivate
 
 	void PaintPick(FFrame& F)
 	{
+		AAuctionGameMode& G = F.G;
 		F.Scrim(0.7f);
-		F.Heading(TEXT("TATA IPL 2027  ·  MEGA AUCTION"), TEXT("CHOOSE YOUR FRANCHISE"), 80.f, 72.f, 56.f);
-		F.Text(TEXT("Every side starts from its 2026 squad. Retain up to six, then bid for the rest: 120 crore, 18 to 25 players, 8 overseas at most."),
-			80.f, 170.f, 19.f, InkDim(), 0.f, EWeight::Medium);
-		F.Button(F.W - 80.f - 140.f, 56.f, 140.f, 48.f, TEXT("EXIT"), EBtn::Quiet, [&G = F.G]() { G.ExitToMenu(); }, true, 18.f);
+		// Pass the paddle: after the first seat has set the auction up, each other seat takes a table.
+		const int32 Seat = G.Picked.Num();
+		const FString Title = Seat == 0 ? FString(TEXT("CHOOSE YOUR FRANCHISE")) : FString::Printf(TEXT("PLAYER %d: CHOOSE YOUR FRANCHISE"), Seat + 1);
+		F.Heading(TEXT("TATA IPL AUCTION"), Title, 80.f, 72.f, 56.f);
+		F.Text(Seat == 0 ? TEXT("Every side starts from its 2026 squad. Choose a franchise, then the auction: a mega auction, or the 2027 mini auction the real calendar holds next.")
+			: TEXT("Pass the paddle: the next person picks a table. Tables already taken are marked."), 80.f, 170.f, 19.f, InkDim(), 0.f, EWeight::Medium);
+		F.Button(F.W - 80.f - 140.f, 56.f, 140.f, 48.f, TEXT("EXIT"), EBtn::Quiet, [&G]() { G.ExitToMenu(); }, true, 18.f);
+		if (Seat == 0)
+		{
+			// People at the tables, and a saved auction to go back to.
+			F.Label(TEXT("PLAYERS"), F.W - 80.f - 140.f - 24.f - 4.f * 52.f - 90.f, 80.f, 0.f, InkFaint(), 13.f);
+			for (int32 N = 1; N <= 4; ++N)
+				F.Button(F.W - 80.f - 140.f - 24.f - (5 - N) * 52.f, 56.f, 46.f, 48.f, FString::FromInt(N), G.Seats == N ? EBtn::Primary : EBtn::Quiet,
+					[&G, N]() { G.Seats = N; }, true, 18.f);
+			if (G.bHasSave)
+				F.Button(F.W - 80.f - 140.f - 24.f - 4.f * 52.f - 330.f, 56.f, 220.f, 48.f, TEXT("RESUME AUCTION"), EBtn::Secondary, [&G]() { G.ResumeSaved(); }, true, 16.f);
+		}
 		const TArray<FAuctionFranchise>& All = AuctionData::Franchises();
 		const float Gap = 20.f, CardW = (F.W - 160.f - 4.f * Gap) / 5.f, CardH = 356.f;
 		for (int32 I = 0; I < All.Num(); ++I)
@@ -165,7 +179,13 @@ namespace AuctionHudPrivate
 			for (const FAuctionPlayer& Pl : AuctionData::Players()) Squad += Pl.Team2026 == Fc.Code;
 			F.Label(Fc.Titles > 0 ? FString::Printf(TEXT("%d x CHAMPIONS"), Fc.Titles) : FString(TEXT("CHASING A FIRST TITLE")), CX, Y + 296.f, 0.5f, Money(), 15.f);
 			F.Label(FString::Printf(TEXT("2026 SQUAD  %d"), Squad), CX, Y + 324.f, 0.5f);
-			F.Hit(F.Rect(X, Y, CardW, CardH), [&G = F.G, I]() { G.PickTeam(I); });
+			const int32 Taken = G.Picked.IndexOfByKey(I);
+			if (Taken != INDEX_NONE)
+			{
+				F.Box(X, Y, CardW, CardH, Hex(0x000000, 0.55f), 6.f, Money(), 2.f);
+				F.Text(FString::Printf(TEXT("PLAYER %d"), Taken + 1), CX, Y + 0.5f * CardH, 30.f, Money(), 0.5f, EWeight::Black);
+			}
+			else F.Hit(F.Rect(X, Y, CardW, CardH), [&G, I]() { G.PickTeam(I); });
 		}
 		PaintPickFormatModal(F);
 	}
@@ -177,76 +197,139 @@ namespace AuctionHudPrivate
 		F.Scrim(0.85f);
 		const int32 T = G.PendingPickTeam;
 		const FAuctionFranchise& Fc = Fr(T);
-		const float Wd = 880.f, Ht = 530.f, X = 0.5f * (F.W - Wd), Y = 0.5f * (F.H - Ht);
+		const float Wd = 1220.f, Ht = 600.f, X = 0.5f * (F.W - Wd), Y = 0.5f * (F.H - Ht);
 		F.Card(X, Y, Wd, Ht, 0.98f);
 		F.Box(X, Y, Wd, 4.f, Fc.Primary, 2.f);
 		F.Button(X + Wd - 54.f, Y + 14.f, 40.f, 40.f, FString(), EBtn::Quiet, [&G]() { G.PendingPickTeam = INDEX_NONE; }, true, 18.f, IconClose);
 
 		F.Crest(X + 60.f, Y + 60.f, 30.f, T);
 		F.Text(Fc.Name.ToUpper(), X + 104.f, Y + 48.f, 30.f, Ink(), 0.f, EWeight::Black);
-		F.Label(TEXT("CHOOSE MEGA AUCTION FORMAT"), X + 104.f, Y + 80.f, 0.f, Money(), 14.f);
+		F.Label(G.Seats > 1 ? FString::Printf(TEXT("CHOOSE THE AUCTION  ·  %d PLAYERS"), G.Seats) : FString(TEXT("CHOOSE THE AUCTION")), X + 104.f, Y + 80.f, 0.f, Money(), 14.f);
+		// Difficulty: how sharp the other front offices are.
+		static const TCHAR* Levels[] = { TEXT("CASUAL"), TEXT("PRO"), TEXT("LEGEND") };
+		for (int32 L = 0; L < 3; ++L)
+			F.Button(X + Wd - 90.f - (3 - L) * 124.f, Y + 36.f, 116.f, 44.f, Levels[L], int32(G.Setup.Difficulty) == L ? EBtn::Primary : EBtn::Quiet,
+				[&G, L]() { G.Setup.Difficulty = EAuctionDifficulty(L); }, true, 15.f);
 		F.HLine(X + 32.f, Y + 108.f, Wd - 64.f, 0.08f);
 
-		const float OptW = (Wd - 64.f - 24.f) / 2.f, OptH = 370.f, OptY = Y + 128.f;
-
-		// Option 1: Continue with Retentions
-		const float Opt1X = X + 32.f;
-		F.Box(Opt1X, OptY, OptW, OptH, PaneHi(0.92f), 6.f, Hair(0.14f), 1.f);
-		F.Box(Opt1X, OptY, OptW, 3.f, Teal(), 1.5f);
-		F.Label(TEXT("CLASSIC FORMAT"), Opt1X + 24.f, OptY + 34.f, 0.f, Teal(), 12.f);
-		F.Text(TEXT("WITH RETENTIONS"), Opt1X + 24.f, OptY + 70.f, 26.f, Ink(), 0.f, EWeight::Black);
-		F.Text(TEXT("• Retain up to 6 players from 2026 squad"), Opt1X + 24.f, OptY + 112.f, 15.f, InkDim(), 0.f, EWeight::Medium);
-		F.Text(TEXT("• Capped slabs: 18 / 14 / 11 / 18 / 14 Cr"), Opt1X + 24.f, OptY + 140.f, 14.f, InkFaint(), 0.f, EWeight::Medium);
-		F.Text(TEXT("• Uncapped players cost 4 Cr each"), Opt1X + 24.f, OptY + 168.f, 14.f, InkFaint(), 0.f, EWeight::Medium);
-		F.Text(TEXT("• All 10 franchises announce retentions"), Opt1X + 24.f, OptY + 196.f, 15.f, InkDim(), 0.f, EWeight::Medium);
-		F.Text(TEXT("• Remaining purse enters the live auction"), Opt1X + 24.f, OptY + 224.f, 15.f, InkDim(), 0.f, EWeight::Medium);
-		F.Button(Opt1X + 20.f, OptY + OptH - 68.f, OptW - 40.f, 52.f, TEXT("CONTINUE WITH RETENTIONS"), EBtn::Secondary,
-			[&G, T]() { G.PickTeamAndFormat(T, false); }, true, 16.f);
-
-		// Option 2: Continue with No Retentions
-		const float Opt2X = Opt1X + OptW + 24.f;
-		F.Box(Opt2X, OptY, OptW, OptH, Tint(Fc.Primary, 0.28f, 0.96f), 6.f, Money(), 1.5f);
-		F.Box(Opt2X, OptY, OptW, 3.f, Money(), 1.5f);
-		F.Label(TEXT("FRESH MEGA AUCTION"), Opt2X + 24.f, OptY + 34.f, 0.f, Money(), 12.f);
-		F.Text(TEXT("NO RETENTIONS"), Opt2X + 24.f, OptY + 70.f, 26.f, Money(), 0.f, EWeight::Black);
-		F.Text(TEXT("• No team retains ANY players"), Opt2X + 24.f, OptY + 112.f, 15.f, Ink(), 0.f, EWeight::Bold);
-		F.Text(TEXT("• ALL 10 franchises get full ₹120.00 Cr"), Opt2X + 24.f, OptY + 140.f, 15.f, Money(), 0.f, EWeight::Black);
-		F.Text(TEXT("• All 6 Right to Match cards available"), Opt2X + 24.f, OptY + 168.f, 15.f, Teal(), 0.f, EWeight::Bold);
-		F.Text(TEXT("• Every superstar enters auction pool"), Opt2X + 24.f, OptY + 196.f, 15.f, Ink(), 0.f, EWeight::Bold);
-		F.Text(TEXT("• Complete squad rebuild from scratch!"), Opt2X + 24.f, OptY + 224.f, 14.f, InkDim(), 0.f, EWeight::Medium);
-		F.Button(Opt2X + 20.f, OptY + OptH - 68.f, OptW - 40.f, 52.f, TEXT("START WITH NO RETENTIONS"), EBtn::Primary,
-			[&G, T]() { G.PickTeamAndFormat(T, true); }, true, 16.f);
+		struct FOption { const TCHAR* Eyebrow; const TCHAR* Title; const TCHAR* Lines[5]; const TCHAR* Go; EAuctionMode Mode; bool bFresh; bool bHero; };
+		const FOption Options[] = {
+			{ TEXT("MEGA AUCTION"), TEXT("WITH RETENTIONS"), { TEXT("• Trade window, then keep up to 6"), TEXT("• Slabs 18 / 14 / 11 / 18 / 14 Cr, uncapped 4 Cr"),
+				TEXT("• Stars can ask for more, or refuse"), TEXT("• Right to Match cards for the rest"), TEXT("• Two days: marquee, then uncapped") }, TEXT("RETAIN AND BID"), EAuctionMode::Mega, false, false },
+			{ TEXT("MEGA AUCTION"), TEXT("NO RETENTIONS"), { TEXT("• No side keeps anyone"), TEXT("• All ten start with ₹120.00 Cr"),
+				TEXT("• Six Right to Match cards each"), TEXT("• Every superstar in the pool"), TEXT("• Build from nothing") }, TEXT("START FRESH"), EAuctionMode::Mega, true, false },
+			{ TEXT("THE REAL CALENDAR"), TEXT("IPL 2027 AUCTION"), { TEXT("• Keep your squad on its contracts"), TEXT("• Release the rest into the pool"),
+				TEXT("• Top up to 25 under the 120 Cr cap"), TEXT("• No RTM, no marquee"), TEXT("• Overseas pay capped at 18 Cr") }, TEXT("KEEP AND TOP UP"), EAuctionMode::Mini, false, true },
+		};
+		const float OptW = (Wd - 64.f - 2.f * 24.f) / 3.f, OptH = 440.f, OptY = Y + 128.f;
+		for (int32 I = 0; I < 3; ++I)
+		{
+			const FOption& O = Options[I];
+			const float OX = X + 32.f + I * (OptW + 24.f);
+			F.Box(OX, OptY, OptW, OptH, O.bHero ? Tint(Fc.Primary, 0.28f, 0.96f) : PaneHi(0.92f), 6.f, O.bHero ? Money() : Hair(0.14f), O.bHero ? 1.5f : 1.f);
+			F.Box(OX, OptY, OptW, 3.f, O.bHero ? Money() : Teal(), 1.5f);
+			F.Label(O.Eyebrow, OX + 24.f, OptY + 34.f, 0.f, O.bHero ? Money() : Teal(), 12.f);
+			F.Text(O.Title, OX + 24.f, OptY + 70.f, 26.f, O.bHero ? Money() : Ink(), 0.f, EWeight::Black);
+			for (int32 L = 0; L < 5; ++L) F.Text(O.Lines[L], OX + 24.f, OptY + 116.f + L * 30.f, 15.f, InkDim(), 0.f, EWeight::Medium);
+			const EAuctionMode Mode = O.Mode;
+			const bool bFresh = O.bFresh;
+			F.Button(OX + 20.f, OptY + OptH - 68.f, OptW - 40.f, 52.f, O.Go, O.bHero ? EBtn::Primary : EBtn::Secondary,
+				[&G, T, Mode, bFresh]() { G.PickTeamAndSetup(T, Mode, bFresh); }, true, 16.f);
+		}
 	}
 
 	// ---- Retentions ----------------------------------------------------------------------------------------------
+
+	void RowMark(FFrame& F, float X, float Y, float Wd, float Ht);
+
+	/** The trade window over the summary card: a partner, one of theirs for one of ours, and the answer. */
+	void PaintTradePanel(FFrame& F, float SX, float SY, float SideW, float SH)
+	{
+		AAuctionGameMode& G = F.G;
+		const FAuction& A = *G.Auction;
+		F.Card(SX, SY, SideW, SH, 0.99f);
+		F.Box(SX, SY, SideW, 3.f, Teal(), 1.5f);
+		F.Label(TEXT("TRADE WINDOW"), SX + 28.f, SY + 34.f, 0.f, Teal(), 15.f);
+		F.Button(SX + SideW - 52.f, SY + 12.f, 40.f, 40.f, FString(), EBtn::Quiet, [&G]() { G.Panel = AAuctionGameMode::EPanel::None; }, true, 18.f, IconClose);
+		// Partners: every other franchise.
+		int32 Col = 0;
+		for (int32 T = 0; T < A.Teams.Num(); ++T)
+		{
+			if (T == G.Team) continue;
+			const float CX = SX + 40.f + (Col % 9) * 44.f, CY = SY + 84.f;
+			++Col;
+			F.P.Alpha = T == G.TradeWith ? 1.f : 0.55f;
+			F.Crest(CX, CY, 18.f, T);
+			F.P.Alpha = 1.f;
+			if (T == G.TradeWith) F.P.Circle(F.At(CX, CY), 22.f * F.U, FLinearColor::Transparent, Money(), 1.5f * F.U);
+			F.Hit(F.Rect(CX - 22.f, CY - 22.f, 44.f, 44.f), [&G, T]() { G.TradeWith = T; G.TradeGet = INDEX_NONE; });
+		}
+		F.Text(G.TradeGive == INDEX_NONE ? FString(TEXT("Tap one of your players to offer him.")) : FString::Printf(TEXT("You give: %s"), *FAuction::Player(G.TradeGive).Name),
+			SX + 28.f, SY + 128.f, 16.f, G.TradeGive == INDEX_NONE ? InkFaint() : Ink(), 0.f, EWeight::Bold);
+		if (G.TradeWith != INDEX_NONE)
+		{
+			const TArray<int32> Theirs = A.RetentionCandidates(G.TradeWith);
+			const float RowH = 30.f, Top = SY + 150.f;
+			const int32 Fit = FMath::Min(Theirs.Num(), FMath::FloorToInt((SH - 330.f) / RowH));
+			for (int32 I = 0; I < Fit; ++I)
+			{
+				const FAuctionPlayer& P = FAuction::Player(Theirs[I]);
+				const float RY = Top + I * RowH, MY = RY + 0.5f * RowH;
+				if (Theirs[I] == G.TradeGet) RowMark(F, SX + 12.f, RY, SideW - 24.f, RowH);
+				F.P.Circle(F.At(SX + 30.f, MY), 4.f * F.U, RoleColour(P.Role));
+				F.Text(P.Name, SX + 44.f, MY, 16.f, Ink(), 0.f, EWeight::Bold);
+				F.Text(FString::Printf(TEXT("%d  %s"), P.Overall(), *AuctionRules::Money(A.ContractOf(P.Id))), SX + SideW - 28.f, MY, 14.f, InkDim(), 1.f, EWeight::Bold);
+				F.Hit(F.Rect(SX + 12.f, RY, SideW - 24.f, RowH), [&G, Id = P.Id]() { G.TradeGet = Id; });
+			}
+		}
+		const float BY = SY + SH - 150.f;
+		if (!G.TradeResult.IsEmpty()) F.Text(G.TradeResult, SX + 28.f, BY - 24.f, 15.f, G.TradeResult.StartsWith(TEXT("Done")) ? Teal() : Amber(), 0.f, EWeight::Bold);
+		const bool bReady = G.TradeGive != INDEX_NONE && G.TradeGet != INDEX_NONE && G.TradeWith != INDEX_NONE;
+		F.Button(SX + 28.f, BY, SideW - 56.f, 60.f, bReady ? FString::Printf(TEXT("OFFER %s FOR %s"), *FAuction::Player(G.TradeGive).Short.ToUpper(), *FAuction::Player(G.TradeGet).Short.ToUpper())
+			: FString(TEXT("PROPOSE TRADE")), EBtn::Primary, [&G]() { G.ProposeTrade(); }, bReady, 16.f);
+		int32 Y = 0;
+		for (int32 I = A.Trades.Num() - 1; I >= 0 && Y < 2; --I, ++Y)
+		{
+			const FAuctionTrade& X = A.Trades[I];
+			F.Text(FString::Printf(TEXT("%s / %s:  %s for %s"), *Fr(X.From).Code, *Fr(X.To).Code, *FAuction::Player(X.Gave).Short, *FAuction::Player(X.Got).Short),
+				SX + 28.f, BY + 84.f + Y * 24.f, 14.f, InkFaint(), 0.f, EWeight::Medium);
+		}
+	}
 
 	void PaintRetain(FFrame& F)
 	{
 		AAuctionGameMode& G = F.G;
 		const FAuction& A = *G.Auction;
+		const bool bMini = A.IsMini();
 		const FAuctionFranchise& Fc = Fr(G.Team);
 		F.Scrim(0.8f);
 		F.Crest(116.f, 110.f, 40.f, G.Team);
-		F.Heading(TEXT("RETENTIONS"), Fc.Name.ToUpper(), 180.f, 86.f, 44.f);
-		F.Text(TEXT("Keep up to 6 of your 2026 squad (5 capped, 2 uncapped at most). Capped slabs 18 / 14 / 11 / 18 / 14 Cr, uncapped 4 Cr. Every place you leave open becomes a Right to Match card."),
+		FString Eyebrow = bMini ? FString::Printf(TEXT("IPL %d AUCTION  ·  KEEP OR RELEASE"), A.Config.Season) : FString(TEXT("RETENTIONS"));
+		if (G.Picked.Num() > 1) Eyebrow += FString::Printf(TEXT("  ·  PLAYER %d OF %d"), G.RetainSeat + 1, G.Picked.Num());
+		F.Heading(Eyebrow, Fc.Name.ToUpper(), 180.f, 86.f, 44.f);
+		F.Text(bMini ? TEXT("Keep the players you want on their contracts; the rest go into the auction. The contracts come off the 120 Cr cap, and the rest is your purse.")
+			: TEXT("Keep up to 6 (5 capped, 2 uncapped). Slabs 18 / 14 / 11 / 18 / 14 Cr, uncapped 4 Cr, or what a star asks if more. Places left open become Right to Match cards."),
 			80.f, 190.f, 17.f, InkDim(), 0.f, EWeight::Medium);
 
+		const bool bTrading = G.Panel == AAuctionGameMode::EPanel::Trade;
 		const TArray<int32> Squad = A.RetentionCandidates(G.Team);
 		const float ListX = 80.f, ListY = 230.f, SideW = 440.f, ColW = (F.W - 160.f - SideW - 40.f - 24.f) / 2.f, RowH = 52.f;
 		const int32 PerCol = 14;
-		// Slab cost of each kept player in the order they were picked.
+		// What each kept player costs, as the engine hands out the slabs.
 		TMap<int32, int32> Cost;
-		int32 Capped = 0;
-		for (int32 P : G.Keep) Cost.Add(P, FAuction::Player(P).bCapped ? AuctionRules::CappedRetentionCost(Capped++) : AuctionRules::UncappedRetention);
+		const TArray<int32> Costs = A.RetentionCosts(G.Keep);
+		for (int32 I = 0; I < G.Keep.Num(); ++I) Cost.Add(G.Keep[I], Costs[I]);
 		for (int32 C = 0; C < 2; ++C) F.Card(ListX + C * (ColW + 24.f), ListY, ColW, PerCol * RowH, 0.7f);
 		for (int32 I = 0; I < FMath::Min(Squad.Num(), 2 * PerCol); ++I)
 		{
 			const FAuctionPlayer& P = FAuction::Player(Squad[I]);
 			const float X = ListX + (I / PerCol) * (ColW + 24.f), Y = ListY + (I % PerCol) * RowH, MY = Y + 0.5f * RowH;
 			const int32 Slot = G.Keep.IndexOfByKey(P.Id);
-			const bool bKept = Slot != INDEX_NONE;
+			const bool bKept = Slot != INDEX_NONE, bRefuses = !bMini && A.WantsAuction(P.Id);
 			if (bKept) { F.Box(X + 1.f, Y + 1.f, ColW - 2.f, RowH - 2.f, Tint(Fc.Primary, 0.45f, 0.9f), 4.f); F.Box(X + 1.f, Y + 8.f, 3.f, RowH - 16.f, Money(), 1.5f); }
+			if (bTrading && G.TradeGive == P.Id) RowMark(F, X + 1.f, Y + 1.f, ColW - 2.f, RowH - 2.f);
 			if (I % PerCol) F.HLine(X + 16.f, Y, ColW - 32.f, 0.06f);
+			F.P.Alpha = bRefuses ? 0.55f : 1.f;
 			F.P.Circle(F.At(X + 22.f, MY), 4.f * F.U, RoleColour(P.Role));
 			F.Text(FString::FromInt(P.Overall()), X + 54.f, MY, 22.f, bKept ? Money() : InkDim(), 0.5f, EWeight::Black);
 			const float NameW = F.Text(P.Name, X + 82.f, MY, 20.f, Ink(), 0.f, EWeight::Bold);
@@ -254,52 +337,77 @@ namespace AuctionHudPrivate
 			if (P.IsOverseas()) Tags += TEXT("  ·  OS");
 			if (!P.bCapped) Tags += TEXT("  ·  UNCAPPED");
 			F.Label(Tags, X + 94.f + NameW, MY, 0.f, InkFaint(), 13.f);
-			F.Text(bKept ? FString::Printf(TEXT("#%d   %s"), Slot + 1, *AuctionRules::Money(Cost[P.Id])) : AuctionRules::Money(P.Price2026),
-				X + ColW - 18.f, MY, bKept ? 19.f : 16.f, bKept ? Money() : InkFaint(), 1.f, bKept ? EWeight::Black : EWeight::Bold);
-			F.Hit(F.Rect(X, Y, ColW, RowH), [&G, Id = P.Id]() { G.ToggleKeep(Id); });
+			F.P.Alpha = 1.f;
+			FString Right;
+			FLinearColor RightC = InkFaint();
+			if (bKept) { Right = bMini ? AuctionRules::Money(Cost[P.Id]) : FString::Printf(TEXT("#%d   %s"), Slot + 1, *AuctionRules::Money(Cost[P.Id])); RightC = Money(); }
+			else if (bRefuses) { Right = TEXT("WANTS THE AUCTION"); RightC = Danger(); }
+			else if (!bMini && A.RetentionAsk(P.Id) > AuctionRules::CappedRetentionCost(0)) Right = FString::Printf(TEXT("ASKS %s"), *AuctionRules::Money(A.RetentionAsk(P.Id)));
+			else Right = AuctionRules::Money(A.ContractOf(P.Id));
+			F.Text(Right, X + ColW - 18.f, MY, bKept ? 19.f : 15.f, RightC, 1.f, bKept ? EWeight::Black : EWeight::Bold);
+			if (bTrading) F.Hit(F.Rect(X, Y, ColW, RowH), [&G, Id = P.Id]() { G.TradeGive = Id; });
+			else if (!bRefuses) F.Hit(F.Rect(X, Y, ColW, RowH), [&G, Id = P.Id]() { G.ToggleKeep(Id); });
 		}
 
-		// The summary card.
+		// The summary card, or the trade window over it.
 		const float SX = F.W - 80.f - SideW, SY = ListY, SH = PerCol * RowH;
+		if (bTrading) { PaintTradePanel(F, SX, SY, SideW, SH); return; }
 		F.Card(SX, SY, SideW, SH, 0.88f);
-		const int32 Spend = FAuction::RetentionCost(G.Keep);
-		int32 KeptCapped = 0;
-		for (int32 P : G.Keep) KeptCapped += FAuction::Player(P).bCapped;
+		const int32 Spend = A.RetentionCost(G.Keep);
+		int32 KeptCapped = 0, Overseas = 0;
+		for (int32 P : G.Keep) { KeptCapped += FAuction::Player(P).bCapped; Overseas += FAuction::Player(P).IsOverseas(); }
 		struct FRowText { FString Label, Value; FLinearColor Colour; };
-		const FRowText Rows[] = {
-			{ TEXT("RETAINED"), FString::Printf(TEXT("%d / 6"), G.Keep.Num()), Ink() },
-			{ TEXT("CAPPED"), FString::Printf(TEXT("%d / 5"), KeptCapped), Ink() },
-			{ TEXT("UNCAPPED"), FString::Printf(TEXT("%d / 2"), G.Keep.Num() - KeptCapped), Ink() },
-			{ TEXT("RETENTION COST"), AuctionRules::Money(Spend), Money() },
-			{ TEXT("AUCTION PURSE"), AuctionRules::Money(AuctionRules::Purse - Spend), Money() },
-			{ TEXT("RIGHT TO MATCH CARDS"), FString::FromInt(AuctionRules::KeepMax - G.Keep.Num()), Teal() },
-		};
-		for (int32 I = 0; I < UE_ARRAY_COUNT(Rows); ++I)
+		TArray<FRowText> Rows;
+		if (bMini)
 		{
-			const float Y = SY + 48.f + I * 64.f;
+			Rows.Add({ TEXT("KEPT"), FString::Printf(TEXT("%d / 25"), G.Keep.Num()), Ink() });
+			Rows.Add({ TEXT("OVERSEAS"), FString::Printf(TEXT("%d / 8"), Overseas), Ink() });
+			Rows.Add({ TEXT("RELEASED"), FString::FromInt(Squad.Num() - G.Keep.Num()), Ink() });
+			Rows.Add({ TEXT("CONTRACTS KEPT"), AuctionRules::Money(Spend), Money() });
+			Rows.Add({ TEXT("AUCTION PURSE"), AuctionRules::Money(A.Config.Purse - Spend), Money() });
+			Rows.Add({ TEXT("PLACES TO FILL"), FString::FromInt(AuctionRules::SquadMax - G.Keep.Num()), Teal() });
+		}
+		else
+		{
+			Rows.Add({ TEXT("RETAINED"), FString::Printf(TEXT("%d / 6"), G.Keep.Num()), Ink() });
+			Rows.Add({ TEXT("CAPPED"), FString::Printf(TEXT("%d / 5"), KeptCapped), Ink() });
+			Rows.Add({ TEXT("UNCAPPED"), FString::Printf(TEXT("%d / 2"), G.Keep.Num() - KeptCapped), Ink() });
+			Rows.Add({ TEXT("RETENTION COST"), AuctionRules::Money(Spend), Money() });
+			Rows.Add({ TEXT("AUCTION PURSE"), AuctionRules::Money(A.Config.Purse - Spend), Money() });
+			Rows.Add({ TEXT("RIGHT TO MATCH CARDS"), FString::FromInt(AuctionRules::KeepMax - G.Keep.Num()), Teal() });
+		}
+		for (int32 I = 0; I < Rows.Num(); ++I)
+		{
+			const float Y = SY + 48.f + I * 60.f;
 			F.Label(Rows[I].Label, SX + 32.f, Y);
 			F.Text(Rows[I].Value, SX + SideW - 32.f, Y, 28.f, Rows[I].Colour, 1.f, EWeight::Black);
-			if (I + 1 < UE_ARRAY_COUNT(Rows)) F.HLine(SX + 32.f, Y + 32.f, SideW - 64.f, 0.07f);
+			if (I + 1 < Rows.Num()) F.HLine(SX + 32.f, Y + 30.f, SideW - 64.f, 0.07f);
 		}
 		const float BY = SY + SH - 3 * 64.f - 16.f, HalfW = 0.5f * (SideW - 76.f);
-		F.Button(SX + 32.f, BY - 48.f, SideW - 64.f, 38.f, TEXT("CONTINUE WITH NO RETENTIONS (120 CR ALL)"), EBtn::Quiet, [&G]() { G.StartWithNoRetentions(); }, true, 13.f);
+		F.Button(SX + 32.f, BY - 96.f, SideW - 64.f, 40.f, FString::Printf(TEXT("TRADE WINDOW  (%d DEALS SO FAR)"), A.Trades.Num()), EBtn::Secondary,
+			[&G]() { G.Panel = AAuctionGameMode::EPanel::Trade; G.TradeResult.Reset(); }, true, 14.f);
+		if (!bMini)
+			F.Button(SX + 32.f, BY - 48.f, SideW - 64.f, 38.f, TEXT("NO RETENTIONS FOR ANYONE (120 CR ALL)"), EBtn::Quiet, [&G]() { G.StartWithNoRetentions(); }, G.Picked.Num() == 1, 13.f);
 		F.Button(SX + 32.f, BY, HalfW, 52.f, TEXT("AI PICKS"), EBtn::Secondary, [&G]() { G.SuggestKeep(); }, true, 18.f);
 		F.Button(SX + 44.f + HalfW, BY, HalfW, 52.f, TEXT("CLEAR"), EBtn::Quiet, [&G]() { G.Keep.Reset(); }, true, 18.f);
-		F.Button(SX + 32.f, BY + 66.f, SideW - 64.f, 68.f, TEXT("CONFIRM  ·  ENTER THE AUCTION"), EBtn::Primary, [&G]() { G.ConfirmRetentions(); }, true, 22.f);
-		F.Text(TEXT("The nine other franchises announce their retentions when you enter."), SX + 0.5f * SideW, BY + 160.f, 14.f, InkFaint(), 0.5f, EWeight::Medium);
+		const bool bLast = G.RetainSeat + 1 >= G.Picked.Num();
+		F.Button(SX + 32.f, BY + 66.f, SideW - 64.f, 68.f, bLast ? TEXT("CONFIRM  ·  ENTER THE AUCTION") : TEXT("CONFIRM  ·  NEXT PLAYER"), EBtn::Primary,
+			[&G]() { G.ConfirmRetentions(); }, true, 22.f);
+		F.Text(bMini ? TEXT("The other franchises announce their releases when you enter.") : TEXT("The other franchises announce their retentions when you enter."),
+			SX + 0.5f * SideW, BY + 160.f, 14.f, InkFaint(), 0.5f, EWeight::Medium);
 	}
 
 	// ---- Live ------------------------------------------------------------------------------------------------------
 
-	FString BidBlocked(const FAuction& A)
+	FString BidBlocked(const FAuction& A, int32 Table)
 	{
 		if (A.Phase == EAuctionPhase::LotIntro) return TEXT("GET READY");
 		if (A.Phase != EAuctionPhase::Bidding) return FString();
-		if (A.Holder == A.Human) return TEXT("YOUR BID");
-		const FAuctionTeam& T = A.Teams[A.Human];
+		if (A.Holder == Table) return TEXT("YOUR BID");
+		const FAuctionTeam& T = A.Teams[Table];
 		if (T.Squad.Num() >= AuctionRules::SquadMax) return TEXT("SQUAD FULL");
 		if (FAuction::Player(A.Lot).IsOverseas() && T.Overseas() >= AuctionRules::OverseasMax) return TEXT("8 OVERSEAS");
-		if (A.AskPrice() > A.MaxBid(A.Human)) return TEXT("PURSE LIMIT");
+		if (A.AskPrice() > A.MaxBid(Table)) return TEXT("PURSE LIMIT");
 		return FString();
 	}
 
@@ -338,7 +446,7 @@ namespace AuctionHudPrivate
 		if (S)
 			F.Label(FString::Printf(TEXT("%s  ·  LOT %d OF %d%s"), *S->Name.ToUpper(), A.LotInSet + 1, S->Players.Num(), S->bAccelerated ? TEXT("  ·  ACCELERATED") : TEXT("")),
 				X0 + 2.f, Y - 20.f, 0.f, Money(), 14.f);
-		const int32 Former = AuctionData::FranchiseIndex(P.Team2026);
+		const int32 Former = A.IsMini() ? INDEX_NONE : A.OwnerOf(P.Id);
 		if (Former != INDEX_NONE && A.Teams[Former].RtmCards > 0 && A.SoldTo.FindRef(A.Lot, INDEX_NONE) == INDEX_NONE)
 		{
 			// The former side's crest leads it, as on the broadcast.
@@ -363,9 +471,21 @@ namespace AuctionHudPrivate
 			P.bCapped ? TEXT("CAPPED") : TEXT("UNCAPPED"));
 		if (!P.BowlStyle.IsEmpty() && P.Role != EAuctionRole::Batter && P.Role != EAuctionRole::Keeper) Bio += TEXT("  ·  ") + P.BowlStyle.ToUpper();
 		F.Label(Bio, TX, Y + 80.f, 0.f, Money(), 15.f);
-		F.Text(StatLine(P), TX, Y + 106.f, 16.f, InkDim(), 0.f, EWeight::Bold, 40);
-		F.Text(FString::Printf(TEXT("IPL 2026  %s%s      OVR %d   BAT %d   BOWL %d"), P.Team2026.IsEmpty() ? TEXT("UNSOLD") : *P.Team2026,
-			P.Price2026 > 0 ? *(TEXT("  ") + AuctionRules::Money(P.Price2026)) : TEXT(""), P.Overall(), P.BatRating, P.BowlRating),
+		FString Stats = StatLine(P);
+		if (P.Last.Matches > 0)
+		{
+			// The form strip: last IPL season beside the career.
+			Stats += FString::Printf(TEXT("      LAST SEASON  M %d"), P.Last.Matches);
+			if (P.Last.Runs > 0) Stats += FString::Printf(TEXT("  R %d  SR %.0f"), P.Last.Runs, P.Last.StrikeRate);
+			if (P.Last.Wickets > 0) Stats += FString::Printf(TEXT("  W %d  E %.2f"), P.Last.Wickets, P.Last.Economy);
+		}
+		F.Text(Stats, TX, Y + 106.f, 16.f, InkDim(), 0.f, EWeight::Bold, 40);
+		const int32 Owner = A.OwnerOf(P.Id);
+		FString Role;
+		for (int32 B = 0; B < AuctionTags::Count; ++B)
+			if ((P.Tags & (1u << B)) != 0 && B != 10) Role += FString(TEXT("  ")) + FString(AuctionTags::Name(B)).ToUpper();
+		F.Text(FString::Printf(TEXT("LAST SIDE  %s%s      OVR %d   BAT %d   BOWL %d%s"), Owner == INDEX_NONE ? TEXT("UNATTACHED") : *Fr(Owner).Code,
+			Owner != INDEX_NONE ? *(TEXT("  ") + AuctionRules::Money(A.ContractOf(P.Id))) : TEXT(""), P.Overall(), P.BatRating, P.BowlRating, *Role),
 			TX, Y + 128.f, 14.f, InkFaint(), 0.f, EWeight::Bold, 40);
 		// The current bid, sunk in the holder's colours.
 		const float BidW = 320.f, BX = X0 + Wd - BidW, CX = BX + 0.5f * BidW;
@@ -398,13 +518,14 @@ namespace AuctionHudPrivate
 		F.Card(X, Y, Wd, Ht);
 		F.Box(X, Y + 12.f, 3.f, Ht - 24.f, Fr(T).Primary, 1.5f);
 		F.Crest(X + 50.f, MY, 28.f, T);
-		F.Label(TEXT("YOUR PURSE"), X + 94.f, Y + 26.f);
+		F.Label(F.G.Picked.Num() > 1 ? FString::Printf(TEXT("%s PURSE  ·  TAP TO SWITCH"), *Fr(T).Code) : FString(TEXT("YOUR PURSE")), X + 94.f, Y + 26.f);
+		if (F.G.Picked.Num() > 1) F.Hit(F.Rect(X, Y, Wd, Ht), [&G = F.G]() { G.FocusNext(); });
 		F.Text(AuctionRules::Money(Team.Purse), X + 94.f, Y + 56.f, 32.f, Money(), 0.f, EWeight::Black);
 		struct FStat { const TCHAR* Label; FString Value; FLinearColor Colour; };
 		const FStat Stats[] = {
 			{ TEXT("SQUAD"), FString::Printf(TEXT("%d/25"), Team.Squad.Num()), Team.Squad.Num() < AuctionRules::SquadMin ? Amber() : Ink() },
 			{ TEXT("OS"), FString::Printf(TEXT("%d/8"), Team.Overseas()), Ink() },
-			{ TEXT("RTM"), FString::FromInt(Team.RtmCards), Teal() },
+			{ A.IsMini() ? TEXT("T/O") : TEXT("RTM"), FString::FromInt(A.IsMini() ? Team.Timeouts : Team.RtmCards), Teal() },
 		};
 		for (int32 I = 0; I < 3; ++I)
 		{
@@ -502,7 +623,13 @@ namespace AuctionHudPrivate
 			F.Label(FString::Printf(TEXT("TO %s%s"), *Fc.Name.ToUpper(), bRtm ? TEXT("  ·  RIGHT TO MATCH") : TEXT("")), RX, CY - 22.f * Scale, 0.f,
 				Ink_ * FLinearColor(1.f, 1.f, 1.f, 0.75f), 16.f * Scale);
 			F.Text(AuctionRules::Money(A.Price), RX, CY + 42.f * Scale, 64.f * Scale, Money(), 0.f, EWeight::Black);
+			const int32 Paid = AuctionRules::Fee(A.Config.Mode, P.IsOverseas(), A.Price);
+			if (Paid < A.Price)
+				F.Label(FString::Printf(TEXT("PAID %s  ·  %s TO THE BOARD"), *AuctionRules::Money(Paid), *AuctionRules::Money(A.Price - Paid)), RX, CY + 88.f * Scale, 0.f, Ink_, 13.f);
 			F.Crest(X + Wd - 90.f * Scale, CY, 54.f * Scale, A.LastSoldTo);
+			// A record: a gold banner over the card.
+			if (!F.G.RecordBanner.IsEmpty() && F.G.Now() - F.G.RecordAt < 6.0)
+				F.P.Pill(F.G.RecordBanner, F.At(CX, Y - 34.f * Scale), F.F(22.f, EWeight::Black, 240), Money(), Hex(0x1A1204), 36.f * F.U, 50.f * F.U, 25.f * F.U);
 		}
 		F.P.Alpha = 1.f;
 	}
@@ -543,13 +670,14 @@ namespace AuctionHudPrivate
 		// The time left to answer runs down along the top edge.
 		const float Left = FMath::Clamp(1.f - A.PhaseTime() / FAuction::HumanRtmTimeout, 0.f, 1.f);
 		F.Box(X, Y, Wd * Left, 3.f, Left > 0.3f ? Money() : Danger(), 1.5f);
-		F.Label(TEXT("RIGHT TO MATCH"), CX, Y + 50.f, 0.5f, Money(), 16.f);
+		const int32 Asked = A.Phase == EAuctionPhase::RtmRaise ? A.Holder : A.RtmTeam;
+		F.Label(G.Picked.Num() > 1 ? FString::Printf(TEXT("RIGHT TO MATCH  ·  %s TO ANSWER"), *Fr(Asked).Code) : FString(TEXT("RIGHT TO MATCH")), CX, Y + 50.f, 0.5f, Money(), 16.f);
 		F.Text(P.Name.ToUpper(), CX, Y + 98.f, 42.f, Ink(), 0.5f, EWeight::Black);
 		const float BY = Y + Ht - 108.f, BW = 0.5f * (Wd - 96.f);
 		switch (A.Phase)
 		{
 		case EAuctionPhase::RtmAsk:
-			F.Text(FString::Printf(TEXT("%s won him at %s. Use one of your %d RTM cards to bring him back?"), *Fr(A.Holder).Name, *AuctionRules::Money(A.Price), A.Teams[G.Team].RtmCards),
+			F.Text(FString::Printf(TEXT("%s won him at %s. Use one of your %d RTM cards to bring him back?"), *Fr(A.Holder).Name, *AuctionRules::Money(A.Price), A.Teams[A.RtmTeam].RtmCards),
 				CX, Y + 158.f, 19.f, InkDim(), 0.5f, EWeight::Medium);
 			F.Text(FString::Printf(TEXT("%s will get one final raise first."), *Fr(A.Holder).Code), CX, Y + 190.f, 16.f, InkFaint(), 0.5f, EWeight::Medium);
 			F.Button(X + 40.f, BY, BW, 68.f, TEXT("USE RTM"), EBtn::Primary, [&G]() { G.Auction->HumanRtm(true); }, true, 22.f);
@@ -559,7 +687,7 @@ namespace AuctionHudPrivate
 		{
 			F.Text(FString::Printf(TEXT("%s have used their RTM. Make your final bid: they must match it to take him."), *Fr(A.RtmTeam).Name),
 				CX, Y + 158.f, 19.f, InkDim(), 0.5f, EWeight::Medium);
-			const int32 Max = A.MaxBid(G.Team);
+			const int32 Max = A.MaxBid(A.Holder);
 			G.RaiseTo = FMath::Clamp(G.RaiseTo, A.Price, FMath::Max(A.Price, Max));
 			F.Button(CX - 210.f, Y + 186.f, 60.f, 60.f, FString(), EBtn::Secondary, [&G]()
 			{
@@ -580,9 +708,9 @@ namespace AuctionHudPrivate
 		case EAuctionPhase::RtmMatch:
 			F.Text(FString::Printf(TEXT("%s's final bid is %s. Match it and he is yours."), *Fr(A.Holder).Name, *AuctionRules::Money(A.Price)),
 				CX, Y + 158.f, 19.f, InkDim(), 0.5f, EWeight::Medium);
-			F.Text(FString::Printf(TEXT("Your purse: %s"), *AuctionRules::Money(A.Teams[G.Team].Purse)), CX, Y + 190.f, 16.f, InkFaint(), 0.5f, EWeight::Medium);
+			F.Text(FString::Printf(TEXT("Your purse: %s"), *AuctionRules::Money(A.Teams[A.RtmTeam].Purse)), CX, Y + 190.f, 16.f, InkFaint(), 0.5f, EWeight::Medium);
 			F.Button(X + 40.f, BY, BW, 68.f, FString::Printf(TEXT("MATCH %s"), *AuctionRules::Money(A.Price)), EBtn::Primary, [&G]() { G.Auction->HumanMatch(true); },
-				A.CanAfford(G.Team, A.Lot, A.Price), 21.f);
+				A.CanAfford(A.RtmTeam, A.Lot, A.Price), 21.f);
 			F.Button(X + 56.f + BW, BY, BW, 68.f, TEXT("DECLINE"), EBtn::Secondary, [&G]() { G.Auction->HumanMatch(false); }, true, 21.f);
 			break;
 		default:
@@ -661,22 +789,32 @@ namespace AuctionHudPrivate
 			else if (I > First) F.HLine(X + 28.f, RY, Wd - 56.f, 0.05f);
 			F.Label(S.Code, X + 30.f, MY, 0.f, InkFaint(), 12.f);
 			F.Text(P.Name, X + 100.f, MY, 19.f, Ink(), 0.f, EWeight::Bold);
-			F.Label(FString::Printf(TEXT("%s  %d"), AuctionRules::RoleCode(P.Role), P.Overall()), X + 390.f, MY, 0.f, InkDim(), 13.f);
+			F.Label(FString::Printf(TEXT("%s  %d"), AuctionRules::RoleCode(P.Role), P.Overall()), X + 330.f, MY, 0.f, InkDim(), 13.f);
 			FString Status = AuctionRules::Money(P.Base);
 			FLinearColor C = InkDim();
 			if (To) { Status = FString::Printf(TEXT("%s  %s"), *Fr(*To).Code, *AuctionRules::Money(A.Teams[*To].Squad.FindByPredicate([&](const FAuctionSigning& X_) { return X_.Player == P.Id; })->Price)); C = Money(); }
 			else if (bNow) { Status = TEXT("ON THE BLOCK"); C = Amber(); }
 			else if (A.Unsold.Contains(P.Id)) { Status = TEXT("UNSOLD"); C = InkFaint(); }
 			F.Text(Status, X + Wd - 30.f, MY, 17.f, C, 1.f, EWeight::Black);
+			if (!To)
+			{
+				// On the shortlist, at about what the room expects him to go for; the war room tunes the limit.
+				const bool bWanted = A.WishFor(F.G.Team, P.Id) != nullptr;
+				F.Button(X + 400.f, RY + 5.f, 40.f, RowH - 10.f, FString(), bWanted ? EBtn::Primary : EBtn::Quiet,
+					[&G = F.G, Id = P.Id, bWanted]()
+					{
+						G.SetWish(Id, bWanted ? 0 : AuctionRules::OnLadder(G.Auction->ExpectedPrice(Id), FAuction::Player(Id).Base), false);
+					}, true, 16.f, bWanted ? IconCheck : IconAdd);
+			}
 			if (S.bAccelerated && !To && !bNow && Rows[I].Key > A.SetIndex)
 			{
 				const bool bOn = A.IsNominated(P.Id);
-				F.Button(X + 490.f, RY + 5.f, 52.f, RowH - 10.f, FString(), bOn ? EBtn::Primary : EBtn::Quiet,
+				F.Button(X + 446.f, RY + 5.f, 40.f, RowH - 10.f, FString(), bOn ? EBtn::Primary : EBtn::Quiet,
 					[&G = F.G, Id = P.Id, bOn]() { G.Auction->Nominate(Id, !bOn); }, true, 16.f, bOn ? Glyph::Star : IconStarLine);
 			}
 		}
 		F.HLine(X + 28.f, Y + Ht - 44.f, Wd - 56.f, 0.08f);
-		F.Text(FString::Printf(TEXT("%d-%d of %d   ·   scroll for more   ·   the star nominates for the accelerated round"), First + 1, FMath::Min(Rows.Num(), First + Fit), Rows.Num()),
+		F.Text(FString::Printf(TEXT("%d-%d of %d   ·   scroll for more   ·   + shortlists   ·   the star nominates for the accelerated round"), First + 1, FMath::Min(Rows.Num(), First + Fit), Rows.Num()),
 			X + 0.5f * Wd, Y + Ht - 22.f, 13.f, InkFaint(), 0.5f, EWeight::Medium);
 	}
 
@@ -723,6 +861,91 @@ namespace AuctionHudPrivate
 		PaintSquadList(F, A, T, X + 28.f, Y + 196.f, Wd - 56.f, Ht - 216.f);
 	}
 
+	/** A money dial: minus, the figure, plus, stepping along the bid ladder. */
+	void Dial(FFrame& F, float X, float Y, int32 Value, int32 Floor, TFunction<void(int32)> Set)
+	{
+		F.Button(X, Y, 34.f, 30.f, FString(), EBtn::Quiet, [Value, Floor, Set]()
+		{
+			int32 Down = Floor;
+			while (AuctionRules::NextBid(Down) < Value) Down = AuctionRules::NextBid(Down);
+			Set(Down);
+		}, Value > Floor, 14.f, IconRemove);
+		F.Text(AuctionRules::Money(Value), X + 94.f, Y + 15.f, 16.f, Money(), 0.5f, EWeight::Black);
+		F.Button(X + 154.f, Y, 34.f, 30.f, FString(), EBtn::Quiet, [Value, Set]() { Set(AuctionRules::NextBid(Value)); }, true, 14.f, IconAdd);
+	}
+
+	/**
+	 * The war room: what the side needs (its best twelve, the holes, the money per place), the shortlist with a limit
+	 * and auto-bid for each and when he comes up, and the rival radar: every other side's purse, places, overseas room
+	 * and, as the analysts read them, whom they are after.
+	 */
+	void PaintWarRoom(FFrame& F, const FAuction& A)
+	{
+		AAuctionGameMode& G = F.G;
+		float X, Y, Wd, Ht;
+		PanelFrame(F, X, Y, Wd, Ht, FString::Printf(TEXT("%s WAR ROOM"), *Fr(G.Team).Code));
+		const FAuctionNeeds N = A.Needs(G.Team);
+		const FAuctionTeam& Team = A.Teams[G.Team];
+		// Needs.
+		float RY = Y + 96.f;
+		F.Label(TEXT("BEST TWELVE"), X + 28.f, RY, 0.f, InkFaint(), 12.f);
+		F.Text(FString::Printf(TEXT("%.0f"), N.Strength), X + 28.f, RY + 34.f, 36.f, Money(), 0.f, EWeight::Black);
+		F.Label(FString::Printf(TEXT("#%d OF 10"), N.Rank), X + 90.f, RY + 38.f, 0.f, Ink(), 14.f);
+		F.Label(TEXT("HOLES"), X + 210.f, RY, 0.f, InkFaint(), 12.f);
+		const FString Holes = N.Holes.IsEmpty() ? FString(TEXT("None: a complete side")) : FString::Join(N.Holes, TEXT("  ·  "));
+		F.Text(Holes.Len() > 70 ? Holes.Left(67) + TEXT("...") : Holes, X + 210.f, RY + 24.f, 15.f, N.Holes.IsEmpty() ? Teal() : Amber(), 0.f, EWeight::Bold);
+		F.Text(FString::Printf(TEXT("%s left  ·  %d places (%d to 18)  ·  %s a place  ·  %d overseas slots  ·  %d timeouts"), *AuctionRules::Money(Team.Purse),
+			N.Places, N.ToMinimum, *AuctionRules::Money(N.PerPlace), N.OverseasLeft, Team.Timeouts), X + 210.f, RY + 50.f, 13.f, InkDim(), 0.f, EWeight::Medium);
+		// The shortlist.
+		RY += 84.f;
+		F.HLine(X + 28.f, RY, Wd - 56.f, 0.08f);
+		F.Label(TEXT("SHORTLIST  ·  + IN THE PLAYER LIST ADDS"), X + 28.f, RY + 20.f, 0.f, Money(), 12.f);
+		TArray<int32> List;
+		for (const auto& W : A.Wishes(G.Team)) List.Add(W.Key);
+		List.Sort([&A](int32 L, int32 R)
+		{
+			const int32 LL = A.LotsUntil(L), LR = A.LotsUntil(R);
+			return (LL < 0 ? 100000 : LL) < (LR < 0 ? 100000 : LR);
+		});
+		const float RowH = 38.f;
+		for (int32 I = 0; I < FMath::Min(List.Num(), 6); ++I)
+		{
+			const int32 Id = List[I];
+			const FAuctionPlayer& P = FAuction::Player(Id);
+			const FAuctionWish W = *A.WishFor(G.Team, Id);
+			const float Row = RY + 40.f + I * RowH, MY = Row + 0.5f * RowH;
+			F.P.Circle(F.At(X + 34.f, MY), 4.f * F.U, RoleColour(P.Role));
+			F.Text(P.Short.IsEmpty() ? P.Name : P.Short, X + 46.f, MY, 16.f, Ink(), 0.f, EWeight::Bold);
+			const int32 Until = A.LotsUntil(Id);
+			const int32* To = A.SoldTo.Find(Id);
+			const FString When = To ? FString::Printf(TEXT("TO %s"), *Fr(*To).Code) : Until == 0 ? FString(TEXT("ON THE BLOCK")) : Until > 0 ? FString::Printf(TEXT("IN %d LOTS"), Until) : FString(TEXT("NOT DRAWN"));
+			F.Label(When, X + 230.f, MY, 0.f, Until == 0 ? Amber() : InkFaint(), 12.f);
+			F.Label(FString::Printf(TEXT("ROOM %s"), *AuctionRules::Money(A.ExpectedPrice(Id))), X + 350.f, MY, 0.f, InkFaint(), 11.f);
+			Dial(F, X + 450.f, Row + 4.f, W.Max, P.Base, [&G, Id, W](int32 V) { G.SetWish(Id, V, W.bAuto); });
+			F.Button(X + 648.f, Row + 4.f, 44.f, 30.f, TEXT("AUTO"), W.bAuto ? EBtn::Primary : EBtn::Quiet, [&G, Id, W]() { G.SetWish(Id, W.Max, !W.bAuto); }, !To, 11.f);
+		}
+		if (List.IsEmpty()) F.Text(TEXT("No one yet. Shortlist the players you want: auto-bid goes to your limit for you."), X + 28.f, RY + 58.f, 15.f, InkFaint(), 0.f, EWeight::Medium);
+		// The rival radar.
+		RY += 40.f + 6.f * RowH + 8.f;
+		F.HLine(X + 28.f, RY, Wd - 56.f, 0.08f);
+		F.Label(TEXT("RIVAL RADAR"), X + 28.f, RY + 20.f, 0.f, Money(), 12.f);
+		const float Rh = FMath::Min(30.f, (Y + Ht - RY - 44.f) / 9.f);
+		int32 Row = 0;
+		for (int32 T = 0; T < A.Teams.Num(); ++T)
+		{
+			if (T == G.Team) continue;
+			const float TY = RY + 40.f + Row++ * Rh, MY = TY + 0.5f * Rh;
+			const FAuctionNeeds RN = A.Needs(T);
+			F.Crest(X + 40.f, MY, 0.4f * Rh, T);
+			F.Text(AuctionRules::Money(A.Teams[T].Purse), X + 64.f, MY, 14.f, Money(), 0.f, EWeight::Black);
+			F.Text(FString::Printf(TEXT("%d pl  %d os"), RN.Places, RN.OverseasLeft), X + 160.f, MY, 13.f, InkDim(), 0.f, EWeight::Bold);
+			FString After;
+			for (int32 K = 0; K < FMath::Min(3, RN.Targets.Num()); ++K) After += (K ? TEXT(", ") : TEXT("")) + FAuction::Player(RN.Targets[K]).Short;
+			if (After.IsEmpty() && !RN.Holes.IsEmpty()) After = RN.Holes[0];
+			F.Text(After, X + 260.f, MY, 13.f, InkFaint(), 0.f, EWeight::Medium);
+		}
+	}
+
 	void PaintTopControlBar(FFrame& F, const FAuction& A)
 	{
 		AAuctionGameMode& G = F.G;
@@ -760,15 +983,20 @@ namespace AuctionHudPrivate
 			bool bDividerAfter;
 		};
 
+		using EPace = AAuctionGameMode::EPace;
+		static const TCHAR* PaceNames[] = { TEXT("PACE: WATCH"), TEXT("PACE: MY TARGETS"), TEXT("PACE: SIM") };
+		const EPace NextPace = EPace((int32(G.PaceMode) + 1) % 3);
+		const bool bHeld = A.IsHuman(A.Holder);
 		const FTopItem Items[] = {
-			{ TEXT("PURSE"), Toggle(EPanel::Purse), G.Panel == EPanel::Purse, true, 80.f, false },
-			{ TEXT("PLAYERS"), Toggle(EPanel::Players), G.Panel == EPanel::Players, true, 92.f, false },
-			{ TEXT("SQUADS"), Toggle(EPanel::Squad), G.Panel == EPanel::Squad, true, 84.f, true },
-			{ TEXT("SKIP PLAYER"), [&G]() { G.SkipCurrentLot(); }, false, bLive && A.Holder != G.Team, 116.f, false },
-			{ TEXT("SKIP SET"), [&G]() { G.Auction->SkipSet(); }, false, bLive && A.Holder != G.Team, 88.f, true },
-			{ G.bPaused ? TEXT("RESUME") : TEXT("PAUSE"), [&G]() { G.TogglePause(); }, G.bPaused, bCanPause, 86.f, false },
-			{ TEXT("RESTART"), [&G]() { G.RestartAuction(); }, false, true, 86.f, false },
-			{ TEXT("EXIT"), [&G]() { G.ExitToMenu(); }, false, true, 66.f, false }
+			{ TEXT("PURSE"), Toggle(EPanel::Purse), G.Panel == EPanel::Purse, true, 70.f, false },
+			{ TEXT("PLAYERS"), Toggle(EPanel::Players), G.Panel == EPanel::Players, true, 84.f, false },
+			{ TEXT("SQUADS"), Toggle(EPanel::Squad), G.Panel == EPanel::Squad, true, 78.f, false },
+			{ TEXT("WAR ROOM"), Toggle(EPanel::WarRoom), G.Panel == EPanel::WarRoom, true, 96.f, true },
+			{ TEXT("SKIP"), [&G]() { G.SkipCurrentLot(); }, false, bLive && !bHeld, 60.f, false },
+			{ TEXT("SKIP SET"), [&G]() { G.Auction->SkipSet(); }, false, bLive && !bHeld, 84.f, true },
+			{ PaceNames[int32(G.PaceMode)], [&G, NextPace]() { G.SetPace(NextPace); }, G.PaceMode != EPace::Watch, bCanPause, 150.f, true },
+			{ G.bPaused ? TEXT("RESUME") : TEXT("PAUSE"), [&G]() { G.TogglePause(); }, G.bPaused, bCanPause, 76.f, false },
+			{ TEXT("EXIT"), [&G]() { G.ExitToMenu(); }, false, true, 56.f, false }
 		};
 
 		float TotalItemsW = 0.f;
@@ -795,14 +1023,13 @@ namespace AuctionHudPrivate
 		}
 	}
 
-	void PaintControls(FFrame& F, const FAuction& A)
+	/** One table's paddle: BID at the asking price, its own colours while it holds the bid. */
+	void Paddle(FFrame& F, const FAuction& A, int32 Table, float BX, float BY, float BW, float BH, bool bLabelTeam)
 	{
 		AAuctionGameMode& G = F.G;
-		// The paddle: the one big action on the screen, level with the lower third.
-		const float BX = RailX(F), BY = ThirdY(F), BW = RailW, BH = ThirdH;
-		const FString Blocked = G.bPaused ? TEXT("PAUSED") : BidBlocked(A);
-		const bool bCan = A.CanHumanBid() && !G.bPaused;
-		const bool bMine = Blocked == TEXT("YOUR BID");
+		const FString Blocked = G.bPaused || G.bDayBreak ? FString(TEXT("HELD")) : BidBlocked(A, Table);
+		const bool bCan = A.CanHumanBid(Table) && !G.bPaused && !G.bDayBreak;
+		const bool bMine = A.Holder == Table && A.Phase == EAuctionPhase::Bidding;
 		if (bCan)
 		{
 			const float Glow = 0.5f + 0.5f * FMath::Sin(float(F.T) * 4.f);
@@ -811,18 +1038,103 @@ namespace AuctionHudPrivate
 		}
 		else if (bMine)
 		{
-			F.Box(BX, BY, BW, BH, Tint(Fr(G.Team).Primary, 0.55f, 0.96f), 6.f);
-			F.Box(BX, BY, BW, 4.f, Fr(G.Team).Primary, 2.f);
+			F.Box(BX, BY, BW, BH, Tint(Fr(Table).Primary, 0.55f, 0.96f), 6.f);
+			F.Box(BX, BY, BW, 4.f, Fr(Table).Primary, 2.f);
 		}
 		else F.Card(BX, BY, BW, BH, 0.95f);
-		const FLinearColor Ink_ = bCan ? Hex(0x1A1204) : bMine ? InkOn(Tint(Fr(G.Team).Primary, 0.55f, 1.f)) : InkFaint();
+		const FLinearColor Ink_ = bCan ? Hex(0x1A1204) : bMine ? InkOn(Tint(Fr(Table).Primary, 0.55f, 1.f)) : InkFaint();
 		const bool bPrice = A.Phase == EAuctionPhase::Bidding || A.Phase == EAuctionPhase::LotIntro;
-		const float LabelY = bPrice ? BY + 58.f : BY + 0.5f * BH;
-		if (bCan) F.Text(TEXT("BID"), BX + 0.5f * BW, LabelY, 52.f, Ink_, 0.5f, EWeight::Black, 300);
-		else F.Label(Blocked.IsEmpty() ? FString(TEXT("BID")) : Blocked, BX + 0.5f * BW, LabelY, 0.5f, Ink_, 20.f);
+		const float Big = FMath::Min(52.f, 0.36f * BH);
+		const FString Word = bLabelTeam ? FString::Printf(TEXT("%s BID"), *Fr(Table).Code) : FString(TEXT("BID"));
+		const float LabelY = bPrice ? BY + 0.4f * BH : BY + 0.5f * BH;
+		if (bCan) F.Text(Word, BX + 0.5f * BW, LabelY, Big, Ink_, 0.5f, EWeight::Black, 300);
+		else F.Label(Blocked.IsEmpty() ? Word : (bLabelTeam ? Fr(Table).Code + TEXT("  ") + Blocked : Blocked), BX + 0.5f * BW, LabelY, 0.5f, Ink_, FMath::Min(20.f, 0.2f * BH));
 		if (bPrice)
-			F.Text(bMine ? AuctionRules::Money(A.Price) : AuctionRules::Money(A.Lot != INDEX_NONE ? A.AskPrice() : 0), BX + 0.5f * BW, BY + 112.f, 30.f, Ink_, 0.5f, EWeight::Black);
-		if (bCan) F.Hit(F.Rect(BX, BY, BW, BH), [&G]() { G.Bid(); });
+			F.Text(bMine ? AuctionRules::Money(A.Price) : AuctionRules::Money(A.Lot != INDEX_NONE ? A.AskPrice() : 0), BX + 0.5f * BW, BY + 0.76f * BH,
+				FMath::Min(30.f, 0.22f * BH), Ink_, 0.5f, EWeight::Black);
+		if (bCan) F.Hit(F.Rect(BX, BY, BW, BH), [&G, Table]() { G.Bid(Table); });
+	}
+
+	void PaintControls(FFrame& F, const FAuction& A)
+	{
+		AAuctionGameMode& G = F.G;
+		// The paddle: the one big action on the screen, level with the lower third. With people at several tables,
+		// a paddle for each, stacked.
+		const float BX = RailX(F), BY = ThirdY(F), BW = RailW, BH = ThirdH;
+		const int32 N = FMath::Max(1, G.Picked.Num());
+		if (N == 1) Paddle(F, A, G.Team, BX, BY, BW, BH, false);
+		else
+		{
+			const float Gap = 6.f, H = (BH - (N - 1) * Gap) / N;
+			for (int32 I = 0; I < N; ++I) Paddle(F, A, G.Picked[I], BX, BY + I * (H + Gap), BW, H, true);
+		}
+		if (A.Phase != EAuctionPhase::Bidding && A.Phase != EAuctionPhase::LotIntro) return;
+		// The strip above: jump, time-out and auto-bid for the table in focus.
+		const float SY = BY - 52.f, SW = (BW - 12.f) / 3.f;
+		const int32 Jump = A.Lot != INDEX_NONE ? AuctionRules::NextBid(AuctionRules::NextBid(A.AskPrice())) : 0;
+		const bool bLive = !G.bPaused && !G.bDayBreak;
+		F.Button(BX, SY, SW, 44.f, FString::Printf(TEXT("JUMP %s"), *AuctionRules::Money(Jump)), EBtn::Secondary,
+			[&G, Jump]() { G.JumpTo = Jump; G.JumpBid(G.Team); }, bLive && A.CanHumanBid(G.Team) && A.CanAfford(G.Team, A.Lot, Jump), 11.f);
+		F.Button(BX + SW + 6.f, SY, SW, 44.f, FString::Printf(TEXT("TIME-OUT %d"), A.Teams[G.Team].Timeouts), EBtn::Secondary,
+			[&G]() { G.Timeout(G.Team); }, bLive && A.CanRequestTimeout(G.Team), 12.f);
+		const FAuctionWish* W = A.Lot != INDEX_NONE ? A.WishFor(G.Team, A.Lot) : nullptr;
+		const bool bAutoOn = W && W->bAuto;
+		const int32 Limit = W ? W->Max : (A.Lot != INDEX_NONE ? AuctionRules::OnLadder(A.ExpectedPrice(A.Lot), FAuction::Player(A.Lot).Base) : 0);
+		F.Button(BX + 2.f * (SW + 6.f), SY, SW, 44.f, bAutoOn ? FString::Printf(TEXT("AUTO TO %s"), *AuctionRules::Money(Limit)) : FString(TEXT("AUTO-BID")),
+			bAutoOn ? EBtn::Primary : EBtn::Secondary, [&G, Lot = A.Lot, Limit, bAutoOn]() { G.SetWish(Lot, Limit, !bAutoOn); }, bLive && A.Lot != INDEX_NONE, 12.f);
+		// The analyst at the table leans over.
+		const FString Whisper = A.Whisper(G.Team);
+		if (!Whisper.IsEmpty() && A.Phase == EAuctionPhase::Bidding)
+		{
+			const float Wd = FMath::Min(F.W - 2.f * Edge - RailW - 40.f, HudPaint::FPaint::Measure(Whisper, F.F(16.f, EWeight::Medium)).X / F.U + 140.f);
+			const float X = StageMid(F) - 0.5f * Wd, Y = TopY + 84.f + 26.f;
+			F.Box(X, Y, Wd, 36.f, Hex(0x000000, 0.5f), 18.f);
+			F.Label(TEXT("ANALYST"), X + 20.f, Y + 18.f, 0.f, Teal(), 11.f);
+			F.Text(Whisper, X + 108.f, Y + 18.f, 16.f, InkDim(), 0.f, EWeight::Medium);
+		}
+	}
+
+	/** The end of day one: the day's summary, and the room waits until the tables come back. */
+	void PaintDayBreak(FFrame& F, const FAuction& A)
+	{
+		AAuctionGameMode& G = F.G;
+		if (!G.bDayBreak) return;
+		F.Box(0.f, 0.f, F.W, F.H, Hex(0x000000, 0.62f));
+		const float Wd = 820.f, Ht = 520.f, X = 0.5f * (F.W - Wd), Y = 0.5f * (F.H - Ht) - 30.f, CX = X + 0.5f * Wd;
+		F.Card(X, Y, Wd, Ht, 1.f);
+		F.Box(X, Y, Wd, 3.f, Money(), 1.5f);
+		F.Label(TEXT("END OF DAY ONE"), CX, Y + 50.f, 0.5f, Money(), 16.f);
+		F.Text(FString::Printf(TEXT("%d SOLD  ·  %d LOTS"), A.SoldTo.Num(), A.LotsHeld), CX, Y + 104.f, 40.f, Ink(), 0.5f, EWeight::Black);
+		const TArray<FAuctionRecord> Records = A.Records();
+		for (int32 I = 0; I < FMath::Min(3, Records.Num()); ++I)
+			F.Text(FString::Printf(TEXT("%s:  %s, %s, %s"), *Records[I].Title, *FAuction::Player(Records[I].Player).Name, *Fr(Records[I].Team).Code, *AuctionRules::Money(Records[I].Price)),
+				CX, Y + 170.f + I * 32.f, 17.f, InkDim(), 0.5f, EWeight::Medium);
+		for (int32 I = 0; I < G.Picked.Num(); ++I)
+		{
+			const int32 T = G.Picked[I];
+			const FAuctionNeeds N = A.Needs(T);
+			F.Text(FString::Printf(TEXT("%s: %d players, %s left, best twelve #%d%s"), *Fr(T).Code, A.Teams[T].Squad.Num(), *AuctionRules::Money(A.Teams[T].Purse), N.Rank,
+				N.Holes.IsEmpty() ? TEXT("") : *(FString(TEXT("  ·  ")) + N.Holes[0])), CX, Y + 290.f + I * 28.f, 16.f, Money(), 0.5f, EWeight::Bold);
+		}
+		const float BY = Y + Ht - 96.f, BW = 0.5f * (Wd - 96.f);
+		F.Button(X + 32.f, BY, BW, 64.f, TEXT("DAY TWO"), EBtn::Primary, [&G]() { G.EndDayBreak(); }, true, 20.f);
+		F.Button(X + 64.f + BW, BY, BW, 64.f, TEXT("SAVE AND EXIT"), EBtn::Secondary, [&G]() { G.ExitToMenu(); }, true, 20.f);
+	}
+
+	/** The analyst desk between sets: two voices over the league, for a few seconds. */
+	void PaintDesk(FFrame& F)
+	{
+		AAuctionGameMode& G = F.G;
+		const float Age = float(G.Now() - G.AnalystAt);
+		if (G.AnalystLines.IsEmpty() || Age > 9.f) return;
+		F.P.Alpha = FMath::Clamp(Age / 0.3f, 0.f, 1.f) * FMath::Clamp((9.f - Age) / 0.6f, 0.f, 1.f);
+		const float Wd = 760.f, Ht = 60.f + 30.f * G.AnalystLines.Num(), X = Edge, Y = TopY + 84.f + 80.f;
+		F.Card(X, Y, Wd, Ht, 0.92f);
+		F.Box(X, Y, 3.f, Ht, Teal(), 1.5f);
+		F.Label(TEXT("ANALYST DESK"), X + 24.f, Y + 26.f, 0.f, Teal(), 13.f);
+		for (int32 I = 0; I < G.AnalystLines.Num(); ++I)
+			F.Text(G.AnalystLines[I], X + 24.f, Y + 58.f + I * 30.f, 16.f, I % 2 ? InkDim() : Ink(), 0.f, EWeight::Medium);
+		F.P.Alpha = 1.f;
 	}
 
 	/** The pause card: the clock is held, so resume, restart or leave from here. */
@@ -892,11 +1204,14 @@ namespace AuctionHudPrivate
 		case EPanel::Purse: PaintPursePanel(F, A); break;
 		case EPanel::Players: PaintPlayersPanel(F, A); break;
 		case EPanel::Squad: PaintSquadPanel(F, A); break;
+		case EPanel::WarRoom: PaintWarRoom(F, A); break;
 		default: break;
 		}
+		PaintDesk(F);
 		PaintControls(F, A);
 		PaintTicker(F, A);
 		PaintRtm(F, A);
+		PaintDayBreak(F, A);
 		PaintPaused(F);
 	}
 
@@ -908,18 +1223,32 @@ namespace AuctionHudPrivate
 		const int32 T = F.G.PanelTeam;
 		F.Scrim(0.86f);
 		F.Crest(116.f, 110.f, 40.f, T);
-		F.Heading(TEXT("THE MEGA AUCTION IS COMPLETE"), Fr(T).Name.ToUpper(), 180.f, 86.f, 44.f);
+		F.Heading(A.IsMini() ? FString::Printf(TEXT("THE IPL %d AUCTION IS COMPLETE"), A.Config.Season) : FString(TEXT("THE MEGA AUCTION IS COMPLETE")), Fr(T).Name.ToUpper(), 180.f, 86.f, 44.f);
 		const FAuctionTeam& Team = A.Teams[T];
 		int32 Bought = 0;
 		for (const FAuctionSigning& S : Team.Squad) Bought += S.bRetained ? 0 : 1;
 		F.Label(FString::Printf(TEXT("%d PLAYERS   ·   %d OVERSEAS   ·   %d BOUGHT   ·   SPENT %s   ·   %s LEFT"), Team.Squad.Num(), Team.Overseas(), Bought,
-			*AuctionRules::Money(AuctionRules::Purse - Team.Purse), *AuctionRules::Money(Team.Purse)), 80.f, 196.f, 0.f, InkDim(), 15.f);
+			*AuctionRules::Money(A.Config.Purse - Team.Purse), *AuctionRules::Money(Team.Purse)), 80.f, 196.f, 0.f, InkDim(), 15.f);
 		const float Top = 230.f, SideW = 540.f, LW = F.W - 160.f - SideW - 32.f;
 		F.Card(80.f, Top, LW, F.H - Top - 60.f, 0.95f);
-		PaintSquadList(F, A, T, 112.f, Top + 20.f, LW - 64.f, F.H - Top - 100.f);
+		// The analysts' verdict: the grade, the reasons, the steals and the splurges.
+		const FAuctionVerdict V = A.Verdict(T);
+		F.Text(V.Grade, 140.f, Top + 64.f, 72.f, Money(), 0.5f, EWeight::Black);
+		F.Label(FString::Printf(TEXT("SCORE %.0f  ·  BEST TWELVE %.0f, #%d OF 10"), V.Score, V.Needs.Strength, V.Needs.Rank), 208.f, Top + 44.f, 0.f, Money(), 13.f);
+		F.Text(V.Summary, 208.f, Top + 76.f, 17.f, Ink(), 0.f, EWeight::Medium);
+		auto Names = [](const TArray<int32>& Ids)
+		{
+			TArray<FString> Out;
+			for (int32 Id : Ids) Out.Add(FAuction::Player(Id).Short.IsEmpty() ? FAuction::Player(Id).Name : FAuction::Player(Id).Short);
+			return FString::Join(Out, TEXT(", "));
+		};
+		if (V.Steals.Num() > 0) F.Text(FString::Printf(TEXT("Steals: %s"), *Names(V.Steals)), 208.f, Top + 104.f, 15.f, Teal(), 0.f, EWeight::Bold);
+		if (V.Splurges.Num() > 0) F.Text(FString::Printf(TEXT("Splurges: %s"), *Names(V.Splurges)), 208.f + LW * 0.45f, Top + 104.f, 15.f, Amber(), 0.f, EWeight::Bold);
+		F.HLine(112.f, Top + 130.f, LW - 64.f, 0.08f);
+		PaintSquadList(F, A, T, 112.f, Top + 150.f, LW - 64.f, F.H - Top - 230.f);
 
-		// The league: every side's spend; tap one to see its squad.
-		const float RX = F.W - 80.f - SideW, RowH = 58.f;
+		// The league: every side's grade and top buy; tap one to see its squad.
+		const float RX = F.W - 80.f - SideW, RowH = 54.f;
 		F.Card(RX, Top, SideW, 10.f * RowH + 24.f, 0.95f);
 		for (int32 I = 0; I < A.Teams.Num(); ++I)
 		{
@@ -928,14 +1257,21 @@ namespace AuctionHudPrivate
 			for (const FAuctionSigning& S : A.Teams[I].Squad) if (!S.bRetained && S.Price > TopPrice) { TopPrice = S.Price; Best = S.Player; }
 			if (I == T) RowMark(F, RX + 10.f, RY, SideW - 20.f, RowH);
 			else if (I) F.HLine(RX + 24.f, RY, SideW - 48.f, 0.06f);
-			F.Crest(RX + 44.f, RY + 0.5f * RowH, 19.f, I);
-			F.Text(FString::Printf(TEXT("%d players  ·  %s left"), A.Teams[I].Squad.Num(), *AuctionRules::Money(A.Teams[I].Purse)), RX + 80.f, RY + 20.f, 17.f, Ink(), 0.f, EWeight::Bold);
+			F.Crest(RX + 44.f, RY + 0.5f * RowH, 18.f, I);
+			F.Text(FString::Printf(TEXT("%d players  ·  %s left"), A.Teams[I].Squad.Num(), *AuctionRules::Money(A.Teams[I].Purse)), RX + 80.f, RY + 18.f, 16.f, Ink(), 0.f, EWeight::Bold);
 			if (Best != INDEX_NONE)
-				F.Text(FString::Printf(TEXT("Top buy: %s %s"), *FAuction::Player(Best).Name, *AuctionRules::Money(TopPrice)), RX + 80.f, RY + 41.f, 14.f, Money(), 0.f, EWeight::Bold);
+				F.Text(FString::Printf(TEXT("Top buy: %s %s"), *FAuction::Player(Best).Name, *AuctionRules::Money(TopPrice)), RX + 80.f, RY + 38.f, 13.f, Money(), 0.f, EWeight::Bold);
+			F.Text(A.Verdict(I).Grade, RX + SideW - 36.f, RY + 0.5f * RowH, 28.f, Money(), 1.f, EWeight::Black);
 			F.Hit(F.Rect(RX + 10.f, RY, SideW - 20.f, RowH), [&G = F.G, I]() { G.PanelTeam = I; });
 		}
+		// The records of the auction.
+		const TArray<FAuctionRecord> Records = A.Records();
+		const float RecY = Top + 10.f * RowH + 44.f;
+		for (int32 I = 0; I < FMath::Min(2, Records.Num()); ++I)
+			F.Text(FString::Printf(TEXT("%s: %s (%s) %s"), *Records[I].Title, *FAuction::Player(Records[I].Player).Short, *Fr(Records[I].Team).Code, *AuctionRules::Money(Records[I].Price)),
+				RX, RecY + I * 24.f, 13.f, InkFaint(), 0.f, EWeight::Bold);
 		// The handoff: these exact squads become the IPL season. Back to menu stays below it.
-		F.Button(RX, F.H - 60.f - 76.f - 88.f, SideW, 76.f, TEXT("START IPL SEASON"), EBtn::Primary, [&G = F.G]() { G.StartSeason(); }, true, 22.f);
+		F.Button(RX, F.H - 60.f - 76.f - 88.f, SideW, 76.f, FString::Printf(TEXT("START IPL %d SEASON"), A.Config.Season), EBtn::Primary, [&G = F.G]() { G.StartSeason(); }, true, 22.f);
 		F.Button(RX, F.H - 60.f - 76.f, SideW, 76.f, TEXT("BACK TO MENU"), EBtn::Secondary, [&G = F.G]() { G.ExitToMenu(); }, true, 22.f);
 	}
 }

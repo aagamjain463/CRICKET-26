@@ -84,12 +84,15 @@ namespace FrontendData
 	TArray<FFrontendFeature> AuctionModes()
 	{
 		return {
-			Feature(TEXT("SINGLE PLAYER"), TEXT("IPL Mega Auction"), TEXT("Run a franchise's table against nine AI front offices, under the real IPL rules."),
+			Feature(TEXT("SINGLE PLAYER"), TEXT("IPL Auction"), TEXT("Run a franchise's table against nine AI front offices, under the real IPL rules: a mega auction, or the 2027 mini auction."),
 				EFeatureStatus::Available, EFrontendTab::Auction,
-				{ TEXT("Nine AI owners that bid to their own needs"), TEXT("Retentions, Right to Match, purse, overseas and squad-size rules"), TEXT("Marquee sets and accelerated rounds") }),
+				{ TEXT("AI owners that plan, duel and bid for their best eleven"), TEXT("Retentions, trades, Right to Match, purse, overseas and squad rules"), TEXT("A war room, auto-bid, timeouts and a verdict on every squad") }),
 			Feature(TEXT("ONLINE"), TEXT("Multiplayer Auction"), TEXT("A live room with your friends. One purse each, one hammer, no second chances."),
 				EFeatureStatus::ComingSoon, EFrontendTab::Auction,
 				{ TEXT("Private rooms with invite codes"), TEXT("Live bidding with a shot clock"), TEXT("AI fills empty seats") }),
+			Feature(TEXT("LOCAL"), TEXT("Pass the Paddle"), TEXT("Up to four people at four tables on one screen, the AI at the rest."),
+				EFeatureStatus::Available, EFrontendTab::Auction,
+				{ TEXT("A paddle for every table"), TEXT("Each side makes its own retentions and trades"), TEXT("The auction saves after every lot") }),
 		};
 	}
 

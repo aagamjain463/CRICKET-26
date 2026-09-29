@@ -161,6 +161,7 @@ namespace IPLSeason
 		FIPLSeason Season;
 		Season.SeasonId = FString::Printf(TEXT("IPL-%s"), *FGuid::NewGuid().ToString(EGuidFormats::Short));
 		Season.UserTeam = Auction.Human != INDEX_NONE ? Auction.Human : 0;
+		Season.Year = Auction.Config.Season;
 		// Verbatim handoff: every signing the auction produced, same player, same price, same route.
 		Season.Squads.SetNum(NumTeams);
 		for (int32 T = 0; T < NumTeams && T < Auction.Teams.Num(); ++T)

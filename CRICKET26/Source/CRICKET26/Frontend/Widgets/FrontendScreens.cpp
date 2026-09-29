@@ -576,6 +576,11 @@ namespace
 			const FString Line = FString::Printf(TEXT("%s ARE THE CHAMPIONS"), *TeamFullName(Season.Champion).ToUpper());
 			Add(Page, Box(T, Rounded(Glass(), 4.f, Gold()), FMargin(S3, S2), Text(T, Line, 30, GoldHi(), EWeight::Black, 20)),
 				FMargin(0.f, 0.f, 0.f, S2));
+			// The career goes on: the squads carry into the next auction, a mini one or, every three years, a mega.
+			const int32 NextYear = Season.Year + 1;
+			const FString Next = FString::Printf(TEXT("NEXT: IPL %d %s"), NextYear, AuctionRules::IsMegaSeason(NextYear) ? TEXT("MEGA AUCTION") : TEXT("AUCTION"));
+			Add(Page, CTA(T, Next, EButtonKind::Primary, [Root]() { Root->OpenCareerAuctionWithTransition(); }, 64.f),
+				FMargin(0.f, 0.f, 0.f, S2), 0.f, HAlign_Left);
 		}
 
 		// Next match: the user's next upcoming fixture, or the season-over note when eliminated.

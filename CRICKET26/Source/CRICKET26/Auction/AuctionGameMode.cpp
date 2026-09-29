@@ -14,8 +14,10 @@
 #include "Sound/SoundWaveProcedural.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/KismetSystemLibrary.h"
-#include "Sound/SoundWaveProcedural.h"
 #include "Engine/World.h"
+#include "HAL/FileManager.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "UnrealClient.h"
 
 AAuctionGameMode::AAuctionGameMode()
@@ -27,6 +29,11 @@ AAuctionGameMode::AAuctionGameMode()
 double AAuctionGameMode::Now() const
 {
 	return GetWorld() ? GetWorld()->GetRealTimeSeconds() : 0.0;
+}
+
+FString AAuctionGameMode::SavePath()
+{
+	return FPaths::ProjectSavedDir() / TEXT("Auction/Resume.txt");
 }
 
 void AAuctionGameMode::BeginPlay()
@@ -43,11 +50,29 @@ void AAuctionGameMode::BeginPlay()
 		VoiceAudio->SetVolumeMultiplier(CricketAudio::BusTrim(CricketAudio::EMixBus::Commentary) * CricketAudio::MixGain);
 		VoiceAudio->Play();
 	}
+	bHasSave = IFileManager::Get().FileExists(*SavePath());
 	bAuto = FParse::Param(FCommandLine::Get(), TEXT("AuctionAuto"));
-	FString Code;
-	if (FParse::Value(FCommandLine::Get(), TEXT("AuctionTeam="), Code) && AuctionData::FranchiseIndex(Code) != INDEX_NONE)
+	if (FParse::Param(FCommandLine::Get(), TEXT("AuctionMini"))) Setup.Mode = EAuctionMode::Mini;
+
+	// A career: the season just played hands its squads to the next auction, a mini one or, every three years, a mega.
+	UIPLSeasonSave* Season = UIPLSeasonSave::Get();
+	if (UGameplayStatics::HasOption(OptionsString, TEXT("career")) && Season && Season->bHasSeason && Season->Season.bComplete)
 	{
-		PickTeamAndFormat(AuctionData::FranchiseIndex(Code), false);
+		const FIPLSeason& S = Season->Season;
+		bCareer = true;
+		Setup.Season = S.Year + 1;
+		Setup.Mode = AuctionRules::IsMegaSeason(Setup.Season) ? EAuctionMode::Mega : EAuctionMode::Mini;
+		Setup.Carried.SetNum(AuctionData::Franchises().Num());
+		for (int32 T = 0; T < FMath::Min(S.Squads.Num(), Setup.Carried.Num()); ++T)
+			for (const FIPLSquadPlayer& P : S.Squads[T].Players) Setup.Carried[T].Add({ P.PlayerId, P.Price, P.Price, false, false, P.Price });
+		Picked = { FMath::Max(0, S.UserTeam) };
+		BuildAuction();
+	}
+
+	FString Code;
+	if (!bCareer && FParse::Value(FCommandLine::Get(), TEXT("AuctionTeam="), Code) && AuctionData::FranchiseIndex(Code) != INDEX_NONE)
+	{
+		PickTeamAndSetup(AuctionData::FranchiseIndex(Code), Setup.Mode, false);
 		if (bAuto) { SuggestKeep(); ConfirmRetentions(); }
 	}
 #if !UE_BUILD_SHIPPING
@@ -86,45 +111,55 @@ void AAuctionGameMode::EndPlay(const EEndPlayReason::Type Reason)
 	Super::EndPlay(Reason);
 }
 
+// ---- Setup ---------------------------------------------------------------------------------------------------------
+
 void AAuctionGameMode::PickTeam(int32 Index)
 {
-	if (Screen != EScreen::PickTeam || !AuctionData::Franchises().IsValidIndex(Index)) return;
-	PendingPickTeam = Index;
+	if (Screen != EScreen::PickTeam || !AuctionData::Franchises().IsValidIndex(Index) || Picked.Contains(Index)) return;
+	// The first seat chooses the auction; the others just take a table.
+	if (Picked.IsEmpty()) { PendingPickTeam = Index; return; }
+	Picked.Add(Index);
+	if (Picked.Num() >= Seats) BuildAuction();
 }
 
-void AAuctionGameMode::PickTeamAndFormat(int32 Index, bool bNoRetentionsChoice)
+void AAuctionGameMode::PickTeamAndSetup(int32 Index, EAuctionMode Mode, bool bNoRetentionsChoice)
 {
 	if (Screen != EScreen::PickTeam || !AuctionData::Franchises().IsValidIndex(Index)) return;
-	Team = Index;
 	PendingPickTeam = INDEX_NONE;
-	Auction = MakeUnique<FAuction>(Index, int32(FDateTime::Now().GetTicks() % 100000));
-	bNoRetentions = bNoRetentionsChoice;
-	Auction->bNoRetentions = bNoRetentionsChoice;
-	Keep.Reset();
+	Setup.Mode = Mode;
+	Setup.bNoRetentions = Mode == EAuctionMode::Mega && bNoRetentionsChoice;
+	bNoRetentions = Setup.bNoRetentions;
+	Picked = { Index };
+	if (Picked.Num() >= Seats) BuildAuction();
+}
 
+void AAuctionGameMode::BuildAuction()
+{
+	Setup.Humans = Picked;
+	Auction = MakeUnique<FAuction>(Setup, int32(FDateTime::Now().GetTicks() % 100000));
+	bNoRetentions = Auction->bNoRetentions;
+	// The AI sides do their deals first, so the trade window shows them.
+	Auction->OpenTradeWindow();
+	RetainSeat = 0;
+	Team = Picked.IsEmpty() ? 0 : Picked[0];
+	Keep.Reset();
+	ClearSave();
 	if (bNoRetentions)
 	{
-		Auction->Retain(Team, TArray<int32>());
-		Auction->BeginAuction();
-		Screen = EScreen::Live;
+		for (int32 T : Picked) Auction->Retain(T, TArray<int32>());
+		BeginLive();
+		return;
 	}
-	else
-	{
-		Screen = EScreen::Retain;
-	}
+	if (Auction->IsMini()) SuggestKeep(); // a mini auction starts from the squad you have
+	Screen = EScreen::Retain;
 }
 
 void AAuctionGameMode::StartWithNoRetentions()
 {
-	bNoRetentions = true;
-	Keep.Reset();
-	if (Auction)
-	{
-		Auction->bNoRetentions = true;
-		Auction->Retain(Team, TArray<int32>());
-		Auction->BeginAuction();
-	}
-	Screen = EScreen::Live;
+	if (!Auction || Screen != EScreen::Retain || Auction->IsMini()) return;
+	// Every table gives up its retentions: rebuild the auction as a fresh mega auction.
+	Setup.bNoRetentions = true;
+	BuildAuction();
 }
 
 void AAuctionGameMode::StartWithRetentions()
@@ -135,7 +170,7 @@ void AAuctionGameMode::StartWithRetentions()
 
 void AAuctionGameMode::ToggleKeep(int32 Player)
 {
-	if (Screen != EScreen::Retain) return;
+	if (Screen != EScreen::Retain || !Auction) return;
 	if (Keep.Remove(Player) == 0)
 	{
 		TArray<int32> Try = Keep;
@@ -146,26 +181,81 @@ void AAuctionGameMode::ToggleKeep(int32 Player)
 
 void AAuctionGameMode::SuggestKeep()
 {
-	if (Screen == EScreen::Retain) Keep = Auction->AiRetentions(Team);
+	if (Screen == EScreen::Retain || (Auction && Auction->Phase == EAuctionPhase::Retention)) Keep = Auction->AiRetentions(Team);
 }
 
 void AAuctionGameMode::ConfirmRetentions()
 {
-	if (Screen != EScreen::Retain || !Auction->Retain(Team, Keep)) return;
-	Auction->BeginAuction();
-	Screen = EScreen::Live;
+	if (Screen != EScreen::Retain || !Auction || !Auction->Retain(Team, Keep)) return;
+	// Pass the paddle: the next person makes their retentions.
+	if (++RetainSeat < Picked.Num())
+	{
+		Team = Picked[RetainSeat];
+		Keep.Reset();
+		TradeGive = TradeWith = TradeGet = INDEX_NONE;
+		TradeResult.Reset();
+		if (Auction->IsMini()) SuggestKeep();
+		return;
+	}
+	BeginLive();
 }
 
-void AAuctionGameMode::Bid()
+void AAuctionGameMode::BeginLive()
 {
-	if (bPaused) return;
-	if (Auction) Auction->HumanBid(); // presented with the other events next tick
+	Auction->BeginAuction();
+	Screen = EScreen::Live;
+	Team = Picked.IsEmpty() ? 0 : Picked[0];
+	Panel = EPanel::None;
+	SaveProgress();
+}
+
+void AAuctionGameMode::ProposeTrade()
+{
+	if (!Auction || TradeGive == INDEX_NONE || TradeGet == INDEX_NONE || TradeWith == INDEX_NONE) return;
+	FString Why;
+	if (Auction->ProposeTrade(Team, TradeGive, TradeWith, TradeGet, &Why))
+	{
+		TradeResult = FString::Printf(TEXT("Done: %s for %s."), *FAuction::Player(TradeGive).Name, *FAuction::Player(TradeGet).Name);
+		Keep.Remove(TradeGive);
+		TradeGive = TradeGet = INDEX_NONE;
+	}
+	else TradeResult = FString::Printf(TEXT("No deal: %s."), *Why);
+}
+
+void AAuctionGameMode::FocusNext()
+{
+	if (Picked.Num() < 2 || Screen != EScreen::Live) return;
+	Team = Picked[(Picked.IndexOfByKey(Team) + 1) % Picked.Num()];
+}
+
+// ---- Live ----------------------------------------------------------------------------------------------------------
+
+void AAuctionGameMode::Bid(int32 Table)
+{
+	if (bPaused || bDayBreak || !Auction) return;
+	Auction->HumanBid(Table == INDEX_NONE ? Team : Table); // presented with the other events next tick
+}
+
+void AAuctionGameMode::JumpBid(int32 Table)
+{
+	if (bPaused || bDayBreak || !Auction) return;
+	if (Auction->HumanJumpBid(Table, JumpTo)) JumpTo = 0;
+}
+
+void AAuctionGameMode::Timeout(int32 Table)
+{
+	if (!bPaused && Auction) Auction->RequestTimeout(Table);
+}
+
+void AAuctionGameMode::SetWish(int32 Player, int32 Max, bool bAutoBid)
+{
+	if (Auction) Auction->SetWish(Team, Player, Max, bAutoBid);
 }
 
 void AAuctionGameMode::SkipCurrentLot()
 {
 	if (Screen != EScreen::Live || !Auction) return;
-	if (Auction->Holder == Team && Auction->Phase == EAuctionPhase::Bidding) return;
+	if (Auction->IsHuman(Auction->Holder) && Auction->Phase == EAuctionPhase::Bidding) return;
 
 	Auction->FastResolveCurrentLot();
 
@@ -198,37 +288,82 @@ void AAuctionGameMode::TogglePause()
 	if (VoiceAudio) VoiceAudio->SetPaused(bPaused);
 }
 
+void AAuctionGameMode::EndDayBreak()
+{
+	bDayBreak = false;
+}
+
+void AAuctionGameMode::SetPace(EPace Pace)
+{
+	PaceMode = Pace;
+	if (!Auction) return;
+	if (Pace == EPace::SimToEnd) Auction->SkipSet();
+}
+
 void AAuctionGameMode::RestartAuction()
 {
-	if (Screen != EScreen::Live && Screen != EScreen::Results) return;
-	Auction = MakeUnique<FAuction>(Team, int32(FDateTime::Now().GetTicks() % 100000));
-	Auction->bNoRetentions = bNoRetentions;
-	if (bNoRetentions)
+	if ((Screen != EScreen::Live && Screen != EScreen::Results) || !Auction) return;
+	const TMap<int32, TArray<int32>> Kept = [this]()
 	{
-		Keep.Reset();
-		Auction->Retain(Team, TArray<int32>());
-	}
-	else
-	{
-		Auction->Retain(Team, Keep); // the same retentions; BeginAuction fills in the nine AI sides
-	}
-	Auction->BeginAuction();
-	Screen = EScreen::Live;
+		// The same retentions: every human table keeps what it kept.
+		TMap<int32, TArray<int32>> M;
+		for (int32 T : Picked)
+			for (const FAuctionSigning& S : Auction->Teams[T].Squad) if (S.bRetained) M.FindOrAdd(T).Add(S.Player);
+		return M;
+	}();
+	Auction = MakeUnique<FAuction>(Setup, int32(FDateTime::Now().GetTicks() % 100000));
+	Auction->OpenTradeWindow();
+	for (int32 T : Picked) Auction->Retain(T, Kept.FindRef(T));
 	Caption.Empty();
 	CaptionAt = Now();
 	VoiceUntil = -100.0;
 	Seen = 0;
 	SoldAt = -100.0;
-	RaiseTo = 0;
-	Panel = EPanel::None;
-	bPaused = false;
+	RaiseTo = JumpTo = 0;
+	bPaused = bDayBreak = false;
 	if (VoiceWave) VoiceWave->ResetAudio();
 	if (VoiceAudio) VoiceAudio->SetPaused(false);
 	if (Room) Room->ResetDirector();
+	BeginLive();
+}
+
+void AAuctionGameMode::SaveProgress() const
+{
+	if (Auction && Auction->Phase != EAuctionPhase::Retention && Auction->Phase != EAuctionPhase::Finished)
+		FFileHelper::SaveStringToFile(Auction->SaveState(), *SavePath(), FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+}
+
+void AAuctionGameMode::ClearSave()
+{
+	IFileManager::Get().Delete(*SavePath(), false, true, true);
+	bHasSave = false;
+}
+
+void AAuctionGameMode::ResumeSaved()
+{
+	FString Text;
+	FAuctionConfig Read;
+	int32 SavedSeed = 0;
+	if (!FFileHelper::LoadFileToString(Text, *SavePath()) || !FAuction::ReadSaveHeader(Text, Read, SavedSeed)) { ClearSave(); return; }
+	TUniquePtr<FAuction> Loaded = MakeUnique<FAuction>(Read, SavedSeed);
+	if (!Loaded->LoadState(Text)) { ClearSave(); return; }
+	Setup = Read;
+	Picked = Read.Humans;
+	Auction = MoveTemp(Loaded);
+	bNoRetentions = Auction->bNoRetentions;
+	Team = Picked.IsEmpty() ? 0 : Picked[0];
+	// Resume at the next lot: the history is already in the squads, not replayed.
+	Seen = Auction->Events.Num();
+	Caption = TEXT("Welcome back. We continue with the next lot.");
+	CaptionAt = Now();
+	PendingPickTeam = INDEX_NONE;
+	bDayBreak = Auction->Phase == EAuctionPhase::Break;
+	Screen = Auction->Phase == EAuctionPhase::Finished ? EScreen::Results : EScreen::Live;
 }
 
 void AAuctionGameMode::ExitToMenu()
 {
+	SaveProgress();
 	UFrontendStatics::OpenFrontend(this, EFrontendTab::Home);
 }
 
@@ -249,10 +384,40 @@ void AAuctionGameMode::StartSeason()
 	Save->Season = Season;
 	Save->bHasSeason = true;
 	Save->Persist();
-	UE_LOG(LogCRICKET26, Display, TEXT("IPL season started: user %s, %d league fixtures"),
+	ClearSave();
+	UE_LOG(LogCRICKET26, Display, TEXT("IPL %d season started: user %s, %d league fixtures"), Season.Year,
 		AuctionData::Franchises().IsValidIndex(Season.UserTeam) ? *AuctionData::Franchises()[Season.UserTeam].Code : TEXT("?"),
 		Season.Fixtures.Num());
 	UFrontendStatics::OpenFrontend(this, EFrontendTab::IPLSeason);
+}
+
+// ---- Presentation --------------------------------------------------------------------------------------------------
+
+void AAuctionGameMode::Desk()
+{
+	// Two analysts between sets: who has spent, who has room, and what the leading sides still lack.
+	AnalystLines.Reset();
+	if (!Auction) return;
+	const TArray<FAuctionFranchise>& Fr = AuctionData::Franchises();
+	int32 Rich = 0, Poor = 0;
+	for (int32 T = 1; T < Auction->Teams.Num(); ++T)
+	{
+		if (Auction->Teams[T].Purse > Auction->Teams[Rich].Purse) Rich = T;
+		if (Auction->Teams[T].Purse < Auction->Teams[Poor].Purse) Poor = T;
+	}
+	const TArray<FAuctionRecord> Records = Auction->Records();
+	if (Records.Num() > 0)
+		AnalystLines.Add(FString::Printf(TEXT("The big one so far: %s to %s for %s."), *FAuction::Player(Records[0].Player).Name,
+			*Fr[Records[0].Team].Short, *AuctionRules::Money(Records[0].Price)));
+	AnalystLines.Add(FString::Printf(TEXT("%s still have %s to spend. %s are down to %s: they'll be shopping at base price."),
+		*Fr[Rich].Name, *AuctionRules::Money(Auction->Teams[Rich].Purse), *Fr[Poor].Name, *AuctionRules::Money(Auction->Teams[Poor].Purse)));
+	for (int32 T = 0; T < Auction->Teams.Num() && AnalystLines.Num() < 3; ++T)
+	{
+		const FAuctionNeeds N = Auction->Needs(T);
+		if (N.Rank <= 3 && N.Holes.Num() > 0)
+			AnalystLines.Add(FString::Printf(TEXT("%s look strong, but: %s."), *Fr[T].Name, *N.Holes[0].ToLower()));
+	}
+	AnalystAt = Now();
 }
 
 void AAuctionGameMode::Present(const FAuctionEventRecord& E)
@@ -280,8 +445,49 @@ void AAuctionGameMode::Present(const FAuctionEventRecord& E)
 		}
 		VoiceUntil = CaptionAt + double(Seconds) + 0.3; // a breath before the next line
 	}
-	if (E.Type == EAuctionEvent::Sold || E.Type == EAuctionEvent::Unsold) SoldAt = Now();
-	if (E.Type == EAuctionEvent::RtmUsed && Auction->IsHuman(Auction->Holder)) RaiseTo = AuctionRules::NextBid(Auction->Price);
+	switch (E.Type)
+	{
+	case EAuctionEvent::Sold:
+	{
+		SoldAt = Now();
+		const TArray<FAuctionRecord> Records = Auction->Records();
+		if (Records.Num() > 0 && Records[0].Player == E.Player && E.Amount >= 1500)
+		{
+			RecordBanner = E.Amount > AuctionRules::IplRecord ? TEXT("MOST EXPENSIVE PLAYER IN IPL HISTORY") : TEXT("MOST EXPENSIVE OF THE AUCTION");
+			RecordAt = Now();
+		}
+		SaveProgress();
+		break;
+	}
+	case EAuctionEvent::Unsold:
+		SoldAt = Now();
+		SaveProgress();
+		break;
+	case EAuctionEvent::RtmUsed:
+		if (Auction->IsHuman(Auction->Holder)) RaiseTo = AuctionRules::NextBid(Auction->Price);
+		break;
+	case EAuctionEvent::DayEnded:
+		// The hall empties: the clock holds on the day's summary until the tables come back.
+		bDayBreak = !bAuto && PaceMode != EPace::SimToEnd;
+		SaveProgress();
+		break;
+	case EAuctionEvent::SetOpened:
+		if (++SetsSinceDesk >= 3 && PaceMode == EPace::Watch && Auction->LotsHeld > 0) { SetsSinceDesk = 0; Desk(); }
+		if (PaceMode == EPace::SimToEnd) Auction->SkipSet();
+		break;
+	case EAuctionEvent::LotOpened:
+		// Only the lots someone at a human table cares about play out: the shortlist, and a player whose Right to Match
+		// a human side holds.
+		if (PaceMode == EPace::Targets)
+		{
+			bool bWanted = false;
+			for (int32 T : Picked) bWanted |= Auction->WishFor(T, E.Player) != nullptr || Auction->OwnerOf(E.Player) == T;
+			if (!bWanted) Auction->SkipLot();
+		}
+		break;
+	default:
+		break;
+	}
 	if (Room) Room->Present(*Auction, E);
 }
 
@@ -300,7 +506,7 @@ void AAuctionGameMode::Tick(float Dt)
 		SAuctionHUD::AddToGameViewport(this);
 		bViewSet = true;
 	}
-	if (Screen == EScreen::Live && Auction && !bPaused)
+	if (Screen == EScreen::Live && Auction && !bPaused && !bDayBreak)
 	{
 		if (bAuto && Auction->AwaitingHuman())
 		{
@@ -312,15 +518,24 @@ void AAuctionGameMode::Tick(float Dt)
 		// are already waiting, the clock holds instead of piling up bids she would talk over. This
 		// is also the bidding pace: one call at a time, about as fast as the real room talks.
 		const bool bVoiceBusy = Now() < VoiceUntil;
-		if (!(bVoiceBusy && Seen < Auction->Events.Num()))
+		// Simulating to the end: every set is skipped as it opens (the RTM questions to a human still wait).
+		if (PaceMode == EPace::SimToEnd && !Auction->IsFast() && Auction->Phase != EAuctionPhase::Break) Auction->SkipSet();
+		// A skip can finish inside one tick, clearing the engine's fast flag before we look: remember it was on.
+		const bool bWasFast = Auction->IsFast();
+		if (!(bVoiceBusy && Seen < Auction->Events.Num()) || bWasFast)
 			Auction->Tick(FMath::Min(Dt, 0.1f) * Speed);
-		// When fast resolving, do not rewind into old intermediate bids
-		if (Auction->Events.Num() - Seen > 1 && Auction->IsFast()) Seen = Auction->Events.Num() - 1;
+		// When fast resolving, do not rewind into old intermediate bids; but a day's end is always shown.
+		if (Auction->Events.Num() - Seen > 1 && (bWasFast || Auction->IsFast()))
+		{
+			const int32 Day = Auction->Events.IndexOfByPredicate([this](const FAuctionEventRecord& X) { return &X - Auction->Events.GetData() >= Seen && X.Type == EAuctionEvent::DayEnded; });
+			Seen = Day != INDEX_NONE ? Day : Auction->Events.Num() - 1;
+		}
 		if (Seen < Auction->Events.Num() && Now() >= VoiceUntil) Present(Auction->Events[Seen++]);
 		if (Auction->Phase == EAuctionPhase::Finished && Now() - CaptionAt > 5.0)
 		{
 			Screen = EScreen::Results;
 			PanelTeam = Team;
+			ClearSave();
 			UE_LOG(LogCRICKET26, Display, TEXT("Auction finished: %d lots held"), Auction->LotsHeld);
 		}
 	}

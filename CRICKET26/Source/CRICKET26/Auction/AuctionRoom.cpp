@@ -556,8 +556,15 @@ void AAuctionRoom::DrawWall(const FAuction* A, const FAuctionEventRecord* E)
 		Tile(C, 0, H * 0.96f - 4, W, 4, Gold);
 		if (!A || A->Phase == EAuctionPhase::Retention)
 		{
-			CanvasText(C, TEXT("IPL MEGA AUCTION"), W / 2, H * 0.42f, H * 0.2f, FLinearColor::White, 0.5f);
-			CanvasText(C, TEXT("TEN FRANCHISES  ·  ₹120 CRORE EACH"), W / 2, H * 0.64f, H * 0.07f, Gold, 0.5f);
+			const bool bMini = A && A->IsMini();
+			CanvasText(C, bMini ? FString::Printf(TEXT("IPL %d AUCTION"), A->Config.Season) : FString(TEXT("IPL MEGA AUCTION")), W / 2, H * 0.42f, H * 0.2f, FLinearColor::White, 0.5f);
+			CanvasText(C, bMini ? FString(TEXT("TEN FRANCHISES  ·  TOPPING UP TO 25")) : FString(TEXT("TEN FRANCHISES  ·  ₹120 CRORE EACH")), W / 2, H * 0.64f, H * 0.07f, Gold, 0.5f);
+			return;
+		}
+		if (A->Phase == EAuctionPhase::Break)
+		{
+			CanvasText(C, TEXT("END OF DAY ONE"), W / 2, H * 0.42f, H * 0.18f, FLinearColor::White, 0.5f);
+			CanvasText(C, TEXT("THE AUCTION RESUMES WITH THE UNCAPPED SETS"), W / 2, H * 0.62f, H * 0.06f, Gold, 0.5f);
 			return;
 		}
 		if (A->Phase == EAuctionPhase::Finished)
@@ -715,6 +722,7 @@ void AAuctionRoom::Present(const FAuction& A, const FAuctionEventRecord& E)
 	const double T = Now();
 	const bool bTeam = E.Team >= 0 && E.Team < 10;
 	const bool bFirstBid = E.Type == EAuctionEvent::Bid && bTeam && LastBidder == INDEX_NONE;
+	const int32 Duel[2] = { Split[0], Split[1] }; // the two tables of the last duel, before this event changes them
 	// Keep the two most recent opposing bidders available for brief split-screen shots.
 	if (E.Type == EAuctionEvent::Bid && bTeam)
 	{
@@ -768,11 +776,27 @@ void AAuctionRoom::Present(const FAuction& A, const FAuctionEventRecord& E)
 	case EAuctionEvent::Out:
 		if (bTeam) Acts[E.Team].OutAt = T;
 		break;
+	case EAuctionEvent::Timeout:
+		// The table asked for a moment: its people put their heads together, on camera.
+		if (bTeam) { Acts[E.Team].HuddleAt = T; LookTeam = E.Team; Cut(OnTable(E.Team)); }
+		break;
+	case EAuctionEvent::DayEnded:
+	case EAuctionEvent::DayStarted:
+		DrawWall(&A, &E);
+		DrawSideScreens(&A);
+		Cut(Wide());
+		break;
 	case EAuctionEvent::Sold:
 		GavelAt = T;
 		DrawWall(&A, &E);
 		DrawSideScreens(&A);
 		SaleWideAt = T + 2.0;
+		// The side that lost the duel sinks back as the other table applauds.
+		if (bTeam && Duel[0] != INDEX_NONE)
+		{
+			const int32 Loser = Duel[0] == E.Team ? Duel[1] : Duel[0];
+			if (Loser >= 0 && Loser < 10 && Loser != E.Team) Acts[Loser].OutAt = T + 0.2;
+		}
 		if (bTeam)
 		{
 			Acts[E.Team].CheerAt = T + 0.4;

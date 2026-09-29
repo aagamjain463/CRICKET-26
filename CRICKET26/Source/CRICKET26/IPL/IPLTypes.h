@@ -126,6 +126,7 @@ struct FIPLSeason
 
 	UPROPERTY() FString SeasonId;
 	UPROPERTY() int32 UserTeam = INDEX_NONE;
+	UPROPERTY() int32 Year = 2027;             // the IPL season these squads were bought for
 	UPROPERTY() TArray<FIPLSquad> Squads;      // 10, franchise order = AuctionData::Franchises()
 	UPROPERTY() TArray<FIPLFixture> Fixtures;  // league (70) then playoffs as they are created
 	UPROPERTY() TArray<FIPLTableRow> Table;    // 10, index = franchise

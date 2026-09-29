@@ -13,6 +13,15 @@ mkdir -p "$OUT"
 "$CXX" -std=c++20 -O2 -g -Wall -Wshadow -Werror -Wno-unused-function -Wno-unused-variable -Wno-sign-compare \
 	-Wno-unused-but-set-variable -Wno-unused-private-field \
 	-I"$HERE/shim" -I"$SRC" -I"$SRC/Tests" \
-	"$SRC"/AuctionData.cpp "$SRC"/AuctionEngine.cpp $(ls "$SRC"/AuctionAI.cpp 2>/dev/null) \
+	"$SRC"/AuctionData.cpp "$SRC"/AuctionEngine.cpp "$SRC"/AuctionAI.cpp \
 	"$SRC"/Tests/AuctionEngineTests.cpp "$HERE"/main.cpp -o "$OUT/auction_sim"
+# The auctioneer's lines too, against stand-ins for the room layout and the audio (calls_stubs/). Compiled from a copy,
+# so its quoted includes find the stand-ins rather than the real room header beside it.
+cp "$SRC"/AuctionCalls.cpp "$OUT"/AuctionCalls.cpp
+"$CXX" -std=c++20 -O2 -g -Wall -Wshadow -Werror -Wno-unused-function -Wno-unused-variable -Wno-sign-compare \
+	-Wno-unused-but-set-variable -Wno-unused-private-field \
+	-I"$HERE/shim" -I"$HERE/calls_stubs" -I"$SRC" -I"$SRC/Tests" \
+	"$SRC"/AuctionData.cpp "$SRC"/AuctionEngine.cpp "$SRC"/AuctionAI.cpp "$OUT"/AuctionCalls.cpp \
+	"$HERE"/calls_test.cpp "$HERE"/main.cpp -o "$OUT/auction_calls"
 "$OUT/auction_sim" "$@"
+"$OUT/auction_calls" "$@"

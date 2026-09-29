@@ -7,7 +7,8 @@ namespace
 {
 	/** Every phrasing the auctioneer has, by moment; {0}, {1}... are the names and prices said into it. */
 	enum class EPhrase : uint8 { Welcome, NextSet, Accelerated, LotOpened, Opening, FirstBid, NewPaddle, Back, Raise, Huddle, Out, GoingOnce, GoingTwice,
-		Sold, SoldRtm, Record, Unsold, RtmOffered, RtmUsed, RtmDeclined, FinalRaise, RtmMatched, RtmNotMatched, Finished, Count };
+		Sold, SoldRtm, Record, Unsold, RtmOffered, RtmUsed, RtmDeclined, FinalRaise, RtmMatched, RtmNotMatched, Finished,
+		WelcomeMini, FinishedMini, Timeout, DayEnded, DayStarted, FeeCapped, Sticking, IplRecord, Count };
 
 	const TArray<const TCHAR*>& Phrasings(EPhrase Phrase)
 	{
@@ -38,6 +39,14 @@ namespace
 			{ TEXT("Yes, they would! {0} match at {1}.") },
 			{ TEXT("No, they would not. So {0} stays with {1} at {2}.") },
 			{ TEXT("And that brings the IPL mega auction to a close. Ten new squads. Thank you, everyone, and good luck for the season.") },
+			{ TEXT("Good afternoon, ladies and gentlemen, and a very warm welcome to the IPL auction. Ten franchises, and the places they have to fill. We begin with {0}.") },
+			{ TEXT("And that brings the IPL auction to a close. Thank you, everyone, and good luck for the season.") },
+			{ TEXT("{0} ask for a moment. Of course, take your time."), TEXT("A timeout for {0}. We'll wait."), TEXT("{0} would like a word at the table. Take your time.") },
+			{ TEXT("And that brings day one to a close. Thank you, everyone. We resume tomorrow with the uncapped players.") },
+			{ TEXT("Good afternoon, and welcome back to day two of the IPL mega auction. We begin with the uncapped sets.") },
+			{ TEXT("Under the overseas cap he will be paid {0}. The rest of that goes to the board.") },
+			{ TEXT("{0} on the table. {1} are thinking about it."), TEXT("{0}. That's a big number. {1} take a moment."), TEXT("We're at {0}. {1}, is that a paddle?") },
+			{ TEXT(" The most expensive player in IPL history.") },
 		};
 		static_assert(UE_ARRAY_COUNT(Table) == int32(EPhrase::Count), "a row per phrase");
 		return Table[int32(Phrase)];
@@ -131,7 +140,10 @@ namespace AuctionCalls
 		{
 			const FAuctionSet* S = A.CurrentSet();
 			if (!S) break;
-			if (A.SetIndex == 0) Say(C, Pick(E, EPhrase::Welcome));
+			const bool bFirst = !A.Events.ContainsByPredicate([&](const FAuctionEventRecord& X) { return &X != &E && X.Type == EAuctionEvent::SetOpened && X.Time < E.Time; });
+			if (bFirst && A.IsMini()) Say(C, Pick(E, EPhrase::WelcomeMini), { S->Name.ToLower() });
+			else if (bFirst) Say(C, Pick(E, EPhrase::Welcome));
+			else if (A.Events.ContainsByPredicate([&](const FAuctionEventRecord& X) { return X.Type == EAuctionEvent::DayStarted && X.Time == E.Time; })) break; // day two's welcome said it
 			else Say(C, Pick(E, EPhrase::NextSet), { S->Name.ToLower() });
 			break;
 		}
@@ -154,7 +166,15 @@ namespace AuctionCalls
 			else Say(C, Pick(E, bBack ? EPhrase::Back : EPhrase::Raise), { Amount, Team });
 			break;
 		}
-		case EAuctionEvent::Huddle: Say(C, Pick(E, EPhrase::Huddle), { Team }); break;
+		case EAuctionEvent::Huddle:
+			// At a round crore figure the whole room feels the pause.
+			if (E.Amount >= 1500 && E.Amount % 500 == 0) Say(C, Pick(E, EPhrase::Sticking), { Money, Team });
+			else Say(C, Pick(E, EPhrase::Huddle), { Team });
+			break;
+		case EAuctionEvent::Timeout: Say(C, Pick(E, EPhrase::Timeout), { Team }); break;
+		case EAuctionEvent::DayEnded: Say(C, Pick(E, EPhrase::DayEnded)); break;
+		case EAuctionEvent::DayStarted: Say(C, Pick(E, EPhrase::DayStarted)); break;
+		case EAuctionEvent::FeeCapped: Say(C, Pick(E, EPhrase::FeeCapped), { Money }); break;
 		case EAuctionEvent::Out: Say(C, Pick(E, EPhrase::Out), { Team, Money }); break;
 		case EAuctionEvent::GoingOnce: Say(C, Pick(E, EPhrase::GoingOnce), { Money, Team, Where(E.Team) }); break;
 		case EAuctionEvent::GoingTwice: Say(C, Pick(E, EPhrase::GoingTwice)); break;
@@ -163,7 +183,8 @@ namespace AuctionCalls
 			const bool bRtm = A.Teams.IsValidIndex(E.Team) && A.Teams[E.Team].Squad.ContainsByPredicate([&](const FAuctionSigning& S) { return S.Player == E.Player && S.bRtm; });
 			if (bRtm) Say(C, Pick(E, EPhrase::SoldRtm), { Full, Money, Name });
 			else Say(C, Pick(E, EPhrase::Sold), { Name, Full, Money, Team });
-			if (E.Amount >= 1500 && IsRecord(A, E)) Say(C, Pick(E, EPhrase::Record));
+			if (E.Amount > AuctionRules::IplRecord && IsRecord(A, E)) Say(C, Pick(E, EPhrase::IplRecord));
+			else if (E.Amount >= 1500 && IsRecord(A, E)) Say(C, Pick(E, EPhrase::Record));
 			break;
 		}
 		case EAuctionEvent::Unsold: Say(C, Pick(E, EPhrase::Unsold), { Name }); break;
@@ -173,7 +194,7 @@ namespace AuctionCalls
 		case EAuctionEvent::FinalRaise: Say(C, Pick(E, EPhrase::FinalRaise), { Money, Team, TeamName(E.Other) }); break;
 		case EAuctionEvent::RtmMatched: Say(C, Pick(E, EPhrase::RtmMatched), { Team, Money }); break;
 		case EAuctionEvent::RtmNotMatched: Say(C, Pick(E, EPhrase::RtmNotMatched), { Name, TeamName(E.Other), Money }); break;
-		case EAuctionEvent::Finished: Say(C, Pick(E, EPhrase::Finished)); break;
+		case EAuctionEvent::Finished: Say(C, Pick(E, A.IsMini() ? EPhrase::FinishedMini : EPhrase::Finished)); break;
 		default: break;
 		}
 		return C;
@@ -201,6 +222,11 @@ namespace AuctionCalls
 		FAuction Sets(INDEX_NONE, 0);
 		Sets.BeginAuction();
 		for (const FAuctionSet& S : Sets.Sets) Add(S.Name.ToLower());
+		FAuctionConfig MiniConfig;
+		MiniConfig.Mode = EAuctionMode::Mini;
+		FAuction Mini(MiniConfig, 0);
+		Mini.BeginAuction();
+		for (const FAuctionSet& S : Mini.Sets) Add(S.Name.ToLower());
 		for (int32 R = 1; R <= 5; ++R) Add(FString::Printf(TEXT("accelerated round %d"), R));
 		TSet<int32> Bases;
 		for (const FAuctionPlayer& P : AuctionData::Players())

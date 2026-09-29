@@ -71,6 +71,8 @@ public:
 	void PlayTransition(TFunction<void()> OnMidpoint, const FString& ModeTitle = TEXT("CRICKET 26"), const FString& ModeSubtitle = TEXT("LOADING..."));
 	void ShowTabDirect(EFrontendTab Tab);
 	void OpenAuctionWithTransition();
+	/** The career's next auction, after a finished IPL season. */
+	void OpenCareerAuctionWithTransition();
 
 protected:
 	// Builds the shell here, not in NativeOnInitialized, which UMG skips when there is no player context

@@ -719,7 +719,7 @@ FAuctionNeeds FAuction::Needs(int32 Team) const
 	const float Ideal = 10.5f * Contribution(80.f, false);
 	N.Strength = FMath::Clamp(100.f * Value / FMath::Max(1.f, Ideal), 0.f, 100.f);
 	N.Rank = 1;
-	for (int32 T = 0; T < Teams.Num(); ++T) if (T != Team && SquadValue(SquadIds(T)) > Value) ++N.Rank;
+	for (int32 T = 0; T < Teams.Num(); ++T) if (T != Team && TeamValue(T) > Value) ++N.Rank; // cached: the HUD asks every frame
 	int32 Overseas = 0;
 	for (int32 P : Squad) Overseas += Player(P).IsOverseas();
 	N.Places = FMath::Max(0, AuctionRules::SquadMax - Squad.Num());

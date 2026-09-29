@@ -35,6 +35,7 @@ bool FFrontendCatalogueTest::RunTest(const FString&)
 	for (const FFrontendFeature& F : FrontendData::MoreModes()) TestNotEqual(TEXT("unbuilt modes are not marked playable"), F.Status, EFeatureStatus::Available);
 	TestEqual(TEXT("the AI auction is playable"), FrontendData::AuctionModes()[0].Status, EFeatureStatus::Available);
 	TestNotEqual(TEXT("the online auction is not"), FrontendData::AuctionModes()[1].Status, EFeatureStatus::Available);
+	TestEqual(TEXT("pass-the-paddle auctions are playable"), FrontendData::AuctionModes().Last().Status, EFeatureStatus::Available);
 	for (const FStoreOffer& O : FrontendData::StoreOffers()) TestNotEqual(TEXT("nothing in the store is buyable"), O.Status, EFeatureStatus::Available);
 	for (EFeatureStatus S : { EFeatureStatus::Available, EFeatureStatus::InDevelopment, EFeatureStatus::ComingSoon, EFeatureStatus::Locked })
 	{

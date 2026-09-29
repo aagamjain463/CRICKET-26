@@ -38,7 +38,31 @@ Compiled 2026-09-28. Players.csv has 400 rows: 250 original IPL 2026 squad playe
   - Titles are counted through 2026: RCB won 2025 and 2026. SRH's count excludes Deccan Chargers 2009.
   - PrimaryHex and SecondaryHex are approximate brand colours, not official hex codes.
 
-## Ratings (0-99, clamped 10-99)
+## Ratings v2 (`ratings.py`, then `roster.py`)
+`ratings.py` rewrites BatRating, BowlRating and Tags, keeping the original ratings in BatRatingV1/BowlRatingV1 so it
+can be re-run. Two sources, best first:
+- **Cricsheet** (when `Scripts/auction/cache/` holds `ipl_json.zip`, the other league zips `t20s bbl psl sat ilt mlc cpl
+  hnd`, and `people.csv`/`names.csv` from cricsheet.org/register): samples weighted by recency (last IPL season 1.0, the
+  season before 0.6, older 0.3) and by league (IPL 1.0, T20I 0.9, the big leagues 0.75-0.8, the Hundred 0.6); bowling
+  economy judged against the par of the phase bowled (powerplay 8.6, middle 8.2, death 10.8 an over) so death
+  specialists are not punished for bowling at the death; tags from batting position and phase splits; the last IPL
+  season into Last* (the broadcast's form strip) and every non-IPL T20 into T20*. `cricsheet_ids.csv` (Name,Identifier)
+  overrides name matching.
+- **Fallback** (no cache, as committed): v1 shrunk toward the role prior by sample size (trust 1 - exp(-balls/350)
+  batting, 1 - exp(-balls/500) bowling, so a season is not yet a career and a long career keeps its rating), less the
+  age decline career numbers hide (1 a year 34-36, 2 a year 37-39, 3 after), less 5 for a 33-plus with no 2026 deal
+  (the Dec 2025 auction passed him over). Tags from bowling style, runs per match and strike rate, plus scouting lists
+  in the script for mystery spin, captaincy, new-ball and death specialists.
+- Tags: Opener, Anchor, Finisher, KeeperBat, PowerplayPace, DeathPace, LeftArmPace, WristSpin, FingerSpin, Mystery,
+  Captain. The auction AI builds its best-eleven model on them.
+- `test_ratings.py` checks both paths (the Cricsheet one on synthetic match files).
+
+## Teams.csv
+Compiled into the game by `roster.py` (AuctionTeams.inl), so the franchise names, cities, grounds, owners, captains,
+coaches and titles have one source. Short is the broadcast caption name; PrimaryHex/SecondaryHex are the colours the
+game's room and kits were tuned with.
+
+## Ratings v1 (0-99, clamped 10-99)
 - Bat: calc = 25 + 35*min(avg,45)/45 + 30*clamp01((SR-100)/70) + 20*min(runs/6000,1). The result is blended with a role prior (BAT 60, WK 55, AR 48, PACE 22, SPIN 25) by weight min(ballsFaced/300,1). The T20I sample replaces the IPL sample when the player has faced fewer than 150 IPL balls and the T20I sample is larger.
 - Bowl: calc = 20 + 1.15*(40*clamp01((10.5-econ)/4) + 25*clamp01((30-ballsPerWkt)/14) + 15*min(wkts/150,1)). The result is blended with a prior (PACE/SPIN 55, AR 45, BAT 20 or 12 if no bowling style, WK 10) by weight min(ballsBowled/480,1). The T20I sample is used below 240 IPL balls if it is larger.
 

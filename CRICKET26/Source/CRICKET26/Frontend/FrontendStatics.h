@@ -33,7 +33,8 @@ public:
 	static FString SuperOverOptions(int32 Overs = 1);
 
 	// Starts the IPL mega auction against nine AI franchises (AuctionGameMode).
-	static void OpenAuction(UObject* Ctx);
+	/** The auction; bCareer continues a finished IPL season into its next auction (mini, or mega every three years). */
+	static void OpenAuction(UObject* Ctx, bool bCareer = false);
 	static EFrontendTab TabFromOptions(const FString& Options);
 
 	// Dev QA: with -FrontendShot=Name, saves the viewport and its UI to Saved/Screenshots after Delay, then quits.
