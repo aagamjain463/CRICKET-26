@@ -33,6 +33,9 @@ struct FCricketBatterPose
 	bool bGloves = false;
 };
 
+/** How a hand's fingers are held over the clip's: as the clip has them, open and flat, a fist, or a fist with the forefinger out. */
+enum class ECricketHandShape : uint8 { Clip, Open, Fist, Point };
+
 struct FCricketBodyPose
 {
 	bool bKeeper = false;
@@ -53,6 +56,7 @@ struct FCricketBodyPose
 	FVector Elbow[2] = { FVector::ZeroVector, FVector::ZeroVector }; // where each elbow should point
 	FVector PalmFacing[2] = { FVector::ZeroVector, FVector::ZeroVector }; // world direction out of each palm; zero keeps clip rotation
 	FVector FingerFacing[2] = { FVector::ZeroVector, FVector::ZeroVector }; // world direction from wrist toward fingers
+	ECricketHandShape HandShape[2] = { ECricketHandShape::Clip, ECricketHandShape::Clip }; // with a facing: the fingers' shape
 	// Captured actions over the idle and jog, kept alive by the game mode: [0] a stroke or a dive, [1] a throw over it.
 	UAnimSequence* Clip[2] = { nullptr, nullptr };
 	float ClipTime[2] = { 0.f, 0.f }, ClipWeight[2] = { 0.f, 0.f };

@@ -45,6 +45,8 @@ namespace CricketBroadcastSequenceTests
 		return true;
 	}
 
+	float Dot(const FVector& A, const FVector& B) { return A.X * B.X + A.Y * B.Y + A.Z * B.Z; }
+
 	int32 IndexOf(const FSequence& S, ESegment Kind)
 	{
 		for (int32 I = 0; I < S.Segments.Num(); ++I)
@@ -77,15 +79,69 @@ bool FSequenceSignals::RunTest(const FString&)
 
 	// The umpire's arms: a six raises both hands above the shoulders and holds them; out raises the right hand only;
 	// wide spreads them; every signal is down again by the end of its beat.
-	const FVector SL(2250.f, 60.f, 145.f), SR(2250.f, 40.f, 145.f), Fwd(-1.f, 0.f, 0.f), Right(0.f, -1.f, 0.f);
-	FArms A = SignalArms(ESignal::Six, 1.5f, 3.f, SL, SR, Fwd, Right);
-	TestTrue(TEXT("six: both arms up"), A.Weight[0] > 0.99f && A.Weight[1] > 0.99f && A.Hand[0].Z > SL.Z + 50.f && A.Hand[1].Z > SR.Z + 50.f);
-	A = SignalArms(ESignal::Out, 1.5f, 3.f, SL, SR, Fwd, Right);
-	TestTrue(TEXT("out: the right hand only"), A.Weight[0] == 0.f && A.Weight[1] > 0.99f && A.Hand[1].Z > SR.Z + 45.f);
-	A = SignalArms(ESignal::Wide, 1.5f, 3.f, SL, SR, Fwd, Right);
+	FArmFrame Body;
+	Body.Shoulder[0] = FVector(2250.f, 60.f, 145.f);
+	Body.Shoulder[1] = FVector(2250.f, 40.f, 145.f);
+	Body.Forward = FVector(-1.f, 0.f, 0.f);
+	Body.Right = FVector(0.f, -1.f, 0.f);
+	Body.Upper = 29.f;
+	Body.Lower = 27.f;
+	const FVector SL = Body.Shoulder[0], SR = Body.Shoulder[1], Fwd = Body.Forward, Up(0.f, 0.f, 1.f);
+	const float Full = Body.Upper + Body.Lower;
+	FArms A = SignalArms(ESignal::Six, 1.5f, 3.f, Body);
+	TestTrue(TEXT("six: both arms up"), A.Weight[0] > 0.99f && A.Weight[1] > 0.99f && A.Hand[0].Z > SL.Z + 0.9f * Full && A.Hand[1].Z > SR.Z + 0.9f * Full);
+	TestTrue(TEXT("six: palms to the field, fingers up"), Dot(A.Palm[0], Fwd) > 0.7f && Dot(A.Palm[1], Fwd) > 0.7f && Dot(A.Fingers[0], Up) > 0.8f && Dot(A.Fingers[1], Up) > 0.8f);
+	TestTrue(TEXT("six: forefingers"), A.Shape[0] == EHandShape::Point && A.Shape[1] == EHandShape::Point);
+	A = SignalArms(ESignal::Out, 1.5f, 3.f, Body);
+	TestTrue(TEXT("out: the right hand only"), A.Weight[0] == 0.f && A.Weight[1] > 0.99f && A.Hand[1].Z > SR.Z + 0.9f * Full);
+	TestTrue(TEXT("out: the forefinger up, palm forward"), A.Shape[1] == EHandShape::Point && Dot(A.Fingers[1], Up) > 0.8f && Dot(A.Palm[1], Fwd) > 0.5f);
+	A = SignalArms(ESignal::Wide, 1.5f, 3.f, Body);
 	TestTrue(TEXT("wide: arms spread"), FMath::Abs(A.Hand[0].Y - A.Hand[1].Y) > 100.f);
-	A = SignalArms(ESignal::Six, 2.999f, 3.f, SL, SR, Fwd, Right);
+	TestTrue(TEXT("wide: level, palms down"), FMath::Abs(A.Hand[0].Z - SL.Z) < 8.f && A.Palm[0].Z < -0.7f && A.Palm[1].Z < -0.7f);
+	A = SignalArms(ESignal::Six, 2.999f, 3.f, Body);
 	TestTrue(TEXT("arms down at the end"), A.Weight[0] < 0.05f && A.Weight[1] < 0.05f);
+
+	// Every signal and gesture, frame by frame at 60 Hz: the wrist inside the arm's reach and never swept through the
+	// shoulder, the hand on the line of the forearm the solver will make (so it never looks come off the elbow), the
+	// palm square to the fingers, and nothing jumping or flipping from one frame to the next.
+	auto Check = [&](const TCHAR* What, TFunctionRef<FArms(float)> At, float Duration, float MinReach)
+	{
+		bool bReach = true, bLine = true, bSquare = true, bSmooth = true, bClose = true;
+		FArms Last = At(0.f);
+		for (float T = 1.f / 60.f; T <= Duration; T += 1.f / 60.f)
+		{
+			const FArms Now = At(T);
+			for (int32 Side = 0; Side < 2; ++Side)
+			{
+				if (Now.Weight[Side] <= 0.f) continue;
+				const FVector Sh = Body.Shoulder[Side];
+				const float D = FVector::Dist(Sh, Now.Hand[Side]);
+				bReach &= D <= 0.976f * Full;
+				bClose &= D >= MinReach * Full;
+				const FVector Elbow = ElbowAt(Sh, Now.Hand[Side], Now.Elbow[Side], Body.Upper, Body.Lower);
+				bLine &= FMath::Abs(FVector::Dist(Sh, Elbow) - Body.Upper) < 0.5f && FMath::Abs(FVector::Dist(Elbow, Now.Hand[Side]) - Body.Lower) < 0.5f;
+				bLine &= Dot((Now.Hand[Side] - Elbow) / Body.Lower, Now.Fingers[Side]) > 0.99f;
+				bSquare &= FMath::Abs(Dot(Now.Palm[Side], Now.Fingers[Side])) < 0.02f && FMath::Abs(Now.Palm[Side].Size() - 1.f) < 0.01f;
+				if (Last.Weight[Side] > 0.f)
+				{
+					bSmooth &= FVector::Dist(Last.Hand[Side], Now.Hand[Side]) < 14.f;
+					bSmooth &= Dot(Last.Palm[Side], Now.Palm[Side]) > 0.93f && Dot(Last.Fingers[Side], Now.Fingers[Side]) > 0.93f;
+				}
+			}
+			Last = Now;
+		}
+		TestTrue(*FString::Printf(TEXT("%s: inside reach"), What), bReach);
+		TestTrue(*FString::Printf(TEXT("%s: never through the shoulder"), What), bClose);
+		TestTrue(*FString::Printf(TEXT("%s: hand on the forearm"), What), bLine);
+		TestTrue(*FString::Printf(TEXT("%s: palm square to the fingers"), What), bSquare);
+		TestTrue(*FString::Printf(TEXT("%s: smooth"), What), bSmooth);
+	};
+	for (const ESignal Signal : { ESignal::Six, ESignal::Four, ESignal::Out, ESignal::Wide, ESignal::NoBall, ESignal::Bye, ESignal::LegBye })
+		for (const float Duration : { 1.5f, 2.8f, 3.4f })
+			Check(TEXT("signal"), [&](float T) { return SignalArms(Signal, T, Duration, Body); }, Duration,
+				Signal == ESignal::Six || Signal == ESignal::Out || Signal == ESignal::Bye ? 0.8f : 0.6f);
+	for (const EGesture Gesture : { EGesture::ArmsUp, EGesture::FistPump, EGesture::HandsOnHips, EGesture::HandsOnHead, EGesture::Clap, EGesture::HighFive, EGesture::Point })
+		Check(TEXT("gesture"), [&](float T) { return GestureArms(Gesture, T, 3.f, Body); }, 3.f, 0.3f);
 	return true;
 }
 

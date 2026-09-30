@@ -174,7 +174,9 @@ void FCricketAnimProxy::ApplyActions(FPoseContext& Output) const
 
 	FCS CS;
 	CS.InitPose(Output.Pose);
-	if ((!Pose.PalmFacing[0].IsNearlyZero() || !Pose.PalmFacing[1].IsNearlyZero()) && (!Rig.bValid || Rig.Serial != Bones.GetSerialNumber()))
+	const bool bWrists = !Pose.PalmFacing[0].IsNearlyZero() || !Pose.PalmFacing[1].IsNearlyZero()
+		|| Pose.HandShape[0] != ECricketHandShape::Clip || Pose.HandShape[1] != ECricketHandShape::Clip;
+	if (bWrists && (!Rig.bValid || Rig.Serial != Bones.GetSerialNumber()))
 		BuildRig(Bones);
 	// The mannequin faces +Y in its own space.
 	const FVector Forward(0.f, 1.f, 0.f);
@@ -251,15 +253,60 @@ void FCricketAnimProxy::ApplyActions(FPoseContext& Output) const
 			}
 		}
 		const FVector Now = CS.GetComponentSpaceTransform(Hand[S]).GetLocation();
-		Reach(CS, Upper[S], Lower[S], Hand[S], FMath::Lerp(Now, Pose.Hand[S], FMath::Min(Pose.HandWeight[S], 1.f)), Pose.Elbow[S]);
+		const float W = FMath::Min(Pose.HandWeight[S], 1.f);
+		Reach(CS, Upper[S], Lower[S], Hand[S], FMath::Lerp(Now, Pose.Hand[S], W), Pose.Elbow[S]);
 		if (!Pose.PalmFacing[S].IsNearlyZero() && !Pose.FingerFacing[S].IsNearlyZero() && Rig.bValid && Rig.Hand[S] != INDEX_NONE)
 		{
-			// Orient only the wrist after the arm reaches its target; neither shoulder nor elbow moves.
+			// Orient the hand after the arm reaches its target, blended in with the hand's weight; neither shoulder nor
+			// elbow moves. The solve swings the forearm without turning it about its length, so a hand carried up from
+			// the idle would keep the hanging roll and the wrist alone would have to wring round, up to half a turn,
+			// to face the palm: that reads as the palm the wrong way round and the hand come off the end of the arm.
+			// So the forearm rolls first, as a real one pronates, to where the hand sits straight on it as in the
+			// reference pose, and the wrist only makes up what is left.
 			const FQuat Reference = Rig.Ref[Rig.Hand[S]].GetRotation();
-			const FQuat Wrist = CS.GetComponentSpaceTransform(Hand[S]).GetRotation();
 			const FQuat From = FRotationMatrix::MakeFromXY(Rig.Fingers[S], Rig.Palm[S]).ToQuat();
 			const FQuat To = FRotationMatrix::MakeFromXY(Pose.FingerFacing[S], Pose.PalmFacing[S]).ToQuat();
-			Turn(CS, Hand[S], To * From.Inverse() * Reference * Wrist.Inverse());
+			const FQuat Target = To * From.Inverse() * Reference;
+			if (Lower[S] != INDEX_NONE && Rig.Lower[S] != INDEX_NONE)
+			{
+				const FTransform Fore = CS.GetComponentSpaceTransform(Lower[S]);
+				const FVector Axis = (CS.GetComponentSpaceTransform(Hand[S]).GetLocation() - Fore.GetLocation()).GetSafeNormal();
+				if (!Axis.IsNearlyZero())
+				{
+					const FQuat Straight = Target * (Rig.Ref[Rig.Lower[S]].GetRotation().Inverse() * Reference).Inverse();
+					const float Pronate = FMath::Clamp(float((Straight * Fore.GetRotation().Inverse()).GetTwistAngle(Axis)),
+						-FMath::DegreesToRadians(150.f), FMath::DegreesToRadians(150.f));
+					Turn(CS, Lower[S], FQuat(Axis, Pronate * W));
+				}
+			}
+			const FQuat Wrist = CS.GetComponentSpaceTransform(Hand[S]).GetRotation();
+			Turn(CS, Hand[S], FQuat::Slerp(FQuat::Identity, Target * Wrist.Inverse(), W));
+		}
+		if (Pose.HandShape[S] != ECricketHandShape::Clip && Rig.bValid && Rig.Hand[S] != INDEX_NONE)
+		{
+			// The fingers flat off the hand as in the reference pose, then curled toward the palm knuckle by knuckle:
+			// open, a fist, or a fist with the forefinger straight (the umpire's OUT and SIX).
+			static const float Curls[3][5][3] = {
+				{ { 0.f, 0.f, 0.f }, { 4.f, 4.f, 3.f }, { 4.f, 4.f, 3.f }, { 5.f, 5.f, 3.f }, { 6.f, 5.f, 3.f } },
+				{ { 25.f, 30.f, 25.f }, { 80.f, 90.f, 55.f }, { 82.f, 90.f, 55.f }, { 85.f, 90.f, 55.f }, { 88.f, 90.f, 55.f } },
+				{ { 25.f, 35.f, 30.f }, { 3.f, 3.f, 2.f }, { 82.f, 90.f, 55.f }, { 85.f, 90.f, 55.f }, { 88.f, 90.f, 55.f } } };
+			const int32 Shape = Pose.HandShape[S] == ECricketHandShape::Open ? 0 : Pose.HandShape[S] == ECricketHandShape::Fist ? 1 : 2;
+			const FQuat FromRef = CS.GetComponentSpaceTransform(Hand[S]).GetRotation() * Rig.Ref[Rig.Hand[S]].GetRotation().Inverse();
+			for (int32 F = 0; F < 5; ++F)
+			{
+				const FVector CurlAxis = FromRef.RotateVector(Rig.CurlAxis[S][F]);
+				if (CurlAxis.IsNearlyZero()) continue;
+				float Sum = 0.f;
+				for (int32 K = 0; K < 3; ++K)
+				{
+					const int32 Mesh = Rig.Finger[S][F][K];
+					if (Mesh == INDEX_NONE || Rig.Compact[Mesh] == INDEX_NONE) continue;
+					Sum += Curls[Shape][F][K];
+					const FCompactPoseBoneIndex Bone(Rig.Compact[Mesh]);
+					const FQuat Want = FQuat(CurlAxis, FMath::DegreesToRadians(Sum)) * FromRef * Rig.Ref[Mesh].GetRotation();
+					Turn(CS, Bone, FQuat::Slerp(FQuat::Identity, Want * CS.GetComponentSpaceTransform(Bone).GetRotation().Inverse(), W));
+				}
+			}
 		}
 	}
 

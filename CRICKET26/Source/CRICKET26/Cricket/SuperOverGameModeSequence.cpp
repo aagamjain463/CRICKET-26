@@ -643,18 +643,26 @@ void ASuperOverGameMode::PoseSequenceBodies()
 	const FSegment* G = ST >= 0.f ? Seq.At(ST) : nullptr;
 	if (!G || IsReplaying() || IsReviewing() || G->Kind == ESegment::Replay) return;
 	const float T = ST - G->Start;
-	// A body's shoulders and axes from its skeleton: right from the left shoulder to the right, forward square to it.
-	auto Axes = [this](AStaticMeshActor* A, FVector& SL, FVector& SR, FVector& Fwd, FVector& Rt) -> bool
+	// A body's shoulders, axes and arm lengths from its skeleton: right from the left shoulder to the right, forward
+	// square to it.
+	auto Axes = [this](AStaticMeshActor* A, FArmFrame& Arms) -> bool
 	{
 		const USkeletalMeshComponent* Body = A ? BodyOf(A) : nullptr;
 		if (!Body || A->IsHidden()) return false;
-		SL = Body->GetSocketLocation(TEXT("upperarm_l"));
-		SR = Body->GetSocketLocation(TEXT("upperarm_r"));
-		Rt = FVector(SR.X - SL.X, SR.Y - SL.Y, 0.f).GetSafeNormal();
-		if (Rt.IsNearlyZero()) return false;
-		Fwd = FVector(Rt.Y, -Rt.X, 0.f);
+		Arms.Shoulder[0] = Body->GetSocketLocation(TEXT("upperarm_l"));
+		Arms.Shoulder[1] = Body->GetSocketLocation(TEXT("upperarm_r"));
+		const FVector Elbow = Body->GetSocketLocation(TEXT("lowerarm_r")), Wrist = Body->GetSocketLocation(TEXT("hand_r"));
+		Arms.Upper = FVector::Dist(Arms.Shoulder[1], Elbow);
+		Arms.Lower = FVector::Dist(Elbow, Wrist);
+		if (Arms.Upper < 5.f || Arms.Lower < 5.f) return false;
+		const FVector SL = Arms.Shoulder[0], SR = Arms.Shoulder[1];
+		Arms.Right = FVector(SR.X - SL.X, SR.Y - SL.Y, 0.f).GetSafeNormal();
+		if (Arms.Right.IsNearlyZero()) return false;
+		Arms.Forward = FVector(Arms.Right.Y, -Arms.Right.X, 0.f);
 		return true;
 	};
+	// The arm targets onto the body, with the palm, the fingers' line and their shape, so the wrist turns with the
+	// arm instead of keeping the idle's hanging rotation.
 	auto Apply = [this](AStaticMeshActor* A, const FArms& Arms)
 	{
 		UCricketAnimInstance* Anim = A ? AnimOf(A) : nullptr;
@@ -665,14 +673,21 @@ void ASuperOverGameMode::PoseSequenceBodies()
 			Anim->Pose.Hand[H] = Arms.Hand[H];
 			Anim->Pose.Elbow[H] = Arms.Elbow[H];
 			Anim->Pose.HandWeight[H] = Arms.Weight[H];
-			Anim->Pose.PalmFacing[H] = FVector::ZeroVector;
-			Anim->Pose.FingerFacing[H] = FVector::ZeroVector;
+			Anim->Pose.PalmFacing[H] = Arms.Palm[H];
+			Anim->Pose.FingerFacing[H] = Arms.Fingers[H];
+			switch (Arms.Shape[H])
+			{
+			case EHandShape::Open: Anim->Pose.HandShape[H] = ECricketHandShape::Open; break;
+			case EHandShape::Fist: Anim->Pose.HandShape[H] = ECricketHandShape::Fist; break;
+			case EHandShape::Point: Anim->Pose.HandShape[H] = ECricketHandShape::Point; break;
+			default: Anim->Pose.HandShape[H] = ECricketHandShape::Clip; break;
+			}
 		}
 	};
 	auto DoGesture = [&](AStaticMeshActor* A, EGesture Kind)
 	{
-		FVector SL, SR, Fwd, Rt;
-		if (Axes(A, SL, SR, Fwd, Rt)) Apply(A, GestureArms(Kind, T, G->Duration, SL, SR, Fwd, Rt));
+		FArmFrame Arms;
+		if (Axes(A, Arms)) Apply(A, GestureArms(Kind, T, G->Duration, Arms));
 	};
 	auto LookAt = [this](AStaticMeshActor* A, const FVector& At, float Bend = 0.f)
 	{
@@ -688,11 +703,11 @@ void ASuperOverGameMode::PoseSequenceBodies()
 	case ESegment::UmpireSignal:
 	{
 		AStaticMeshActor* Ump = SeqActor(ESubject::Umpire);
-		FVector SL, SR, Fwd, Rt;
-		if (Axes(Ump, SL, SR, Fwd, Rt))
+		FArmFrame Arms;
+		if (Axes(Ump, Arms))
 		{
-			Apply(Ump, SignalArms(G->Signal, T, G->Duration, SL, SR, Fwd, Rt));
-			LookAt(Ump, (SL + SR) * 0.5f + Fwd * 800.f + FVector(0.f, 0.f, 10.f));
+			Apply(Ump, SignalArms(G->Signal, T, G->Duration, Arms));
+			LookAt(Ump, (Arms.Shoulder[0] + Arms.Shoulder[1]) * 0.5f + Arms.Forward * 800.f + FVector(0.f, 0.f, 10.f));
 		}
 		break;
 	}

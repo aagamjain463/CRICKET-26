@@ -253,7 +253,17 @@ struct FBroadcastTuning
 	/** Slow factor at the decisive moment (0.25 = quarter speed). */
 	UPROPERTY(EditAnywhere, Category = "Replay") float ReplaySlowFactor = 0.25f;
 	/** Super-slow factor for the tight angle. */
-	UPROPERTY(EditAnywhere, Category = "Replay") float SuperSlowFactor = 0.2f;
+	UPROPERTY(EditAnywhere, Category = "Replay") float SuperSlowFactor = 0.3f;
+	/**
+	 * The hero angle every package carries: its one clear look at what mattered (the stroke, the stumps, the take,
+	 * the crease), held at this steady speed through the moment, slow enough to read the bat, the ball and the hands,
+	 * never the crawl of a super-slow.
+	 */
+	UPROPERTY(EditAnywhere, Category = "Replay") float HeroSlowFactor = 0.4f;
+	/** Hero angle: ball seconds held at HeroSlowFactor either side of the moment. */
+	UPROPERTY(EditAnywhere, Category = "Replay") float HeroSlowHold = 0.35f;
+	/** Hero angle: ball seconds to ease between real speed and the held slow either side. */
+	UPROPERTY(EditAnywhere, Category = "Replay") float HeroSlowRamp = 0.5f;
 	/** Rolling buffer window (s): run-up + ball + presentation tail. */
 	UPROPERTY(EditAnywhere, Category = "Replay") float BufferWindow = 14.f;
 	/** Rolling buffer sample rate (Hz): fixed, bounded, mobile-safe. */
@@ -481,9 +491,13 @@ namespace CricketBroadcast
 		float EndTp = 1.f;      // ball time shown at angle end
 		float DecisiveTp = 0.f;
 		float SlowFactor = 0.25f;
+		float SlowHold = 0.f;   // ball seconds held at SlowFactor either side of DecisiveTp
+		float SlowRamp = 0.45f; // ball seconds easing between the hold and real speed
 		float WallTime = 3.2f;  // screen seconds
 		/** The whole ball, from the delivery stride to the end of the event, directed like live coverage. */
 		bool bFullPass = false;
+		/** The package's steady slow look at the decisive moment. */
+		bool bHero = false;
 	};
 
 	struct FReplayPackage
@@ -504,8 +518,13 @@ namespace CricketBroadcast
 	FReplayPackage BuildReplayPackage(const FReplayTrigger& Trigger, const FDeliveryResult& Result,
 		const FBroadcastFrame& Frame, const FBroadcastTuning& Tune, TArray<EBroadcastShot>& RecentShots);
 
-	/** Smooth replay speed curve (§30): near-normal approach, slow through the moment, recover after. */
-	float ReplaySpeedAt(float BallT, float DecisiveT, float SlowFactor, float Width = 0.45f);
+	/**
+	 * Smooth replay speed curve (§30): real speed on the approach, SlowFactor held for Hold ball seconds either side
+	 * of the moment, easing back to real speed over Width beyond it (a cosine, C1 continuous).
+	 */
+	float ReplaySpeedAt(float BallT, float DecisiveT, float SlowFactor, float Width = 0.45f, float Hold = 0.f);
+	/** An angle's speed at BallT, from its own slow factor, hold and ramp. */
+	float ReplaySpeedAt(const FReplayAnglePlay& Angle, float BallT);
 
 	/** Wall-clock -> ball-time remap for an angle, baked at package time (monotonic, exact endpoints). */
 	struct FTimeRemap

@@ -587,7 +587,7 @@ FString ASuperOverGameMode::CameraDebugString() const
 		const int32 A = ReplayAngle();
 		S += FString::Printf(TEXT(" | REPLAY %s P%d A%d/%d Tbal %.2f x%.2f"), ReplayEventName(ActivePackage.Event),
 			int32(ActivePackage.Priority), A + 1, ActivePackage.Angles.Num(), ReplayBallTime(),
-			ActivePackage.Angles.IsValidIndex(A) ? ReplaySpeedAt(ReplayBallTime(), ActivePackage.Angles[A].DecisiveTp, ActivePackage.Angles[A].SlowFactor) : 1.f);
+			ActivePackage.Angles.IsValidIndex(A) ? ReplaySpeedAt(ActivePackage.Angles[A], ReplayBallTime()) : 1.f);
 	}
 	else if (bReplayThis)
 	{

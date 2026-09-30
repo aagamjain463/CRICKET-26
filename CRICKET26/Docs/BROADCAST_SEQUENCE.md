@@ -93,20 +93,70 @@ The AI does not start its run-up during an intro. A human's tap skips it. At the
 - **Depth of field:** close-ups, two-shots, the crowd and the umpire focus on their subject at f/1.8-2.8 on High and Epic.
 - **Cuts:** every beat change is a hard cut. The camera changes under the stingers' full card, so the viewer never sees a cut into or out of a replay.
 
-**Replay packages** (`BuildReplayPackage`), after the reference's §4:
+**Replay packages** (`BuildReplayPackage`), after the reference's §4.
 
-| Event | Angles |
+Every package carries exactly one **hero angle** (`bHero`): the package's clear look at what mattered.
+
+- It plays at real speed well before the moment.
+- It eases over `HeroSlowRamp` (0.5 s of ball time) into a steady `HeroSlowFactor` (0.4×).
+- It holds that speed for `HeroSlowHold` (0.35 s of ball time) either side of the moment, about 1.75 s on screen, then eases back out.
+
+It is slow enough to read the bat, the ball and the hands, and never the crawl of a super-slow. The speed curve (`ReplaySpeedAt`) now has a held plateau as well as the cosine shoulders.
+
+Every angle plays at its true speed curve: its screen time is what the curve takes, so a slow factor is the speed the viewer actually sees. Nothing plays below `SuperSlowFactor` (now 0.3).
+
+| Event | Angles (hero in bold) |
 |---|---|
-| FOUR | One long angle through the stroke (from the delivery stride, slowed to 0.5× through contact): `ReplayBowlerTrack` (behind the bowler at waist height, then a dolly down the pitch behind the ball, stopping 6.5 m short of the striker) or `ReplayBeauty` (square). Then `ReplayLongLens` from the far stand, following the ball to the rope. |
-| SIX | The stroke from `ReplayGroundLevel` (on the turf 5.5 m up the pitch, 62° lens, the batter against the sky), `ReplayBeauty` or `ReplayCrane`. Then `ReplayStandTilt`: behind the stroke into the stands, the lens rising past the roof once the ball is over the rope. |
-| BOWLED, LBW | The stand camera's full pass. Then `ReplayBowlerTrack` down the pitch into the stumps (slowed to 0.35×). Then `ReplayStumpCam`, square of the stumps at knee height in super slow motion (bowled), or the slow-motion close (LBW). |
-| Caught, run out, edges, drops | Unchanged: the full pass first, then the detail angles. |
+| FOUR | **The stroke**: `ReplayBeauty` (square, batter height) or `ReplayBowlerTrack` (behind the bowler, then down the pitch behind the ball). Then `ReplayLongLens` from the far stand, following the ball to the rope. |
+| SIX | **The stroke**: `ReplayBeauty`, `ReplayGroundLevel` (on the turf, the batter against the sky) or `ReplayCrane`. Then `ReplayStandTilt`, behind the stroke into the stands, the lens rising past the roof. |
+| BOWLED, LBW, hit wicket | The full pass. **`ReplayBowlerTrack`** down the pitch into the stumps or pads. Then `ReplayStumpCam` at knee height (bowled) or side-on (LBW), at 0.3× for a moment. |
+| Caught | The full pass. The stroke that got him out, square. **The take** off the catcher (`Catch`). |
+| Run out, stumped | The full pass. How it happened, square. **Square on the crease** (`RunOut`) as the bails come off. |
+| Dropped catch, diving stop | The full pass, then **the fielder** (`Catch`) as the ball reaches the hands. |
+| Edge | The full pass, then **the edge** side-on. |
+
+When a package is trimmed to its angle count, the supporting angles go first. The full pass and the hero always play.
 
 The travelling replay cameras use a quicker operator: position 9/s, rotation 10/s.
 
 A live ball's replay carries no REPLAY tag, only its stingers, as the reference does. The highlights reel keeps its counter and its lower-third stinger.
 
-## 5. Graphics
+## 5. The umpire's signals and the players' gestures
+
+`SignalArms` and `GestureArms` give each arm four things:
+
+- the wrist's point;
+- a pole square to the arm, so the elbow's bend plane never turns over;
+- the palm's facing and the fingers' line;
+- the fingers' shape: open, a fist, or a fist with the forefinger out.
+
+The fingers run straight on from the forearm. The elbow is worked out here (`ElbowAt`) just as the engine's two-bone solve will place it.
+
+Every wrist stays inside 97.5% of the arm's measured reach. The upper arm and forearm lengths are read off the skeleton each frame.
+
+A raise travels round an arc from the hanging arm, through the front or the side, never in a straight line through the shoulder.
+
+The anim instance (`CricketAnimInstance::ApplyActions`) turns the hand to its facing in three steps:
+
+1. It rolls the forearm about its own length first, as a real forearm pronates, so the hand sits straight on it as in the reference pose.
+2. The wrist then makes up only what is left.
+3. It curls the fingers knuckle by knuckle.
+
+All three are blended in with the hand's weight.
+
+Before this change, the solve swung the arm but left the hand in the idle's hanging rotation. The palm faced the wrong way and the hand looked detached from the elbow.
+
+| Signal | Arms |
+|---|---|
+| OUT | The right forefinger straight up in front of the face, palm forward. |
+| SIX | Both arms straight up, raised slowly round the front, forefingers up, palms to the field. |
+| FOUR | The right arm swept to and fro across the front of the body at waist height, palm down. |
+| WIDE | Both arms straight out level, palms down. |
+| NO-BALL | The right arm straight out level. |
+| BYE | An open right palm raised. |
+| LEG BYE | The right hand patting the front of the right thigh. |
+
+## 6. Graphics
 
 - **Stingers** (`StingerLook`, measured at 10 fps off the reference). Both are drawn in the design system's deep teal, with the project's own crests and logo.
   - Event stinger, 1.0 s: the picture dips, then two slanted bands close from the top and the bottom (0.1-0.4 s). The word (WICKET, SIX, FOUR, DROPPED, REVIEW, EDGE, REPLAY) comes up under the side's crest. The camera cuts to the replay at 0.6 s under the full card, then the word grows as the card dissolves.
@@ -119,9 +169,9 @@ A live ball's replay carries no REPLAY tag, only its stingers, as the reference 
 - **Toss:** pitch conditions (venue, pitch, wear, sky, day or night); BAT / BOWL with the countdown; the result card.
 - **Result bar:** "X WON BY N RUNS" or "BY N WICKETS" in the winner's colour, under the closing beats.
 
-## 6. Tests
+## 7. Tests
 
-- `CRICKET26.BroadcastSequence.Signals`, `.DeadBall`, `.Intro`, `.Cameras` (`Tests/BroadcastSequenceTests.cpp`), 432 checks, cover:
+- `CRICKET26.BroadcastSequence.Signals`, `.DeadBall`, `.Intro`, `.Cameras` (`Tests/BroadcastSequenceTests.cpp`), 576 checks, cover:
   - the beat order for each event;
   - sequences are contiguous at every pacing;
   - the stingers cover the frame at each cut;
@@ -130,17 +180,26 @@ A live ball's replay carries no REPLAY tag, only its stingers, as the reference 
   - every presentation camera stays above the turf and looks at something in front of it, with a broadcast lens;
   - the push-in;
   - card reveals.
-- `CRICKET26.Broadcast.ReplayPackages` was updated for the reference's packages: a six plays the stroke then the stand tilt, with no full pass; a four plays the stroke then the long lens; bowled plays the full pass, the bowler track and the stump camera.
+- `CRICKET26.Broadcast.ReplayPackages` covers the reference's packages: a six plays the stroke then the stand tilt, with no full pass; a four plays the stroke then the long lens; bowled plays the full pass, the bowler track and the stump camera. It also checks every package:
+  - exactly one hero angle;
+  - the hero is held at the hero speed either side of the moment and is back at real speed at both ends;
+  - no angle plays below the super-slow;
+  - caught and dropped heroes are the catch camera, bowled's is the bowler track, and boundaries' is the stroke.
+- `CRICKET26.BroadcastSequence.Signals` checks every umpire signal and player gesture frame by frame at 60 Hz:
+  - the wrist stays inside the arm's reach and never sweeps through the shoulder;
+  - the hand stays on the line of the forearm the solver will make;
+  - the palm is square to the fingers;
+  - no target jumps or flips between frames.
 
-The pure module and its tests were also compiled and run outside the engine, against a small shim of the core types, with `-Wall -Wshadow`: all 432 checks pass. **The engine build, the full suite and an in-engine capture have not been run in this change** (the container has no Unreal Engine). Run `Scripts/run_tests.sh`, then `Scripts/capture.sh`, before merging.
+The pure sequence module and its tests were also compiled and run outside the engine, against a small shim of the core types, with `-Wall -Wshadow`: all 576 checks pass. The replay package test needs the engine. **The engine build, the full suite and an in-engine capture have not been run in this change** (the container has no Unreal Engine). Run `Scripts/run_tests.sh`, then `Scripts/capture.sh`, before merging.
 
-## 7. Not matched yet
+## 8. Not matched yet
 
 - **Pyro jets** at the boards for a six (reference 2:46, 12:38): needs a Niagara asset.
 - **LED bails lighting** on the broken stumps (19:17): the stumps close-up is there, the lights are not.
 - **In-stadium ribbon boards and big screens** showing the score, the clock and the decision pending (8:34, 11:09, 22:46). `UpdateBigScreens` still shows its own content.
 - **The over's ball paths drawn in the air** on THIS OVER (10:36): the pitch bands, markers and panel are done; the trails are not.
 - **The batters-confer review countdown panel** (5:34): the beat plays; the panel is not drawn. The game's reviews are LBW-only.
-- **Captured celebration clips:** celebrations and the umpire's signals are procedural IK over the idle and walk (arms, gaze, chest), not motion capture. Signal shapes that need fingers (the umpire's forefinger) or a raised knee (leg bye) are approximated.
+- **Captured celebration clips:** celebrations and the umpire's signals are procedural IK over the idle and walk (arms, wrists, fingers, gaze, chest), not motion capture. The leg bye's raised knee is not posed: the hand pats the thigh.
 - **Player names on the dismissal card:** fielders carry no names, so a catch reads "c b Bowler", "c (wk)" or "c & b".
 - **The fielder close-up after a boundary stop** (7:15) uses the `FielderReaction` beat, which plays on some dot and run balls.

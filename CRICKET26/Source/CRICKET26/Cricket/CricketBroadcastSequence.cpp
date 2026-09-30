@@ -544,130 +544,309 @@ FShotSolution SolveShot(EShot Shot, const FShotFrame& F)
 
 namespace
 {
-	float ArmWeight(float T, float Duration, float In)
+	float Dot3(const FVector& A, const FVector& B) { return A.X * B.X + A.Y * B.Y + A.Z * B.Z; }
+	FVector Cross3(const FVector& A, const FVector& B) { return FVector(A.Y * B.Z - A.Z * B.Y, A.Z * B.X - A.X * B.Z, A.X * B.Y - A.Y * B.X); }
+	FVector Unit(const FVector& V, const FVector& Fallback)
 	{
-		return FMath::SmoothStep(0.f, In, T) * (1.f - FMath::SmoothStep(FMath::Max(Duration - LowerTime, In), Duration, T));
+		const float Len = V.Size();
+		return Len > 1e-4f ? V / Len : Fallback;
+	}
+	/** V with its share along the unit Axis taken out, normalised; Fallback if nothing is left. */
+	FVector Square(const FVector& V, const FVector& Axis, const FVector& Fallback) { return Unit(V - Axis * Dot3(V, Axis), Fallback); }
+
+	/**
+	 * One arm's shape relative to the body: the way from the shoulder to the wrist, how far along the arm's full
+	 * reach the wrist sits (under 1: the elbow keeps a little bend and the solve never snaps straight), the way the
+	 * elbow points, the way the palm faces and how the fingers are held.
+	 */
+	struct FSigArm
+	{
+		FVector Dir = FVector(0.f, 0.f, -1.f);
+		float Reach = 0.95f;
+		FVector Pole = FVector(-1.f, 0.f, 0.f);
+		FVector Palm = FVector(0.f, 1.f, 0.f);
+		EHandShape Shape = EHandShape::Relaxed;
+	};
+
+	/** The idle's hanging arm: straight down by the thigh, the elbow back, the palm to the leg. */
+	FSigArm SigRest(int32 Side, const FVector& F, const FVector& Rt)
+	{
+		const FVector Out = Side == 0 ? -Rt : Rt;
+		FSigArm A;
+		A.Dir = Unit(-WorldUp + F * 0.06f + Out * 0.12f, -WorldUp);
+		A.Reach = 0.95f;
+		A.Pole = Unit(-F + Out * 0.3f, -F);
+		A.Palm = -Out;
+		return A;
+	}
+
+	/** An arm reaching for a point: its direction and reach from the shoulder. */
+	FSigArm SigToward(const FVector& Shoulder, const FVector& Point, float Full, const FVector& Pole, const FVector& Palm, EHandShape Shape)
+	{
+		FSigArm A;
+		A.Dir = Unit(Point - Shoulder, -WorldUp);
+		A.Reach = FMath::Clamp(float(FVector::Dist(Shoulder, Point)) / FMath::Max(Full, 1.f), 0.3f, 0.97f);
+		A.Pole = Pole;
+		A.Palm = Palm;
+		A.Shape = Shape;
+		return A;
+	}
+
+	/**
+	 * From direction A to B along a curve bowed toward Via (a quadratic Bezier on the directions, normalised): a raise
+	 * from hanging to overhead goes round the front or the side and never collapses through the shoulder.
+	 */
+	FVector SigArc(const FVector& A, const FVector& B, const FVector& Via, float S)
+	{
+		FVector C = Via.Size() > 1e-3f ? Unit(Via, A) : A + B;
+		if (C.Size() < 1e-3f) C = Unit(Cross3(A, WorldUp), FVector(1.f, 0.f, 0.f));
+		C = Unit(C, A);
+		const float U = 1.f - S;
+		return Unit(A * (U * U) + C * (2.f * S * U) + B * (S * S), B);
+	}
+
+	FSigArm SigBlend(const FSigArm& A, const FSigArm& B, const FVector& Via, float S)
+	{
+		FSigArm R;
+		R.Dir = SigArc(A.Dir, B.Dir, Via, S);
+		R.Reach = FMath::Lerp(A.Reach, B.Reach, S);
+		R.Pole = SigArc(A.Pole, B.Pole, FVector::ZeroVector, S);
+		R.Palm = SigArc(A.Palm, B.Palm, FVector::ZeroVector, S);
+		R.Shape = S > 0.4f ? B.Shape : A.Shape;
+		return R;
+	}
+
+	/** Writes one arm's targets: the wrist inside reach, a pole square off the middle of the arm, and the hand on the line of the forearm. */
+	void SigPlace(FArms& Out, int32 Side, const FArmFrame& Body, const FSigArm& Arm, float Weight)
+	{
+		const FVector S = Body.Shoulder[Side];
+		const float Full = Body.Upper + Body.Lower;
+		const FVector Dir = Unit(Arm.Dir, -WorldUp);
+		const FVector Wrist = S + Dir * (Full * FMath::Clamp(Arm.Reach, 0.3f, 0.975f));
+		// Square to the arm, so the plane the elbow bends in never turns over however straight the arm is.
+		const FVector Across = Square(Side == 0 ? -Body.Right : Body.Right, Dir, FVector(0.f, 0.f, 1.f));
+		const FVector Bend = Square(Arm.Pole, Dir, Across);
+		const FVector Pole = (S + Wrist) * 0.5f + Bend * 40.f;
+		const FVector Elbow = ElbowAt(S, Wrist, Pole, Body.Upper, Body.Lower);
+		const FVector Fingers = Unit(Wrist - Elbow, Dir);
+		Out.Hand[Side] = Wrist;
+		Out.Elbow[Side] = Pole;
+		Out.Fingers[Side] = Fingers;
+		Out.Palm[Side] = Square(Arm.Palm, Fingers, Square(Bend, Fingers, Across));
+		Out.Shape[Side] = Arm.Shape;
+		Out.Weight[Side] = FMath::Clamp(Weight, 0.f, 1.f);
+	}
+
+	/** The arm taking over from the idle's and handing back: quick, so the arm is on its own path before it moves far. */
+	float SigEngage(float T, float Duration)
+	{
+		const float Edge = FMath::Min(0.15f, 0.25f * Duration);
+		return FMath::SmoothStep(0.f, Edge, T) * (1.f - FMath::SmoothStep(Duration - Edge, Duration, T));
+	}
+
+	/** How far from the hanging arm to the signal: up over In, held, down over the last LowerTime. */
+	float SigProgress(float T, float Duration, float In)
+	{
+		const float Up = FMath::SmoothStep(0.05f, 0.05f + In, T);
+		const float DownFrom = FMath::Max(Duration - LowerTime, 0.05f + In);
+		const float DownTo = FMath::Max(Duration - 0.1f, DownFrom + 0.05f);
+		return Up * (1.f - FMath::SmoothStep(DownFrom, DownTo, T));
 	}
 }
 
-FArms SignalArms(ESignal Signal, float T, float Duration, const FVector ShoulderL, const FVector ShoulderR, const FVector& Forward, const FVector& Right)
+FVector ElbowAt(const FVector& Shoulder, const FVector& Wrist, const FVector& Pole, float Upper, float Lower)
+{
+	// As the engine's two-bone solve places it: in the plane of the shoulder, the wrist and the pole, on the pole's side.
+	const FVector U = Unit(Wrist - Shoulder, -WorldUp);
+	const float D = FMath::Clamp(float(FVector::Dist(Shoulder, Wrist)), FMath::Abs(Upper - Lower) + 0.1f, 0.995f * (Upper + Lower));
+	const float X = (Upper * Upper - Lower * Lower + D * D) / (2.f * D);
+	const FVector Side = Square(Pole - Shoulder, U, Unit(Cross3(U, WorldUp), FVector(1.f, 0.f, 0.f)));
+	return Shoulder + U * X + Side * FMath::Sqrt(FMath::Max(Upper * Upper - X * X, 0.f));
+}
+
+FArms SignalArms(ESignal Signal, float T, float Duration, const FArmFrame& Body)
 {
 	FArms A;
-	const FVector F = FlatNormal(Forward), Rt = FlatNormal(Right, RightOf(F));
-	const FVector L = ShoulderL, Rs = ShoulderR;
+	const FVector F = FlatNormal(Body.Forward), Rt = FlatNormal(Body.Right, RightOf(F)), U = WorldUp;
+	const float Engage = SigEngage(T, Duration);
+	auto Pose = [&](int32 Side, const FSigArm& Want, const FVector& Via, float In)
+	{
+		SigPlace(A, Side, Body, SigBlend(SigRest(Side, F, Rt), Want, Via, SigProgress(T, Duration, In)), Engage);
+	};
+	auto Straight = [](const FVector& Dir, const FVector& Pole, const FVector& Palm, EHandShape Shape)
+	{
+		FSigArm W;
+		W.Dir = Unit(Dir, WorldUp);
+		W.Reach = 0.97f;
+		W.Pole = Pole;
+		W.Palm = Palm;
+		W.Shape = Shape;
+		return W;
+	};
 	switch (Signal)
 	{
 	case ESignal::Six:
-		// Both arms up, slowly, held.
-		A.Hand[0] = L + WorldUp * 58.f - Rt * 6.f + F * 6.f;
-		A.Hand[1] = Rs + WorldUp * 58.f + Rt * 6.f + F * 6.f;
-		A.Elbow[0] = L - Rt * 30.f;
-		A.Elbow[1] = Rs + Rt * 30.f;
-		A.Weight[0] = A.Weight[1] = ArmWeight(T, Duration, RaiseTime);
+		// Both arms up together, slowly, round the front: straight above the head, forefingers up, palms to the field.
+		for (int32 Side = 0; Side < 2; ++Side)
+		{
+			const FVector Out = Side == 0 ? -Rt : Rt;
+			Pose(Side, Straight(U + F * 0.12f + Out * 0.16f, Out - F * 0.3f, F, EHandShape::Point), F * 0.7f + Out * 0.7f, RaiseTime);
+		}
+		break;
+	case ESignal::Out:
+	case ESignal::Bye:
+	{
+		// The right arm straight up in front of the face: the forefinger for OUT, the open palm for a BYE.
+		const bool bOut = Signal == ESignal::Out;
+		Pose(1, Straight(U + F * 0.2f + Rt * 0.06f, Rt + F * 0.2f, bOut ? F - Rt * 0.5f : F, bOut ? EHandShape::Point : EHandShape::Open),
+			F + Rt * 0.25f, RaiseTime);
+		break;
+	}
+	case ESignal::Wide:
+		// Both arms straight out level to the sides, palms down.
+		for (int32 Side = 0; Side < 2; ++Side)
+		{
+			const FVector Out = Side == 0 ? -Rt : Rt;
+			Pose(Side, Straight(Out + F * 0.1f - U * 0.03f, -U - F * 0.3f, -U + F * 0.35f, EHandShape::Open), FVector::ZeroVector, 0.5f);
+		}
+		break;
+	case ESignal::NoBall:
+		Pose(1, Straight(Rt + F * 0.1f - U * 0.03f, -U - F * 0.3f, -U + F * 0.35f, EHandShape::Open), FVector::ZeroVector, 0.5f);
 		break;
 	case ESignal::Four:
 	{
-		// The right arm waved to and fro across the front of the body at chest height.
-		const float Wave = FMath::Sin(2.f * PI * 1.1f * FMath::Max(T - 0.3f, 0.f));
-		A.Hand[1] = Rs + F * 42.f - Rt * 10.f - WorldUp * 8.f + Rt * (30.f * Wave);
-		A.Elbow[1] = Rs + Rt * 25.f - WorldUp * 25.f;
-		A.Weight[1] = ArmWeight(T, Duration, 0.35f);
+		// The right arm swept to and fro across the front of the body at waist height, palm down: out to the right,
+		// across to the middle, three or four times, the sweep growing in as the arm comes up.
+		const float Sweep = FMath::Sin(2.f * PI * 0.95f * FMath::Max(T - 0.3f, 0.f)) * FMath::SmoothStep(0.2f, 0.6f, T);
+		FSigArm W;
+		W.Dir = Unit(F * 0.9f - U * 0.45f + Rt * (0.2f + 0.55f * Sweep), F);
+		W.Reach = 0.9f;
+		W.Pole = Rt - U * 0.6f;
+		W.Palm = -U + F * 0.2f;
+		W.Shape = EHandShape::Open;
+		Pose(1, W, FVector::ZeroVector, 0.35f);
 		break;
 	}
-	case ESignal::Out:
-	case ESignal::Bye:
-		A.Hand[1] = Rs + WorldUp * 52.f + F * 14.f + Rt * 4.f;
-		A.Elbow[1] = Rs + Rt * 20.f + F * 10.f;
-		A.Weight[1] = ArmWeight(T, Duration, RaiseTime);
-		break;
-	case ESignal::Wide:
-		A.Hand[0] = L - Rt * 58.f - WorldUp * 3.f;
-		A.Hand[1] = Rs + Rt * 58.f - WorldUp * 3.f;
-		A.Elbow[0] = L - WorldUp * 20.f;
-		A.Elbow[1] = Rs - WorldUp * 20.f;
-		A.Weight[0] = A.Weight[1] = ArmWeight(T, Duration, 0.5f);
-		break;
-	case ESignal::NoBall:
-		A.Hand[1] = Rs + Rt * 58.f - WorldUp * 2.f;
-		A.Elbow[1] = Rs - WorldUp * 20.f;
-		A.Weight[1] = ArmWeight(T, Duration, 0.5f);
-		break;
 	case ESignal::LegBye:
-		A.Hand[1] = Rs - WorldUp * 62.f + F * 18.f - Rt * 2.f;
-		A.Elbow[1] = Rs + Rt * 20.f - WorldUp * 30.f;
-		A.Weight[1] = ArmWeight(T, Duration, 0.5f);
+	{
+		// The right hand to the front of the right thigh, patting it twice.
+		FSigArm W;
+		W.Dir = Unit(-U + F * 0.5f + Rt * 0.08f, -U);
+		W.Reach = 0.9f + 0.03f * FMath::Sin(2.f * PI * 2.2f * FMath::Max(T - 0.5f, 0.f)) * FMath::SmoothStep(0.5f, 0.7f, T);
+		W.Pole = Rt - F * 0.4f;
+		W.Palm = -F * 0.8f - U * 0.6f;
+		W.Shape = EHandShape::Open;
+		Pose(1, W, FVector::ZeroVector, 0.5f);
 		break;
+	}
 	default:
 		break;
 	}
 	return A;
 }
 
-FArms GestureArms(EGesture Gesture, float T, float Duration, const FVector ShoulderL, const FVector ShoulderR, const FVector& Forward, const FVector& Right)
+FArms GestureArms(EGesture Gesture, float T, float Duration, const FArmFrame& Body)
 {
 	FArms A;
-	const FVector F = FlatNormal(Forward), Rt = FlatNormal(Right, RightOf(F));
-	const FVector L = ShoulderL, Rs = ShoulderR;
-	const FVector Mid = (L + Rs) * 0.5f;
+	const FVector F = FlatNormal(Body.Forward), Rt = FlatNormal(Body.Right, RightOf(F)), U = WorldUp;
+	const FVector Mid = (Body.Shoulder[0] + Body.Shoulder[1]) * 0.5f;
+	const float Full = Body.Upper + Body.Lower;
+	const float Engage = SigEngage(T, Duration);
+	auto Pose = [&](int32 Side, const FSigArm& Want, const FVector& Via, float In, float Share = 1.f)
+	{
+		SigPlace(A, Side, Body, SigBlend(SigRest(Side, F, Rt), Want, Via, SigProgress(T, Duration, In)), Engage * Share);
+	};
 	switch (Gesture)
 	{
 	case EGesture::ArmsUp:
 	{
-		// Both arms flung up and apart, pumping twice in the first second.
-		const float Pump = 8.f * FMath::Max(0.f, FMath::Sin(2.f * PI * 2.f * T)) * (1.f - FMath::SmoothStep(0.f, 1.2f, T));
-		A.Hand[0] = L + WorldUp * (52.f + Pump) - Rt * 18.f + F * 8.f;
-		A.Hand[1] = Rs + WorldUp * (52.f + Pump) + Rt * 18.f + F * 8.f;
-		A.Elbow[0] = L - Rt * 35.f;
-		A.Elbow[1] = Rs + Rt * 35.f;
-		A.Weight[0] = A.Weight[1] = ArmWeight(T, Duration, 0.25f);
+		// Both fists flung up and apart, pumping twice in the first second.
+		const float Pump = 0.06f * FMath::Max(0.f, FMath::Sin(2.f * PI * 2.f * T)) * (1.f - FMath::SmoothStep(0.f, 1.2f, T));
+		for (int32 Side = 0; Side < 2; ++Side)
+		{
+			const FVector Out = Side == 0 ? -Rt : Rt;
+			FSigArm W;
+			W.Dir = Unit(U + Out * 0.45f + F * 0.15f, U);
+			W.Reach = 0.93f - Pump;
+			W.Pole = Out - F * 0.2f;
+			W.Palm = F * 0.5f - Out * 0.8f;
+			W.Shape = EHandShape::Fist;
+			Pose(Side, W, F * 0.6f + Out * 0.8f, 0.4f);
+		}
 		break;
 	}
 	case EGesture::FistPump:
 	{
-		const float Pump = 25.f * FMath::Max(0.f, FMath::Sin(2.f * PI * 1.6f * T)) * (1.f - FMath::SmoothStep(0.5f, 2.5f, T));
-		A.Hand[1] = Rs + F * 25.f - WorldUp * 5.f + WorldUp * Pump;
-		A.Elbow[1] = Rs + Rt * 18.f - WorldUp * 30.f;
-		A.Hand[0] = L + F * 20.f - WorldUp * 28.f;
-		A.Elbow[0] = L - Rt * 15.f - WorldUp * 25.f;
-		A.Weight[1] = ArmWeight(T, Duration, 0.2f);
-		A.Weight[0] = 0.6f * A.Weight[1];
+		// The right fist punched up in front of the shoulder, the elbow down; the left fist clenched low.
+		const float Pump = FMath::Max(0.f, FMath::Sin(2.f * PI * 1.6f * T)) * (1.f - FMath::SmoothStep(0.5f, 2.5f, T));
+		FSigArm W;
+		W.Dir = Unit(F * 0.9f + U * (0.25f + 0.5f * Pump) + Rt * 0.15f, F);
+		W.Reach = 0.55f + 0.12f * Pump;
+		W.Pole = -U + Rt * 0.6f - F * 0.2f;
+		W.Palm = -Rt;
+		W.Shape = EHandShape::Fist;
+		Pose(1, W, FVector::ZeroVector, 0.3f);
+		FSigArm L;
+		L.Dir = Unit(-U * 0.8f + F * 0.55f - Rt * 0.1f, -U);
+		L.Reach = 0.7f;
+		L.Pole = -F - Rt * 0.5f;
+		L.Palm = Rt;
+		L.Shape = EHandShape::Fist;
+		Pose(0, L, FVector::ZeroVector, 0.3f, 0.6f);
 		break;
 	}
 	case EGesture::HandsOnHips:
-		A.Hand[0] = L - WorldUp * 50.f - Rt * 2.f;
-		A.Hand[1] = Rs - WorldUp * 50.f + Rt * 2.f;
-		A.Elbow[0] = L - Rt * 30.f - WorldUp * 25.f;
-		A.Elbow[1] = Rs + Rt * 30.f - WorldUp * 25.f;
-		A.Weight[0] = A.Weight[1] = ArmWeight(T, Duration, 0.45f);
+		// Hands on the hips, the elbows out and back.
+		for (int32 Side = 0; Side < 2; ++Side)
+		{
+			const FVector Out = Side == 0 ? -Rt : Rt;
+			const FVector S = Body.Shoulder[Side];
+			Pose(Side, SigToward(S, S - U * 48.f + Out * 3.f - F * 2.f, Full, Out - F * 0.4f, -Out, EHandShape::Open), FVector::ZeroVector, 0.45f);
+		}
 		break;
 	case EGesture::HandsOnHead:
-		A.Hand[0] = L + WorldUp * 30.f + F * 8.f + Rt * 14.f;
-		A.Hand[1] = Rs + WorldUp * 30.f + F * 8.f - Rt * 14.f;
-		A.Elbow[0] = L - Rt * 30.f + WorldUp * 10.f;
-		A.Elbow[1] = Rs + Rt * 30.f + WorldUp * 10.f;
-		A.Weight[0] = A.Weight[1] = ArmWeight(T, Duration, 0.35f);
+		// Both hands on top of the head, palms down, the elbows up and out.
+		for (int32 Side = 0; Side < 2; ++Side)
+		{
+			const FVector Out = Side == 0 ? -Rt : Rt;
+			Pose(Side, SigToward(Body.Shoulder[Side], Mid + U * 26.f + F * 1.f + Out * 5.f, Full, Out + U * 0.5f + F * 0.2f, -U, EHandShape::Open),
+				F + Out * 0.6f, 0.45f);
+		}
 		break;
 	case EGesture::Clap:
 	{
-		const FVector C = Mid + F * 30.f - WorldUp * 18.f;
-		const float Open = 12.f + 10.f * FMath::Abs(FMath::Sin(PI * 1.8f * T));
-		A.Hand[0] = C - Rt * Open;
-		A.Hand[1] = C + Rt * Open;
-		A.Elbow[0] = L - WorldUp * 25.f - Rt * 10.f;
-		A.Elbow[1] = Rs - WorldUp * 25.f + Rt * 10.f;
-		A.Weight[0] = A.Weight[1] = ArmWeight(T, Duration, 0.3f);
+		// Palm to palm in front of the chest.
+		const FVector C = Mid + F * 30.f - U * 16.f;
+		const float Open = 3.5f + 9.f * FMath::Abs(FMath::Sin(PI * 1.8f * T));
+		for (int32 Side = 0; Side < 2; ++Side)
+		{
+			const FVector Out = Side == 0 ? -Rt : Rt;
+			Pose(Side, SigToward(Body.Shoulder[Side], C + Out * Open, Full, -U + Out * 0.5f, -Out, EHandShape::Open), FVector::ZeroVector, 0.3f);
+		}
 		break;
 	}
 	case EGesture::HighFive:
-		A.Hand[1] = Rs + WorldUp * 40.f + F * 30.f;
-		A.Elbow[1] = Rs + Rt * 20.f;
-		A.Weight[1] = ArmWeight(T, Duration, 0.3f);
+	{
+		FSigArm W;
+		W.Dir = Unit(U * 0.8f + F * 0.6f + Rt * 0.1f, U);
+		W.Reach = 0.93f;
+		W.Pole = Rt - U * 0.3f;
+		W.Palm = F;
+		W.Shape = EHandShape::Open;
+		Pose(1, W, F * 0.4f + Rt * 0.8f, 0.45f); // up round the side, so the palm never turns about the fingers' own line
 		break;
+	}
 	case EGesture::Point:
-		A.Hand[1] = Rs + F * 55.f + WorldUp * 10.f;
-		A.Elbow[1] = Rs + Rt * 15.f - WorldUp * 10.f;
-		A.Weight[1] = ArmWeight(T, Duration, 0.3f);
+	{
+		FSigArm W;
+		W.Dir = Unit(F + U * 0.15f + Rt * 0.1f, F);
+		W.Reach = 0.97f;
+		W.Pole = -U + Rt * 0.4f;
+		W.Palm = -Rt - U * 0.4f;
+		W.Shape = EHandShape::Point;
+		Pose(1, W, FVector::ZeroVector, 0.3f);
 		break;
+	}
 	default:
 		break;
 	}

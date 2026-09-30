@@ -885,18 +885,6 @@ namespace CricketBroadcast
 		return Candidates[0];
 	}
 
-	static void AddAngle(FReplayPackage& P, EBroadcastShot Shot, float StartTp, float EndTp, float DecisiveTp, float Slow, float Wall)
-	{
-		FReplayAnglePlay A;
-		A.Shot = Shot;
-		A.StartTp = FMath::Max(StartTp, 0.f);
-		A.EndTp = FMath::Max(EndTp, A.StartTp + 0.2f);
-		A.DecisiveTp = FMath::Clamp(DecisiveTp, A.StartTp, A.EndTp);
-		A.SlowFactor = Slow;
-		A.WallTime = Wall;
-		P.Angles.Add(A);
-	}
-
 	FReplayPackage BuildReplayPackage(const FReplayTrigger& Trigger, const FDeliveryResult& Result,
 		const FBroadcastFrame& Frame, const FBroadcastTuning& Tune, TArray<EBroadcastShot>& RecentShots)
 	{
@@ -909,8 +897,7 @@ namespace CricketBroadcast
 		const float Lead = FMath::Min(Tune.ReplayLeadMax, Contact * 0.9f);
 		const float Start = FMath::Max(0.f, Contact - Lead);
 		const float End = FMath::Min(Result.DeadTime, Trigger.DecisiveT + 1.2f);
-		const float Wall = Tune.ReplayAngleTime;
-		const float Slow = Tune.ReplaySlowFactor, SuperSlow = Tune.SuperSlowFactor;
+		const float SuperSlow = Tune.SuperSlowFactor;
 
 		auto CountFor = [&]() -> int32
 		{
@@ -925,78 +912,97 @@ namespace CricketBroadcast
 		};
 		const int32 Count = CountFor();
 
-		// Cricket 26's boundary replays (Docs/BROADCAST_REFERENCE_GAME_MP4.md §4) are one or two long angles played
-		// at near real speed with a slow-down through the stroke, never the stand camera again. The ball's rope time.
+		// Every angle plays at its true speed curve: its screen time is whatever the curve takes, so the slow factor is
+		// the speed the viewer actually sees (a fixed screen time would stretch or squeeze it). StartTp may be negative:
+		// the delivery stride before release is posed analytically, as the full pass's is.
 		const float RopeT = Result.Fielding.Boundary > 0 ? Result.ContactTime + Result.Fielding.BoundaryTime : End;
-		auto AddNatural = [&P](EBroadcastShot Shot, float From, float To, float At, float SlowAt)
+		auto AddNatural = [&P](EBroadcastShot Shot, float From, float To, float At, float SlowAt, float Hold = 0.f, float Ramp = 0.45f) -> FReplayAnglePlay&
 		{
-			AddAngle(P, Shot, From, To, At, SlowAt, 1.f);
-			FReplayAnglePlay& A = P.Angles.Last();
-			A.StartTp = From; // the delivery stride before release is posed analytically, as the full pass's is
+			FReplayAnglePlay A;
+			A.Shot = Shot;
+			A.StartTp = From;
 			A.EndTp = FMath::Max(To, From + 0.2f);
 			A.DecisiveTp = FMath::Clamp(At, A.StartTp, A.EndTp);
+			A.SlowFactor = SlowAt;
+			A.SlowHold = Hold;
+			A.SlowRamp = Ramp;
 			A.WallTime = NaturalWallTime(A);
+			return P.Angles.Add_GetRef(A);
 		};
+		// The package's one clear look at what mattered, which every package carries: from well before the moment at
+		// real speed, easing into a steady HeroSlowFactor held through it (the bat through the ball, the ball into the
+		// stumps, the hands closing, the bat reaching the crease), then easing out again. Slow enough to read, never a
+		// crawl, and long enough either side that the viewer sees what led to it and what it did.
+		const float HeroLead = Tune.HeroSlowHold + Tune.HeroSlowRamp + 0.35f;
+		const float HeroTail = Tune.HeroSlowHold + Tune.HeroSlowRamp + 0.2f;
+		auto AddHero = [&](EBroadcastShot Shot, float From, float To, float At)
+		{
+			// The tail may run a little past the dead ball: the live hold after it is recorded too.
+			const float Tail = FMath::Max(FMath::Min(FMath::Max(To, At + HeroTail), Result.DeadTime + 0.8f), At + 0.3f);
+			AddNatural(Shot, FMath::Min(From, At - HeroLead), Tail, At,
+				Tune.HeroSlowFactor, Tune.HeroSlowHold, Tune.HeroSlowRamp).bHero = true;
+		};
+		const float Decisive = Trigger.DecisiveT;
 
 		switch (Trigger.Event)
 		{
 		case EReplayEventType::Six:
-			// The stroke from the turf, the crane or square (slowed through contact), then the ball into the stands
+			// The stroke from the turf, square or the crane, held slow through contact; then the ball into the stands
 			// with the lens rising past the roof (reference 2:53-2:59, 7:37-7:41, 18:42-18:44).
-			AddNatural(PickReplayShot({ EBroadcastShot::ReplayGroundLevel, EBroadcastShot::ReplayBeauty, EBroadcastShot::ReplayCrane }, RecentShots),
-				-0.6f, Contact + 1.f, Contact, 0.4f);
+			AddHero(PickReplayShot({ EBroadcastShot::ReplayBeauty, EBroadcastShot::ReplayGroundLevel, EBroadcastShot::ReplayCrane }, RecentShots),
+				-0.6f, Contact + 1.f, Contact);
 			if (Count >= 2) AddNatural(EBroadcastShot::ReplayStandTilt, Contact - 0.1f, FMath::Min(Result.DeadTime, RopeT + 1.6f), RopeT, 0.8f);
 			break;
 		case EReplayEventType::Four:
-			// One long angle through the stroke (behind the bowler down the pitch, or square), then the long lens to
-			// the rope (reference 1:12-1:20, 16:09-16:15, 4:27-4:32).
-			AddNatural(PickReplayShot({ EBroadcastShot::ReplayBowlerTrack, EBroadcastShot::ReplayBeauty }, RecentShots),
-				-0.9f, Contact + 1.3f, Contact, 0.5f);
+			// The stroke, square or down the pitch behind the ball, held slow through contact; then the long lens to the
+			// rope (reference 1:12-1:20, 16:09-16:15, 4:27-4:32).
+			AddHero(PickReplayShot({ EBroadcastShot::ReplayBeauty, EBroadcastShot::ReplayBowlerTrack }, RecentShots),
+				-0.9f, Contact + 1.2f, Contact);
 			if (Count >= 2) AddNatural(EBroadcastShot::ReplayLongLens, Contact + 0.2f, FMath::Min(Result.DeadTime, RopeT + 0.6f), RopeT, 0.85f);
 			break;
 		case EReplayEventType::Bowled:
 		case EReplayEventType::LBW:
-			// After the full pass: down the pitch behind the ball into the stumps (or pads), then square at knee height
-			// in super slow motion (reference 19:20-19:31).
-			AddNatural(EBroadcastShot::ReplayBowlerTrack, -0.9f, Trigger.DecisiveT + 0.6f, Trigger.DecisiveT, 0.35f);
-			if (Count >= 2) AddAngle(P, Trigger.Event == EReplayEventType::Bowled ? EBroadcastShot::ReplayStumpCam
-				: PickReplayShot({ EBroadcastShot::ReplaySlowMo, EBroadcastShot::SideOn }, RecentShots),
-				FMath::Max(0.f, Trigger.DecisiveT - 0.35f), Trigger.DecisiveT + 0.5f, Trigger.DecisiveT, SuperSlow, Wall * 0.9f);
+		case EReplayEventType::HitWicket:
+			// After the full pass: down the pitch behind the ball into the stumps (or pads), held slow through the hit;
+			// then square at knee height, slower still for a moment (reference 19:20-19:31).
+			AddHero(EBroadcastShot::ReplayBowlerTrack, -0.9f, Decisive + 0.9f, Decisive);
+			if (Count >= 2) AddNatural(Trigger.Event == EReplayEventType::LBW
+				? PickReplayShot({ EBroadcastShot::SideOn, EBroadcastShot::ReplaySlowMo }, RecentShots) : EBroadcastShot::ReplayStumpCam,
+				FMath::Max(0.f, Decisive - 0.6f), Decisive + 0.8f, Decisive, SuperSlow, 0.15f, 0.35f);
 			break;
 		case EReplayEventType::Caught:
 		case EReplayEventType::DivingCatch:
-			// Shot, flight, approach, take (§33); the spectacular body gets the second angle.
-			AddAngle(P, PickReplayShot({ EBroadcastShot::ReplayBeauty, EBroadcastShot::SideOn }, RecentShots),
-				Start, Contact + 0.9f, Contact, 0.5f, Wall);
-			if (Count >= 2) AddAngle(P, PickReplayShot({ EBroadcastShot::Catch, EBroadcastShot::AerialBall, EBroadcastShot::OutfieldFollow }, RecentShots),
-				Contact + 0.3f, Trigger.DecisiveT + 0.5f, Trigger.DecisiveT, Slow, Wall);
-			if (Count >= 3) AddAngle(P, PickReplayShot({ EBroadcastShot::ReplaySlowMo, EBroadcastShot::SideOn }, RecentShots),
-				FMath::Max(0.f, Trigger.DecisiveT - 0.5f), Trigger.DecisiveT + 0.4f, Trigger.DecisiveT, SuperSlow, Wall * 0.8f);
+			// After the full pass: the stroke that got him out, then the take held slow off the catcher (§33).
+			AddNatural(PickReplayShot({ EBroadcastShot::ReplayBeauty, EBroadcastShot::SideOn }, RecentShots),
+				Start, Contact + 0.9f, Contact, 0.55f, 0.1f, 0.4f);
+			AddHero(EBroadcastShot::Catch, FMath::Max(Contact + 0.3f, Decisive - 1.6f), Decisive + 0.8f, Decisive);
 			break;
 		case EReplayEventType::RunOut:
 		case EReplayEventType::CloseRunOut:
 		case EReplayEventType::Stumped:
-			// Diagnostic over cinematic (§34): runner, crease, ball, broken stumps.
-			AddAngle(P, PickReplayShot({ EBroadcastShot::RunOut, EBroadcastShot::SideOn }, RecentShots),
-				FMath::Max(0.f, Trigger.DecisiveT - 1.f), Trigger.DecisiveT + 0.5f, Trigger.DecisiveT, Slow, Wall);
-			if (Count >= 2) AddAngle(P, PickReplayShot({ EBroadcastShot::ReplayBeauty, EBroadcastShot::GroundFollow }, RecentShots),
-				Start, Contact + 0.9f, Contact, 0.6f, Wall);
-			if (Count >= 3) AddAngle(P, PickReplayShot({ EBroadcastShot::ReplaySlowMo, EBroadcastShot::StraightOn }, RecentShots),
-				FMath::Max(0.f, Trigger.DecisiveT - 0.5f), Trigger.DecisiveT + 0.4f, Trigger.DecisiveT, SuperSlow, Wall * 0.8f);
+			// Diagnostic over cinematic (§34): how it happened, then square on the crease, held slow as the bails come
+			// off: the bat, the line and the stumps in one frame.
+			AddNatural(PickReplayShot({ EBroadcastShot::ReplayBeauty, EBroadcastShot::SideOn }, RecentShots),
+				Start, Contact + 0.9f, Contact, 0.6f);
+			AddHero(EBroadcastShot::RunOut, FMath::Max(0.f, Decisive - 1.2f), Decisive + 0.7f, Decisive);
+			break;
+		case EReplayEventType::DroppedCatch:
+		case EReplayEventType::SpectacularStop:
+			// The stroke, then the fielder, held slow as the ball reaches the hands.
+			AddNatural(PickReplayShot({ EBroadcastShot::ReplayBeauty, EBroadcastShot::SideOn }, RecentShots),
+				Start, Contact + 0.9f, Contact, 0.55f, 0.1f, 0.4f);
+			AddHero(EBroadcastShot::Catch, FMath::Max(Contact + 0.2f, Decisive - 1.4f), Decisive + 0.8f, Decisive);
+			break;
+		case EReplayEventType::EdgeNotOut:
+			// The edge held slow side-on, then from behind the cordon as it carries.
+			AddHero(PickReplayShot({ EBroadcastShot::ReplayBeauty, EBroadcastShot::SideOn }, RecentShots), Start, Contact + 0.9f, Contact);
+			AddNatural(PickReplayShot({ EBroadcastShot::Slip, EBroadcastShot::Keeper, EBroadcastShot::BatterEnd }, RecentShots),
+				FMath::Max(0.f, Contact - 0.4f), Contact + 0.9f, Contact, 0.5f, 0.1f, 0.4f);
 			break;
 		default:
-			// Four-edge cases, drops, stops, milestones: clean broadcast replay + one closer look.
-			AddAngle(P, PickReplayShot({ EBroadcastShot::ReplayBeauty, EBroadcastShot::SideOn, EBroadcastShot::AlternateDelivery }, RecentShots),
-				Start, Contact + 0.9f, Contact, 0.5f, Wall);
-			if (Count >= 2)
-			{
-				const EBroadcastShot Close = Trigger.Event == EReplayEventType::EdgeNotOut
-					? PickReplayShot({ EBroadcastShot::Keeper, EBroadcastShot::Slip, EBroadcastShot::BatterEnd }, RecentShots)
-					: PickReplayShot({ EBroadcastShot::ReplaySlowMo, EBroadcastShot::Catch, EBroadcastShot::OutfieldFollow }, RecentShots);
-				AddAngle(P, Close, FMath::Max(0.f, Trigger.DecisiveT - 0.5f), Trigger.DecisiveT + 0.5f, Trigger.DecisiveT, SuperSlow, Wall * 0.8f);
-			}
-			if (Count >= 3) AddAngle(P, PickReplayShot({ EBroadcastShot::StandardDelivery, EBroadcastShot::StraightOn }, RecentShots),
-				FMath::Max(0.f, Contact - Lead), Contact + 0.6f, Contact, 0.6f, Wall);
+			// Milestones and the rest: the moment held slow side-on.
+			AddHero(PickReplayShot({ EBroadcastShot::ReplayBeauty, EBroadcastShot::SideOn }, RecentShots),
+				FMath::Max(0.f, Decisive - Lead), Decisive + 0.9f, Decisive);
 			break;
 		}
 
@@ -1004,36 +1010,38 @@ namespace CricketBroadcast
 		if (P.Angles.Num() > 0 && (P.Angles[0].Shot == EBroadcastShot::ReplaySlowMo || P.Angles[0].Shot == EBroadcastShot::Keeper))
 			P.Angles[0].Shot = EBroadcastShot::ReplayBeauty;
 
+		// Trims to Max angles, dropping the latest supporting angles first: the full pass and the hero always play.
+		auto Trim = [&P](int32 Max)
+		{
+			for (int32 I = P.Angles.Num() - 1; I >= 0 && P.Angles.Num() > Max; --I)
+				if (!P.Angles[I].bHero && !P.Angles[I].bFullPass) P.Angles.RemoveAt(I);
+		};
+
 		// Boundaries play their own angles only (the reference never shows the stand camera again for a four or six).
 		if (Trigger.Event == EReplayEventType::Four || Trigger.Event == EReplayEventType::Six)
 		{
-			P.Angles.SetNum(FMath::Min(P.Angles.Num(), 2));
+			Trim(2);
 			(void)Frame;
 			return P;
 		}
 
-		// The full replay leads every package, as a TV replay does: the whole ball from the bowler's delivery
-		// stride to the end of the event, directed like live coverage (delivery lens, then the follow), near
-		// real speed with a gentle slow through the decisive moment. The detail angles follow it; the ones it
-		// already shows (the delivery lens, the live follows) are dropped.
+		// The full replay leads every other package, as a TV replay does: the whole ball from the bowler's delivery
+		// stride to the end of the event, directed like live coverage (delivery lens, then the follow), near real speed
+		// with a gentle slow through the decisive moment. The closer angles follow it.
 		FReplayAnglePlay Full;
 		Full.bFullPass = true;
 		Full.Shot = EBroadcastShot::StandardDelivery;
 		Full.StartTp = -Tune.ReplayFullLead;
-		Full.DecisiveTp = Trigger.DecisiveT;
+		Full.DecisiveTp = Decisive;
 		const float Rope = Result.Fielding.Boundary > 0 ? Result.ContactTime + Result.Fielding.BoundaryTime + 0.6f : -1.f;
-		Full.EndTp = Rope > 0.f ? Rope : Trigger.DecisiveT + 1.2f;
+		Full.EndTp = Rope > 0.f ? Rope : Decisive + 1.2f;
 		// ponytail: capped span: a ball chased to the rope and thrown back is cut at the cap, not at the throw.
 		Full.EndTp = FMath::Clamp(FMath::Min(Full.EndTp, Result.DeadTime), Full.DecisiveTp + 0.3f, Full.StartTp + Tune.ReplayFullMax);
 		Full.SlowFactor = Tune.ReplayFullSlow;
 		Full.WallTime = NaturalWallTime(Full);
-		P.Angles.RemoveAll([](const FReplayAnglePlay& A)
-		{
-			return A.Shot == EBroadcastShot::StandardDelivery || A.Shot == EBroadcastShot::OutfieldFollow || A.Shot == EBroadcastShot::GroundFollow;
-		});
 		P.Angles.Insert(Full, 0);
-		// Two angles (full + the stroke, as the reference plays a FOUR) unless the event earns a third.
-		P.Angles.SetNum(FMath::Min(P.Angles.Num(), FMath::Clamp(Count, 2, 3)));
+		// The full pass and the hero, and a third angle when the event earns one.
+		Trim(FMath::Clamp(Count, 2, 3));
 		(void)Frame;
 		return P;
 	}
@@ -1045,13 +1053,18 @@ namespace CricketBroadcast
 		return T;
 	}
 
-	float ReplaySpeedAt(float BallT, float DecisiveT, float SlowFactor, float Width)
+	float ReplaySpeedAt(float BallT, float DecisiveT, float SlowFactor, float Width, float Hold)
 	{
-		// Smooth dip: 1 far away, SlowFactor at the moment. Cosine pulse, C1 continuous (§30).
-		const float D = FMath::Abs(BallT - DecisiveT) / FMath::Max(Width, 0.05f);
+		// Smooth dip: 1 far away, SlowFactor held through the moment. Cosine shoulders, C1 continuous (§30).
+		const float D = FMath::Max(FMath::Abs(BallT - DecisiveT) - FMath::Max(Hold, 0.f), 0.f) / FMath::Max(Width, 0.05f);
 		if (D >= 1.f) return 1.f;
 		const float Pulse = 0.5f + 0.5f * FMath::Cos(PI * FMath::Clamp(D, 0.f, 1.f));
 		return FMath::Lerp(1.f, SlowFactor, Pulse);
+	}
+
+	float ReplaySpeedAt(const FReplayAnglePlay& Angle, float BallT)
+	{
+		return ReplaySpeedAt(BallT, Angle.DecisiveTp, Angle.SlowFactor, Angle.SlowRamp, Angle.SlowHold);
 	}
 
 	FTimeRemap BuildTimeRemap(const FReplayAnglePlay& Angle, int32 Samples)
@@ -1066,7 +1079,7 @@ namespace CricketBroadcast
 		for (int32 I = 1; I <= Samples; ++I)
 		{
 			const float BallGuess = Angle.StartTp + (Angle.EndTp - Angle.StartTp) * float(I - 1) / float(Samples);
-			Cum[I] = Cum[I - 1] + ReplaySpeedAt(BallGuess, Angle.DecisiveTp, Angle.SlowFactor);
+			Cum[I] = Cum[I - 1] + ReplaySpeedAt(Angle, BallGuess);
 		}
 		const float Total = Cum[Samples];
 		R.BallAt.SetNumUninitialized(Samples + 1);
@@ -1081,7 +1094,7 @@ namespace CricketBroadcast
 		const float Step = (Angle.EndTp - Angle.StartTp) / float(FMath::Max(Samples, 1));
 		float Wall = 0.f;
 		for (int32 I = 0; I < Samples; ++I)
-			Wall += Step / FMath::Max(ReplaySpeedAt(Angle.StartTp + (I + 0.5f) * Step, Angle.DecisiveTp, Angle.SlowFactor), 0.05f);
+			Wall += Step / FMath::Max(ReplaySpeedAt(Angle, Angle.StartTp + (I + 0.5f) * Step), 0.05f);
 		return FMath::Max(Wall, 0.2f);
 	}
 

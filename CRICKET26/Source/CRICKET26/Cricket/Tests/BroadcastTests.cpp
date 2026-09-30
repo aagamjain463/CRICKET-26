@@ -531,6 +531,40 @@ bool FReplayPackages::RunTest(const FString&)
 	FReplayPackage PE = BuildReplayPackage(ClassifyReplayEvent(Edge, MockOutcome(0, EDismissal::None), false), Edge, F, Tune, Recent);
 	TestEqual(TEXT("edge gets the full replay and a closer look"), PE.Angles.Num(), 2);
 
+	// Every package carries exactly one hero angle: the moment itself held at a steady, readable slow (never the crawl
+	// of a super-slow), with real speed either side so the viewer sees what led to it and what it did.
+	FDeliveryResult CaughtBall = MockResult(EContactZone::Middle, FVector(14.f, 8.f, 10.f), 0, 5, true, true, 2.6f, FVector(35.f, 20.f, 0.f), 0);
+	FReplayPackage PC = BuildReplayPackage(ClassifyReplayEvent(CaughtBall, MockOutcome(0, EDismissal::Caught), false), CaughtBall, F, Tune, Recent);
+	FDeliveryResult DroppedBall = MockResult(EContactZone::TopEdge, FVector(8.f, 5.f, 8.f), 0, 4, true, false, 2.4f, FVector(22.f, 14.f, 0.f), 1);
+	FReplayPackage PD = BuildReplayPackage(ClassifyReplayEvent(DroppedBall, MockOutcome(1, EDismissal::None), false), DroppedBall, F, Tune, Recent);
+	const FReplayPackage* Packages[] = { &P, &P4, &PB, &PE, &PC, &PD };
+	for (const FReplayPackage* Pk : Packages)
+	{
+		int32 Heroes = 0;
+		for (const FReplayAnglePlay& A : Pk->Angles)
+		{
+			// Nothing in any package plays slower than the super-slow, and the hero never below its own held speed.
+			for (float T = A.StartTp; T <= A.EndTp; T += 0.02f)
+				TestTrue(TEXT("never a crawl"), ReplaySpeedAt(A, T) >= FMath::Min(Tune.SuperSlowFactor, Tune.HeroSlowFactor) - 1e-4f);
+			if (!A.bHero) continue;
+			++Heroes;
+			TestTrue(TEXT("hero: held slow through the moment"), FMath::IsNearlyEqual(ReplaySpeedAt(A, A.DecisiveTp - 0.3f), Tune.HeroSlowFactor, 1e-3f)
+				&& FMath::IsNearlyEqual(ReplaySpeedAt(A, A.DecisiveTp + 0.3f), Tune.HeroSlowFactor, 1e-3f));
+			TestTrue(TEXT("hero: not too slow"), Tune.HeroSlowFactor >= 0.33f && Tune.HeroSlowFactor <= 0.5f);
+			TestTrue(TEXT("hero: real speed well before the moment"), FMath::IsNearlyEqual(ReplaySpeedAt(A, A.StartTp), 1.f, 1e-3f));
+			TestTrue(TEXT("hero: real speed after it"), FMath::IsNearlyEqual(ReplaySpeedAt(A, A.EndTp), 1.f, 1e-3f));
+			TestTrue(TEXT("hero: the held slow lasts on screen"), 2.f * Tune.HeroSlowHold / Tune.HeroSlowFactor >= 1.5f);
+			TestTrue(TEXT("hero: plays at its true speed"), A.WallTime > (A.EndTp - A.StartTp) * 1.2f);
+		}
+		TestEqual(TEXT("one hero angle in every package"), Heroes, 1);
+	}
+	TestTrue(TEXT("caught: the hero is the take off the catcher"), PC.Angles.ContainsByPredicate([](const FReplayAnglePlay& A) { return A.bHero && A.Shot == EBroadcastShot::Catch; }));
+	TestTrue(TEXT("caught: full pass, the stroke, the take"), PC.Angles.Num() == 3 && PC.Angles[0].bFullPass && PC.Angles[2].bHero);
+	TestTrue(TEXT("dropped: the hero is the fielder"), PD.Angles.ContainsByPredicate([](const FReplayAnglePlay& A) { return A.bHero && A.Shot == EBroadcastShot::Catch; }));
+	TestTrue(TEXT("bowled: the hero goes down the pitch into the stumps"), PB.Angles.ContainsByPredicate([](const FReplayAnglePlay& A) { return A.bHero && A.Shot == EBroadcastShot::ReplayBowlerTrack; }));
+	TestTrue(TEXT("four: the stroke is the hero"), P4.Angles.Num() > 0 && P4.Angles[0].bHero);
+	TestTrue(TEXT("six: the stroke is the hero"), P.Angles.Num() > 0 && P.Angles[0].bHero);
+
 	// Anti-repetition: rebuilding over history varies the package without invalid shots.
 	const int32 RecentBefore = Recent.Num();
 	FReplayPackage P2 = BuildReplayPackage(ClassifyReplayEvent(Six, MockOutcome(6, EDismissal::None), false), Six, F, Tune, Recent);

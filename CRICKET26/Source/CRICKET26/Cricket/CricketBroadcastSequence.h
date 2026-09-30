@@ -250,26 +250,53 @@ namespace CricketSequence
 
 	// ---------- Bodies ----------
 
+	/** How a hand's fingers are held: as the clip has them, open and flat, a fist, or a fist with the forefinger out. */
+	enum class EHandShape : uint8 { Relaxed, Open, Fist, Point };
+
+	/** A body's shoulders (the upper-arm joints) and axes, and its arm's lengths, all measured off the skeleton (world cm). */
+	struct FArmFrame
+	{
+		FVector Shoulder[2] = { FVector::ZeroVector, FVector::ZeroVector }; // [0] left, [1] right
+		FVector Forward = FVector(1.f, 0.f, 0.f);
+		FVector Right = FVector(0.f, 1.f, 0.f);
+		float Upper = 28.f; // shoulder to elbow
+		float Lower = 27.f; // elbow to wrist
+	};
+
 	/**
-	 * The umpire's hands for a signal at T seconds into it, from the shoulder points and the umpire's axes (world
-	 * cm). Weight ramps the arm in over RaiseTime and out over the last LowerTime of the beat. A FOUR waves the
-	 * right arm across the body; a SIX raises both arms slowly; OUT raises the right forefinger; WIDE spreads both
-	 * arms; NO-BALL holds the right arm out; BYE raises an open right hand; LEG BYE touches the right thigh.
+	 * Arm targets for the two-bone solve: each wrist's point, the pole its elbow bends toward, the way its palm faces
+	 * and its fingers point, and the fingers' shape. The fingers run on from the forearm (the elbow the solver will
+	 * find, worked out here the same way), so the hand always carries on the line of the arm and never kinks off it.
+	 * Every wrist stays inside the arm's reach, and a raise travels round an arc from the hanging arm, never in a
+	 * straight line through the shoulder.
 	 */
 	struct FArms
 	{
 		FVector Hand[2] = { FVector::ZeroVector, FVector::ZeroVector };  // [0] left, [1] right
-		FVector Elbow[2] = { FVector::ZeroVector, FVector::ZeroVector };
+		FVector Elbow[2] = { FVector::ZeroVector, FVector::ZeroVector }; // the pole
+		FVector Palm[2] = { FVector::ZeroVector, FVector::ZeroVector };
+		FVector Fingers[2] = { FVector::ZeroVector, FVector::ZeroVector };
+		EHandShape Shape[2] = { EHandShape::Relaxed, EHandShape::Relaxed };
 		float Weight[2] = { 0.f, 0.f };
 	};
-	constexpr float RaiseTime = 0.9f, LowerTime = 0.5f;
-	FArms SignalArms(ESignal Signal, float T, float Duration, const FVector ShoulderL, const FVector ShoulderR,
-		const FVector& Forward, const FVector& Right);
+
+	/** Where a two-bone arm Upper and Lower long puts its elbow between Shoulder and Wrist, bent toward Pole. */
+	FVector ElbowAt(const FVector& Shoulder, const FVector& Wrist, const FVector& Pole, float Upper, float Lower);
+
+	/**
+	 * The umpire's arms for a signal at T seconds into it. The arm takes over from the idle in the first moment,
+	 * raises over RaiseTime (quicker for the side signals), holds, lowers from LowerTime before the end and hands back.
+	 * OUT: the right forefinger straight up. SIX: both arms straight up, forefingers raised, palms forward. FOUR: the
+	 * right arm swept to and fro across the front of the body at waist height, palm down. WIDE: both arms straight out
+	 * level, palms down. NO-BALL: the right arm straight out level. BYE: an open right palm raised. LEG BYE: the right
+	 * hand patting the front of the right thigh.
+	 */
+	constexpr float RaiseTime = 0.9f, LowerTime = 0.8f;
+	FArms SignalArms(ESignal Signal, float T, float Duration, const FArmFrame& Body);
 
 	/** Gestures for players in a beat. */
 	enum class EGesture : uint8 { None, ArmsUp, FistPump, HandsOnHips, HandsOnHead, Clap, HighFive, Point };
-	FArms GestureArms(EGesture Gesture, float T, float Duration, const FVector ShoulderL, const FVector ShoulderR,
-		const FVector& Forward, const FVector& Right);
+	FArms GestureArms(EGesture Gesture, float T, float Duration, const FArmFrame& Body);
 
 	/** Where a walker is T seconds into a walk from From toward To at Speed (cm/s), stopping on arrival. */
 	FVector WalkTo(const FVector& From, const FVector& To, float Speed, float T);
