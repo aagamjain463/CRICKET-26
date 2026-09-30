@@ -502,21 +502,30 @@ bool FReplayPackages::RunTest(const FString&)
 	FDeliveryResult Six = MockResult(EContactZone::Middle, FVector(20.f, -20.f, 14.f), 6, -1, false, false, 0.f, FVector::ZeroVector, 0);
 	FReplayPackage P = BuildReplayPackage(ClassifyReplayEvent(Six, MockOutcome(6, EDismissal::None), false), Six, F, Tune, Recent);
 	TestTrue(TEXT("six package valid"), P.IsValid());
-	TestEqual(TEXT("six gets three angles"), P.Angles.Num(), 3);
+	// Cricket 26 (Docs/BROADCAST_REFERENCE_GAME_MP4.md §4): the stroke from a replay camera, then the ball into the
+	// stands. The stand camera's full pass is kept for dismissals; a boundary never shows it again.
+	TestEqual(TEXT("six gets two angles"), P.Angles.Num(), 2);
 	TestTrue(TEXT("never opens tight"), P.Angles[0].Shot != EBroadcastShot::ReplaySlowMo && P.Angles[0].Shot != EBroadcastShot::Keeper);
-	// The full replay leads: the whole ball, from the delivery stride to the ball over the rope, never squeezed.
-	const FReplayAnglePlay& Full = P.Angles[0];
-	TestTrue(TEXT("full replay leads"), Full.bFullPass);
-	TestTrue(TEXT("full replay opens before release"), Full.StartTp < 0.f && Full.StartTp >= -1.f);
-	TestTrue(TEXT("full replay reaches the rope"), Full.EndTp >= Six.ContactTime + Six.Fielding.BoundaryTime && Full.EndTp <= Six.DeadTime);
-	TestTrue(TEXT("full replay plays at no more than real speed"), Full.WallTime >= Full.EndTp - Full.StartTp);
-	TestTrue(TEXT("full replay is near real speed"), Full.WallTime < 1.5f * (Full.EndTp - Full.StartTp));
-	for (int32 I = 1; I < P.Angles.Num(); ++I) TestFalse(TEXT("one full replay only"), P.Angles[I].bFullPass);
+	for (const FReplayAnglePlay& A : P.Angles) TestFalse(TEXT("no full pass for a six"), A.bFullPass);
+	const FReplayAnglePlay& Stroke = P.Angles[0];
+	TestTrue(TEXT("six stroke opens in the delivery stride"), Stroke.StartTp < 0.f && Stroke.StartTp >= -1.f);
+	TestTrue(TEXT("six stroke slows through contact"), FMath::IsNearlyEqual(Stroke.DecisiveTp, Six.ContactTime, 1e-3f));
+	TestTrue(TEXT("six stroke at no more than real speed"), Stroke.WallTime >= Stroke.EndTp - Stroke.StartTp);
+	TestEqual(TEXT("six follows into the stands"), P.Angles[1].Shot, EBroadcastShot::ReplayStandTilt);
+	TestTrue(TEXT("stand tilt carries past the rope"), P.Angles[1].EndTp > Six.ContactTime + Six.Fielding.BoundaryTime && P.Angles[1].EndTp <= Six.DeadTime);
 
 	FDeliveryResult Four = MockResult(EContactZone::Middle, FVector(22.f, 12.f, 2.f), 4, -1, false, false, 0.f, FVector::ZeroVector, 0);
 	FReplayPackage P4 = BuildReplayPackage(ClassifyReplayEvent(Four, MockOutcome(4, EDismissal::None), false), Four, F, Tune, Recent);
 	TestEqual(TEXT("four gets two angles"), P4.Angles.Num(), 2);
-	TestTrue(TEXT("four's second angle is the stroke"), P4.Angles.IsValidIndex(1) && !P4.Angles[1].bFullPass && P4.Angles[1].DecisiveTp == Four.ContactTime);
+	TestTrue(TEXT("four's first angle is the stroke"), P4.Angles.IsValidIndex(0) && !P4.Angles[0].bFullPass && FMath::IsNearlyEqual(P4.Angles[0].DecisiveTp, Four.ContactTime, 1e-3f));
+	TestTrue(TEXT("four's second angle runs to the rope"), P4.Angles.IsValidIndex(1) && P4.Angles[1].Shot == EBroadcastShot::ReplayLongLens);
+
+	// A dismissal keeps the full pass first, then the reference's closer angles.
+	FDeliveryResult BowledBall = MockResult(EContactZone::Miss, FVector::ZeroVector, 0, -1, false, false, 0.f, FVector::ZeroVector, 0, true);
+	FReplayPackage PB = BuildReplayPackage(ClassifyReplayEvent(BowledBall, MockOutcome(0, EDismissal::Bowled), false), BowledBall, F, Tune, Recent);
+	TestTrue(TEXT("bowled: full pass leads"), PB.Angles.Num() > 0 && PB.Angles[0].bFullPass);
+	TestTrue(TEXT("bowled: down the pitch behind the ball"), PB.Angles.ContainsByPredicate([](const FReplayAnglePlay& A) { return A.Shot == EBroadcastShot::ReplayBowlerTrack; }));
+	TestTrue(TEXT("bowled: the stump camera"), PB.Angles.ContainsByPredicate([](const FReplayAnglePlay& A) { return A.Shot == EBroadcastShot::ReplayStumpCam; }));
 
 	FDeliveryResult Edge = MockResult(EContactZone::OutsideEdge, FVector(8.f, -6.f, 1.f), 0, 0, false, false, 0.8f, FVector(0.5f, -1.f, 0.f), 0);
 	FReplayPackage PE = BuildReplayPackage(ClassifyReplayEvent(Edge, MockOutcome(0, EDismissal::None), false), Edge, F, Tune, Recent);
@@ -535,7 +544,9 @@ bool FReplayPackages::RunTest(const FString&)
 			|| A.Shot == EBroadcastShot::Boundary || A.Shot == EBroadcastShot::OutfieldFollow || A.Shot == EBroadcastShot::StandardDelivery
 			|| A.Shot == EBroadcastShot::AlternateDelivery || A.Shot == EBroadcastShot::Catch || A.Shot == EBroadcastShot::RunOut
 			|| A.Shot == EBroadcastShot::Keeper || A.Shot == EBroadcastShot::Slip || A.Shot == EBroadcastShot::BatterEnd
-			|| A.Shot == EBroadcastShot::GroundFollow);
+			|| A.Shot == EBroadcastShot::GroundFollow || A.Shot == EBroadcastShot::ReplayBowlerTrack || A.Shot == EBroadcastShot::ReplayGroundLevel
+			|| A.Shot == EBroadcastShot::ReplayCrane || A.Shot == EBroadcastShot::ReplayStandTilt || A.Shot == EBroadcastShot::ReplayLongLens
+			|| A.Shot == EBroadcastShot::ReplayStumpCam);
 	}
 
 	// Slow-motion curve: exact endpoints, monotonic, slow at the moment, quick away from it.

@@ -1,5 +1,11 @@
 # Broadcast Camera + Replay Overhaul — Final Report
 
+> **Update:** the Cricket 26 reference (`Docs/game.mp4`) superseded the boundary replays and the dead-ball coverage described here.
+> A four or six now replays with the reference's own angles (bowler track, long lens, ground level, stand tilt) and no full pass.
+> A bowled ball adds the bowler track and the stump camera after the full pass.
+> Everything between the ball going dead and the next delivery is the broadcast sequence. See `Docs/BROADCAST_SEQUENCE.md`.
+
+
 Reference: Cricket 24 gameplay capture (`~/Downloads/CRICKET26.mp4`), frames 64–73 s (delivery A–E and
 post-contact) and 136–152 s (a FOUR). In-game captures: `-CricketAutoPlay -CricketShotBall=N
 -CricketShotEvery=0.1` at 1280x720.

@@ -59,6 +59,13 @@ enum class EBroadcastShot : uint8
 	ReplaySlowMo,      // tight super-slow-motion replay angle
 	Review,            // ball-tracking view (owned by the review flow)
 	Scorecard,         // wide ground shot (owned by the scorecard flow)
+	// Replay angles measured off the Cricket 26 reference (Docs/BROADCAST_REFERENCE_GAME_MP4.md §4).
+	ReplayBowlerTrack, // behind the bowler at waist height, then down the pitch behind the ball to the batter
+	ReplayGroundLevel, // on the turf a few metres up the pitch, wide lens: the batter against the sky
+	ReplayCrane,       // high behind the striker, looking over them at the stroke
+	ReplayStandTilt,   // the six into the stands, tilting up past the roof
+	ReplayLongLens,    // long lens from the far stand, following the ball to the rope
+	ReplayStumpCam,    // side-on at the striker's stumps, knee height: the bails flying
 	Count
 };
 

@@ -492,6 +492,86 @@ namespace CricketBroadcast
 			Sol.FOV = Tune.SuperSlowFOV;
 			break;
 		}
+		case EBroadcastShot::ReplayBowlerTrack:
+		{
+			// Cricket 26 (reference 1:12, 16:09, 19:20): waist height behind the bowler through the run-in, then down
+			// the pitch behind the ball, stopping short of the striker, where it holds for the stroke.
+			const bool bInHand = Frame.BallT < 0.f;
+			const bool bHit = Frame.AfterContact > 0.f;
+			const float StopX = Frame.StrikerPos.X + 650.f;
+			const float LeadX = bInHand ? Frame.BowlerPos.X + 600.f : Frame.BallPos.X + 550.f;
+			const float CamX = bHit ? StopX : FMath::Max(LeadX, StopX);
+			const float Near = FMath::Clamp((CamX - StopX) / 1400.f, 0.f, 1.f);
+			Sol.Location = FVector(CamX, 60.f * Frame.ArmSign, FMath::Lerp(115.f, 150.f, Near));
+			const FVector Striker = Frame.StrikerPos + FVector(0.f, 0.f, 10.f);
+			const FVector Lead = bInHand ? Frame.BowlerPos : Frame.BallPos;
+			Sol.LookAt = bHit ? FMath::Lerp(Striker, Frame.BallPos, 0.3f) : FMath::Lerp(Striker, Lead, 0.4f * Near);
+			Sol.FOV = FMath::Lerp(22.f, 34.f, Near);
+			break;
+		}
+		case EBroadcastShot::ReplayGroundLevel:
+		{
+			// On the turf a few metres up the pitch with a wide lens (reference 7:37, 11:15, 18:42): the batter tall
+			// against the sky and the stands, the lens lifting a little with the ball once it is hit.
+			Sol.Location = Sim(5.5f, 0.6f * Frame.ArmSign, 0.3f);
+			const FVector Head = Frame.StrikerPos + FVector(0.f, 0.f, 40.f);
+			const float Lift = Frame.AfterContact > 0.f ? 0.3f * FMath::SmoothStep(0.f, 0.8f, Frame.AfterContact) : 0.f;
+			Sol.LookAt = FMath::Lerp(Head, Frame.BallPos, Lift);
+			Sol.FOV = 62.f;
+			break;
+		}
+		case EBroadcastShot::ReplayCrane:
+		{
+			// High behind the striker, looking over them down the ground (reference 3:43, 6:12).
+			Sol.Location = Frame.StrikerPos + FVector(-750.f, 250.f * Off, 660.f);
+			const FVector Down = Sim(1.f, 0.f, 0.6f);
+			const FVector Ball(Frame.BallPos.X, Frame.BallPos.Y, FMath::Max(Frame.BallPos.Z, 100.));
+			Sol.LookAt = Frame.AfterContact > 0.f ? FMath::Lerp(Down, Ball, 0.4f * FMath::SmoothStep(0.f, 1.f, Frame.AfterContact)) : Down;
+			Sol.FOV = 36.f;
+			break;
+		}
+		case EBroadcastShot::ReplayStandTilt:
+		{
+			// Behind the stroke, following the six into the stands; once over the rope the lens keeps rising past the
+			// roof to the floodlights (reference 2:56-2:59).
+			FVector2D Out2D(Frame.ExitVel.X, Frame.ExitVel.Y);
+			if (Frame.bHasBoundaryCross) Out2D = FVector2D(Frame.BoundaryCrossPos.X, Frame.BoundaryCrossPos.Y) - FVector2D(Centre.X, Centre.Y);
+			if (Out2D.IsNearlyZero()) Out2D = FVector2D(0.f, Off);
+			Out2D.Normalize();
+			Sol.Location = Frame.StrikerPos - FVector(Out2D, 0.f) * 600.f + FVector(0.f, 0.f, 160.f);
+			const bool bOver = Frame.BoundaryTime >= 0.f && Frame.AfterContact > Frame.BoundaryTime;
+			if (bOver && Frame.bHasBoundaryCross)
+			{
+				const float Rise = FMath::Min(1.f, (Frame.AfterContact - Frame.BoundaryTime) / 1.5f);
+				Sol.LookAt = Frame.BoundaryCrossPos + FVector(Out2D, 0.f) * 2500.f + FVector(0.f, 0.f, 600.f + 1500.f * FMath::SmoothStep(0.f, 1.f, Rise));
+			}
+			else Sol.LookAt = Frame.AfterContact > 0.f ? Frame.BallPos : Frame.StrikerPos + FVector(0.f, 0.f, 40.f);
+			Sol.FOV = FMath::Lerp(40.f, 24.f, FMath::SmoothStep(0.f, 5000.f, float(FVector::Dist(Sol.Location, Frame.BallPos))));
+			break;
+		}
+		case EBroadcastShot::ReplayLongLens:
+		{
+			// High in the far stand opposite the stroke with a long lens, holding about 13 m of outfield round the ball
+			// as it runs to the rope (reference 4:27, 12:43).
+			FVector2D Out2D(Frame.ExitVel.X, Frame.ExitVel.Y);
+			if (Out2D.IsNearlyZero()) Out2D = FVector2D(Frame.BallPos.X, Frame.BallPos.Y) - FVector2D(Centre.X, Centre.Y);
+			if (Out2D.IsNearlyZero()) Out2D = FVector2D(0.f, Off);
+			Out2D.Normalize();
+			Sol.Location = Centre - FVector(Out2D, 0.f) * (BoundaryRadius + 20.f) * SimToWorld + FVector(0.f, 0.f, 20.f * SimToWorld);
+			Sol.LookAt = FVector(Frame.BallPos.X, Frame.BallPos.Y, FMath::Max(Frame.BallPos.Z, 50.));
+			if (Frame.bHasFielder) Sol.LookAt = FMath::Lerp(Sol.LookAt, Frame.FielderPos, 0.25f);
+			const float Dist = FMath::Max(float(FVector::Dist(Sol.Location, Sol.LookAt)), 100.f);
+			Sol.FOV = FMath::Clamp(FMath::RadiansToDegrees(2.f * FMath::Atan(1300.f / Dist)), 6.f, 30.f);
+			break;
+		}
+		case EBroadcastShot::ReplayStumpCam:
+		{
+			// Square of the striker's stumps at knee height (reference 19:28): stumps, bails, keeper's gloves.
+			Sol.Location = Sim(0.15f, 3.f * Off, 0.35f);
+			Sol.LookAt = Sim(0.f, 0.f, 0.45f);
+			Sol.FOV = 30.f;
+			break;
+		}
 		default:
 			Sol.Location = DeliveryLocation(Tune.Delivery, Frame.ArmSign);
 			Sol.LookAt = DeliveryLookAt(Tune.Delivery);
@@ -845,34 +925,43 @@ namespace CricketBroadcast
 		};
 		const int32 Count = CountFor();
 
+		// Cricket 26's boundary replays (Docs/BROADCAST_REFERENCE_GAME_MP4.md §4) are one or two long angles played
+		// at near real speed with a slow-down through the stroke, never the stand camera again. The ball's rope time.
+		const float RopeT = Result.Fielding.Boundary > 0 ? Result.ContactTime + Result.Fielding.BoundaryTime : End;
+		auto AddNatural = [&P](EBroadcastShot Shot, float From, float To, float At, float SlowAt)
+		{
+			AddAngle(P, Shot, From, To, At, SlowAt, 1.f);
+			FReplayAnglePlay& A = P.Angles.Last();
+			A.StartTp = From; // the delivery stride before release is posed analytically, as the full pass's is
+			A.EndTp = FMath::Max(To, From + 0.2f);
+			A.DecisiveTp = FMath::Clamp(At, A.StartTp, A.EndTp);
+			A.WallTime = NaturalWallTime(A);
+		};
+
 		switch (Trigger.Event)
 		{
 		case EReplayEventType::Six:
-			// Contact, then the cinematic batter-side angle, then the flight to the rope. The flight
-			// angle joins the ball late (already deep): joining at the bat leaves the ball a speck
-			// from the rope camera for most of the angle.
-			AddAngle(P, PickReplayShot({ EBroadcastShot::ReplayBeauty, EBroadcastShot::AlternateDelivery }, RecentShots),
-				Start, Contact + 1.f, Contact, 0.5f, Wall);
-			if (Count >= 2) AddAngle(P, PickReplayShot({ EBroadcastShot::SideOn, EBroadcastShot::StraightOn }, RecentShots),
-				FMath::Max(0.f, Contact - 0.3f), Contact + 0.5f, Contact, SuperSlow, Wall * 0.8f);
-			if (Count >= 3) AddAngle(P, PickReplayShot({ EBroadcastShot::AerialBall, EBroadcastShot::Boundary, EBroadcastShot::OutfieldFollow }, RecentShots),
-				FMath::Max(Contact + 0.5f, Result.ContactTime + Result.Fielding.BoundaryTime - 2.2f), End, End - 0.3f, 0.6f, Wall);
+			// The stroke from the turf, the crane or square (slowed through contact), then the ball into the stands
+			// with the lens rising past the roof (reference 2:53-2:59, 7:37-7:41, 18:42-18:44).
+			AddNatural(PickReplayShot({ EBroadcastShot::ReplayGroundLevel, EBroadcastShot::ReplayBeauty, EBroadcastShot::ReplayCrane }, RecentShots),
+				-0.6f, Contact + 1.f, Contact, 0.4f);
+			if (Count >= 2) AddNatural(EBroadcastShot::ReplayStandTilt, Contact - 0.1f, FMath::Min(Result.DeadTime, RopeT + 1.6f), RopeT, 0.8f);
 			break;
 		case EReplayEventType::Four:
-			AddAngle(P, PickReplayShot({ EBroadcastShot::ReplayBeauty, EBroadcastShot::AlternateDelivery }, RecentShots),
-				Start, Contact + 1.f, Contact, 0.5f, Wall);
-			if (Count >= 2) AddAngle(P, PickReplayShot({ EBroadcastShot::Boundary, EBroadcastShot::OutfieldFollow, EBroadcastShot::GroundFollow }, RecentShots),
-				FMath::Max(Contact + 0.5f, Result.ContactTime + Result.Fielding.BoundaryTime - 1.8f), End, End - 0.2f, 0.7f, Wall);
+			// One long angle through the stroke (behind the bowler down the pitch, or square), then the long lens to
+			// the rope (reference 1:12-1:20, 16:09-16:15, 4:27-4:32).
+			AddNatural(PickReplayShot({ EBroadcastShot::ReplayBowlerTrack, EBroadcastShot::ReplayBeauty }, RecentShots),
+				-0.9f, Contact + 1.3f, Contact, 0.5f);
+			if (Count >= 2) AddNatural(EBroadcastShot::ReplayLongLens, Contact + 0.2f, FMath::Min(Result.DeadTime, RopeT + 0.6f), RopeT, 0.85f);
 			break;
 		case EReplayEventType::Bowled:
 		case EReplayEventType::LBW:
-			// Release-to-impact readability first (§32), then the tight slow angle.
-			AddAngle(P, PickReplayShot({ EBroadcastShot::StandardDelivery, EBroadcastShot::StraightOn }, RecentShots),
-				FMath::Max(0.f, Contact - Lead - 0.4f), Trigger.DecisiveT + 0.3f, Contact, 0.5f, Wall);
-			if (Count >= 2) AddAngle(P, PickReplayShot({ EBroadcastShot::ReplaySlowMo, EBroadcastShot::SideOn }, RecentShots),
-				FMath::Max(0.f, Contact - 0.35f), Trigger.DecisiveT + 0.3f, Trigger.DecisiveT, SuperSlow, Wall * 0.8f);
-			if (Count >= 3) AddAngle(P, PickReplayShot({ EBroadcastShot::SideOn, EBroadcastShot::BatterEnd }, RecentShots),
-				Start, Trigger.DecisiveT + 0.4f, Contact, 0.5f, Wall);
+			// After the full pass: down the pitch behind the ball into the stumps (or pads), then square at knee height
+			// in super slow motion (reference 19:20-19:31).
+			AddNatural(EBroadcastShot::ReplayBowlerTrack, -0.9f, Trigger.DecisiveT + 0.6f, Trigger.DecisiveT, 0.35f);
+			if (Count >= 2) AddAngle(P, Trigger.Event == EReplayEventType::Bowled ? EBroadcastShot::ReplayStumpCam
+				: PickReplayShot({ EBroadcastShot::ReplaySlowMo, EBroadcastShot::SideOn }, RecentShots),
+				FMath::Max(0.f, Trigger.DecisiveT - 0.35f), Trigger.DecisiveT + 0.5f, Trigger.DecisiveT, SuperSlow, Wall * 0.9f);
 			break;
 		case EReplayEventType::Caught:
 		case EReplayEventType::DivingCatch:
@@ -914,6 +1003,14 @@ namespace CricketBroadcast
 		// Readability guard (§31): never replay so tight the action is lost before it starts.
 		if (P.Angles.Num() > 0 && (P.Angles[0].Shot == EBroadcastShot::ReplaySlowMo || P.Angles[0].Shot == EBroadcastShot::Keeper))
 			P.Angles[0].Shot = EBroadcastShot::ReplayBeauty;
+
+		// Boundaries play their own angles only (the reference never shows the stand camera again for a four or six).
+		if (Trigger.Event == EReplayEventType::Four || Trigger.Event == EReplayEventType::Six)
+		{
+			P.Angles.SetNum(FMath::Min(P.Angles.Num(), 2));
+			(void)Frame;
+			return P;
+		}
 
 		// The full replay leads every package, as a TV replay does: the whole ball from the bowler's delivery
 		// stride to the end of the event, directed like live coverage (delivery lens, then the follow), near
@@ -1027,6 +1124,12 @@ namespace CricketBroadcast
 		case EBroadcastShot::ReplaySlowMo: return TEXT("REPLAY-SLOWMO");
 		case EBroadcastShot::Review: return TEXT("REVIEW");
 		case EBroadcastShot::Scorecard: return TEXT("SCORECARD");
+		case EBroadcastShot::ReplayBowlerTrack: return TEXT("REPLAY-BOWLER-TRACK");
+		case EBroadcastShot::ReplayGroundLevel: return TEXT("REPLAY-GROUND");
+		case EBroadcastShot::ReplayCrane: return TEXT("REPLAY-CRANE");
+		case EBroadcastShot::ReplayStandTilt: return TEXT("REPLAY-STAND-TILT");
+		case EBroadcastShot::ReplayLongLens: return TEXT("REPLAY-LONG-LENS");
+		case EBroadcastShot::ReplayStumpCam: return TEXT("REPLAY-STUMP-CAM");
 		default: return TEXT("?");
 		}
 	}

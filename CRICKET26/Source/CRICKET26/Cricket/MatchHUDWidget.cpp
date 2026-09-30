@@ -110,6 +110,14 @@ namespace MatchHudPrivate
 				FSlateRenderTransform(FShear2D::FromShearAngles(FVector2f(-12.f, 0.f))));
 			FSlateDrawElement::MakeBox(Out, On(0), PG, &B, ESlateDrawEffect::None, A(Fill));
 		}
+		/** A box whose top and bottom edges slope by Deg about its centre (the stinger's bands); its sides stay upright. */
+		void Slant(const FBox2D& R, const FLinearColor& Fill, float Deg)
+		{
+			const FSlateBrush B = Rounded(FLinearColor::White, 0.f);
+			const FPaintGeometry PG = G.ToPaintGeometry(FVector2f(R.GetSize()), FSlateLayoutTransform(FVector2f(R.Min)),
+				FSlateRenderTransform(FShear2D::FromShearAngles(FVector2f(0.f, Deg))));
+			FSlateDrawElement::MakeBox(Out, On(0), PG, &B, ESlateDrawEffect::None, A(Fill));
+		}
 		void Circle(const FVector2D& C, float R, const FLinearColor& Fill, const FLinearColor& Outline = FLinearColor::Transparent, float Width = 1.f)
 		{
 			Box(C - FVector2D(R), FVector2D(2.f * R), Fill, R, Outline, Width);
@@ -998,11 +1006,15 @@ void DrawReplay(FMatchFrame& F)
 			: G.IsReplaySlowAngle() ? FString(TEXT("SUPER SLOW-MO")) : FString(TEXT("REPLAY"));
 		const FSlateFontInfo Fn = HudFont(16.f * U, EWeight::Bold, 160);
 		const float TW = FPaint::Measure(Tag, Fn).X + 64.f * U, Right = F.W - F.Safe.R * F.H - 0.03f * F.H, Top = F.Safe.T * F.H + 0.03f * F.H;
-		P.Box(FVector2D(Right - TW, Top), FVector2D(TW, 38.f * U), Glass(0.94f), 3.f * U, Hair(), U);
-		P.Alpha = 0.6f + 0.4f * FMath::Abs(FMath::Cos(float(F.Now) * 3.f));
-		P.Circle(FVector2D(Right - TW + 22.f * U, Top + 19.f * U), 6.f * U, Danger());
-		P.Alpha = 1.f;
-		P.Text(Tag, FVector2D(Right - TW + 38.f * U, Top + 19.f * U), Fn, Ink());
+		// A live ball's replay is marked by its stingers alone, as the reference's is; the reel keeps its counter.
+		if (G.InReel() || !G.Seq.IsValid() || G.bSeqIntro)
+		{
+			P.Box(FVector2D(Right - TW, Top), FVector2D(TW, 38.f * U), Glass(0.94f), 3.f * U, Hair(), U);
+			P.Alpha = 0.6f + 0.4f * FMath::Abs(FMath::Cos(float(F.Now) * 3.f));
+			P.Circle(FVector2D(Right - TW + 22.f * U, Top + 19.f * U), 6.f * U, Danger());
+			P.Alpha = 1.f;
+			P.Text(Tag, FVector2D(Right - TW + 38.f * U, Top + 19.f * U), Fn, Ink());
+		}
 
 		// Edge detector under the super slow-motion replay of a ball that passed the bat: the sound trace drawn as
 		// the replay plays it, a sharp spike if the bat touched the ball, a dull thud if only the pad did.
@@ -1170,6 +1182,256 @@ void DrawReplay(FMatchFrame& F)
 					P.Circle(ToScreen(B.Pitch), 5.f * U, Colour(B), Glass(1.f), 1.5f * U);
 		}
 	}
+
+	// ---------------------------------------------------------------------------------------------------------------
+	// Broadcast sequence graphics (Docs/BROADCAST_SEQUENCE.md): the full-screen stingers round every replay, the live
+	// event strip in place of the score strip, and the lower-third cards. Timed by CricketBroadcastSequence; drawn in the
+	// CRICKET 26 design system with the project's own crests and logo.
+
+	const TCHAR* CrestOf(int32 Team) { return Team == 0 ? TEXT("T_CRICKET26_Crest_Home") : TEXT("T_CRICKET26_Crest_Away"); }
+
+	FLinearColor TeamColour(const ASuperOverGameMode& G, int32 Team) { return G.Teams.IsValidIndex(Team) ? G.Teams[Team].Colour : Teal(); }
+
+	// The stinger's card: a deep teal from the live palette, its leading edges catching the light.
+	FLinearColor StingDeep() { return Hex(0x0C4656); }
+	FLinearColor StingEdge() { return Hex(0x1C8FA6); }
+
+	/** The logo, or its wordmark when the texture has not been imported, Height tall centred on C. */
+	void Logo(FPaint& P, const FVector2D& C, float Height)
+	{
+		const FSlateBrush B = Art(TEXT("T_CRICKET26_Logo"));
+		if (B.DrawAs != ESlateBrushDrawType::NoDrawType && B.ImageSize.Y > 0.f)
+		{
+			const float W = Height * B.ImageSize.X / B.ImageSize.Y;
+			P.Image(FBox2D(C - FVector2D(0.5f * W, 0.5f * Height), C + FVector2D(0.5f * W, 0.5f * Height)), TEXT("T_CRICKET26_Logo"));
+		}
+		else P.Text(TEXT("CRICKET 26"), C, HudFont(0.6f * Height, EWeight::Black, 60), Ink(), 0.5f);
+	}
+
+	/** The event stinger into a replay and the logo stinger out of it, over everything. */
+	void DrawStinger(FMatchFrame& F)
+	{
+		using namespace CricketSequence;
+		ASuperOverGameMode& G = F.G;
+		const float ST = G.SeqTime();
+		if (ST < 0.f) return;
+		float Local = 0.f;
+		const EStinger Kind = StingerAt(G.Seq, ST, Local);
+		if (Kind == EStinger::None) return;
+		const FStingerLook L = StingerLook(Kind, Local);
+		FPaint& P = F.P;
+		const float W = F.W, H = F.H, U = F.U;
+		if (L.Dim > 0.f) P.Box(FVector2D::ZeroVector, FVector2D(W, H), FLinearColor(0.f, 0.f, 0.f, L.Dim));
+		if (L.Cover > 0.f)
+		{
+			// Two bands close from the top and the bottom at a slant, their edges parallel, overlapping once shut.
+			const float TopEdge = FMath::Lerp(-0.14f * H, 0.53f * H, L.Cover), BottomEdge = FMath::Lerp(1.14f * H, 0.47f * H, L.Cover);
+			P.Slant(FBox2D(FVector2D(-0.1f * W, TopEdge - 0.8f * H), FVector2D(1.1f * W, TopEdge)), StingDeep(), L.TiltDeg);
+			P.Slant(FBox2D(FVector2D(-0.1f * W, BottomEdge), FVector2D(1.1f * W, BottomEdge + 0.8f * H)), StingDeep(), L.TiltDeg);
+			P.Slant(FBox2D(FVector2D(-0.1f * W, TopEdge - 5.f * U), FVector2D(1.1f * W, TopEdge)), StingEdge(), L.TiltDeg);
+			P.Slant(FBox2D(FVector2D(-0.1f * W, BottomEdge), FVector2D(1.1f * W, BottomEdge + 5.f * U)), StingEdge(), L.TiltDeg);
+		}
+		if (L.CardAlpha > 0.f)
+		{
+			P.Alpha = L.CardAlpha;
+			P.Box(FVector2D::ZeroVector, FVector2D(W, H), StingDeep());
+			P.Slant(FBox2D(FVector2D(-0.1f * W, 0.32f * H), FVector2D(1.1f * W, 0.68f * H)), StingEdge() * FLinearColor(1.f, 1.f, 1.f, 0.35f), L.TiltDeg);
+			P.Alpha = 1.f;
+		}
+		if (L.LabelAlpha > 0.f)
+		{
+			P.Alpha = L.LabelAlpha;
+			const FVector2D C(0.5f * W, 0.5f * H);
+			const float S = L.LabelScale;
+			if (Kind == EStinger::Event)
+			{
+				const float Crest = 76.f * U * S;
+				const FVector2D CrestAt = C - FVector2D(0.f, 100.f * U * S);
+				P.Image(FBox2D(CrestAt - FVector2D(0.5f * Crest), CrestAt + FVector2D(0.5f * Crest)), CrestOf(G.EventTeam));
+				P.Text(G.EventWord, C + FVector2D(0.f, 14.f * U * S), HudFont(118.f * U * S, EWeight::Black, 50), Ink(), 0.5f);
+			}
+			else Logo(P, C, 150.f * U * S);
+			P.Alpha = 1.f;
+		}
+	}
+
+	/** WICKET / SIX / FOUR across the bottom in place of the score strip, the word repeated faintly either side. */
+	void DrawEventStrip(FMatchFrame& F, float T, float Duration)
+	{
+		FPaint& P = F.P;
+		ASuperOverGameMode& G = F.G;
+		const float U = F.U;
+		const FBox2D R = F.Px(CricketTouch::ScoreStrip(F.Aspect, F.Safe));
+		const float In = FMath::SmoothStep(0.f, 0.25f, T);
+		const float Y = R.Min.Y + (1.f - In) * R.GetSize().Y;
+		P.Alpha = 1.f - FMath::SmoothStep(Duration - 0.2f, Duration, T);
+		P.Box(FVector2D(R.Min.X, Y), R.GetSize(), Hex(0x080A10, 0.95f));
+		P.Box(FVector2D(R.Min.X, Y), R.GetSize(), TeamColour(G, G.EventTeam) * FLinearColor(0.8f, 0.8f, 0.8f, 0.92f));
+		P.Box(FVector2D(R.Min.X, Y), FVector2D(R.GetSize().X, 3.f * U), Ink() * FLinearColor(1.f, 1.f, 1.f, 0.5f));
+		const FSlateFontInfo Big = HudFont(R.GetSize().Y * 0.6f, EWeight::Black, 60);
+		const float WordW = FPaint::Measure(G.EventWord, Big).X + 90.f * U;
+		const FVector2D C(R.GetCenter().X, Y + 0.5f * R.GetSize().Y);
+		const float Drift = FMath::Fmod(T * 70.f * U, WordW);
+		const FLinearColor Faint = Ink() * FLinearColor(1.f, 1.f, 1.f, 0.16f);
+		for (int32 K = 1; K <= 5; ++K)
+		{
+			P.Text(G.EventWord, C + FVector2D(K * WordW + Drift, 0.f), Big, Faint, 0.5f);
+			P.Text(G.EventWord, C - FVector2D(K * WordW + Drift, 0.f), Big, Faint, 0.5f);
+		}
+		P.Text(G.EventWord, C, Big, Ink(), 0.5f);
+		P.Alpha = 1.f;
+	}
+
+	/**
+	 * A lower-third card: the crest in a block on the left, a header bar in the side's colour growing out of it (name
+	 * left, detail and figure right), then a light row of labelled numbers.
+	 */
+	void DrawSeqCard(FMatchFrame& F, const ASuperOverGameMode::FSeqCard& C, const CricketSequence::FCardLook& L, float Lift = 0.f)
+	{
+		if (L.Alpha <= 0.f || C.Title.IsEmpty()) return;
+		FPaint& P = F.P;
+		ASuperOverGameMode& G = F.G;
+		const float U = F.U;
+		const float CW = FMath::Min(960.f * U, F.W - 2.f * (F.Safe.L + 0.04f) * F.H);
+		const float HeadH = 42.f * U, BodyH = C.Labels.Num() ? 58.f * U : 0.f, Block = HeadH + FMath::Max(BodyH, 30.f * U);
+		const float X0 = 0.5f * (F.W - CW), Y0 = F.H * (1.f - F.Safe.B) - 0.075f * F.H - Block - Lift;
+		const FLinearColor Side = TeamColour(G, C.Team);
+		P.Alpha = L.Alpha;
+		P.Box(FVector2D(X0, Y0), FVector2D(Block, Block), Hex(0x0B1426, 0.97f));
+		P.Box(FVector2D(X0, Y0 + Block - 4.f * U), FVector2D(Block, 4.f * U), Side);
+		const float Pad = 10.f * U;
+		if (G.Teams.IsValidIndex(C.Team)) P.Image(FBox2D(FVector2D(X0 + Pad, Y0 + Pad), FVector2D(X0 + Block - Pad, Y0 + Block - Pad)), CrestOf(C.Team));
+		else Logo(P, FVector2D(X0 + 0.5f * Block, Y0 + 0.5f * Block), 0.45f * Block);
+		const float BarX = X0 + Block, BarW = (CW - Block) * L.Bar;
+		P.Box(FVector2D(BarX, Y0), FVector2D(BarW, HeadH), Side * FLinearColor(0.82f, 0.82f, 0.82f, 0.97f));
+		P.Box(FVector2D(BarX, Y0), FVector2D(BarW, 2.f * U), Ink() * FLinearColor(1.f, 1.f, 1.f, 0.35f));
+		if (L.Bar > 0.7f)
+		{
+			P.Alpha = L.Alpha * FMath::SmoothStep(0.7f, 1.f, L.Bar);
+			const float Mid = Y0 + 0.5f * HeadH, Right = BarX + (CW - Block) - 18.f * U;
+			P.Text(C.Title, FVector2D(BarX + 18.f * U, Mid), HudFont(21.f * U, EWeight::Black, 50), Ink());
+			float RX = Right;
+			if (!C.Right.IsEmpty()) RX -= P.Text(C.Right, FVector2D(Right, Mid), HudFont(23.f * U, EWeight::Black), Ink(), 1.f) + 16.f * U;
+			if (!C.Subtitle.IsEmpty()) P.Text(C.Subtitle, FVector2D(RX, Mid), HudFont(15.f * U, EWeight::Bold, 40), Ink() * FLinearColor(1.f, 1.f, 1.f, 0.85f), 1.f);
+		}
+		if (BodyH > 0.f && L.Body > 0.f)
+		{
+			P.Alpha = L.Alpha * L.Body;
+			const float BX = BarX, BW = CW - Block, BY = Y0 + HeadH;
+			P.Box(FVector2D(BX, BY), FVector2D(BW, BodyH), Hex(0xF3F5F9, 0.97f));
+			const int32 N = C.Labels.Num();
+			const float ColW = (BW - 24.f * U) / FMath::Max(N, 1);
+			for (int32 I = 0; I < N; ++I)
+			{
+				const float CX = BX + 12.f * U + (I + 0.5f) * ColW;
+				P.Text(C.Labels[I], FVector2D(CX, BY + 17.f * U), HudFont(12.f * U, EWeight::Bold, 80), Hex(0x55607A), 0.5f);
+				if (C.Values.IsValidIndex(I)) P.Text(C.Values[I], FVector2D(CX, BY + 40.f * U), HudFont(21.f * U, EWeight::Black), Hex(0x0B1426), 0.5f);
+			}
+		}
+		P.Alpha = 1.f;
+	}
+
+	/** The result across the bottom: crest block and one bar in the winner's colour. */
+	void DrawResultBar(FMatchFrame& F, const ASuperOverGameMode::FSeqCard& C, const CricketSequence::FCardLook& L)
+	{
+		if (L.Alpha <= 0.f || C.Title.IsEmpty()) return;
+		FPaint& P = F.P;
+		const float U = F.U;
+		const float CW = FMath::Min(1080.f * U, F.W - 2.f * (F.Safe.L + 0.04f) * F.H), BH = 60.f * U;
+		const float X0 = 0.5f * (F.W - CW), Y0 = F.H * (1.f - F.Safe.B) - 0.07f * F.H - BH;
+		const FLinearColor Side = TeamColour(F.G, C.Team);
+		P.Alpha = L.Alpha;
+		P.Box(FVector2D(X0, Y0), FVector2D(BH, BH), Hex(0x0B1426, 0.97f));
+		if (F.G.Teams.IsValidIndex(C.Team)) P.Image(FBox2D(FVector2D(X0 + 6.f * U, Y0 + 6.f * U), FVector2D(X0 + BH - 6.f * U, Y0 + BH - 6.f * U)), CrestOf(C.Team));
+		P.Box(FVector2D(X0 + BH, Y0), FVector2D((CW - BH) * L.Bar, BH), Side * FLinearColor(0.85f, 0.85f, 0.85f, 0.97f));
+		P.Box(FVector2D(X0 + BH, Y0 + BH - 4.f * U), FVector2D((CW - BH) * L.Bar, 4.f * U), Gold());
+		P.Alpha = L.Alpha * L.Body;
+		P.Text(C.Title, FVector2D(X0 + BH + 26.f * U, Y0 + 0.5f * BH), HudFont(26.f * U, EWeight::Black, 60), Ink());
+		P.Alpha = 1.f;
+	}
+
+	/** THIS OVER: the over's balls in order, numbered, each under a bar in the colour of the band it pitched in. */
+	void DrawThisOver(FMatchFrame& F, const CricketSequence::FCardLook& L)
+	{
+		ASuperOverGameMode& G = F.G;
+		if (L.Alpha <= 0.f || G.ThisOverLog.Num() == 0) return;
+		FPaint& P = F.P;
+		const float U = F.U;
+		const int32 N = G.ThisOverLog.Num();
+		const float R = 17.f * U, Step = 52.f * U, PW = FMath::Max(260.f * U, N * Step + 40.f * U), PH = 128.f * U;
+		const float X0 = F.Safe.L * F.H + 0.045f * F.H, Y0 = F.H * (1.f - F.Safe.B) - 0.07f * F.H - PH;
+		// The bands' colours (BuildSequenceProps), yorker to short.
+		auto Band = [](float Len)
+		{
+			return Len < 0.f ? Hex(0x6A7390) : Len <= 2.5f ? Hex(0xC71F29) : Len <= 5.f ? Hex(0xEB801A) : Len <= 7.5f ? Hex(0xDBCB26) : Len <= 9.5f ? Hex(0x299E4D) : Hex(0x335CD9);
+		};
+		P.Alpha = L.Alpha;
+		P.Box(FVector2D(X0, Y0), FVector2D(PW * L.Bar, 34.f * U), Hex(0xF3F5F9, 0.97f));
+		P.Text(TEXT("THIS OVER"), FVector2D(X0 + 16.f * U, Y0 + 17.f * U), HudFont(15.f * U, EWeight::Black, 140), Hex(0x0B1426));
+		P.Alpha = L.Alpha * L.Body;
+		P.Box(FVector2D(X0, Y0 + 34.f * U), FVector2D(PW, PH - 34.f * U), Glass(0.94f));
+		for (int32 I = 0; I < N; ++I)
+		{
+			const FVector2D C(X0 + 20.f * U + R + I * Step, Y0 + 34.f * U + 36.f * U);
+			BallDisc(F, C, R, G.ThisOverLog[I]);
+			const float Len = G.ThisOverLengths.IsValidIndex(I) ? G.ThisOverLengths[I] : -1.f;
+			P.Box(FVector2D(C.X - R, C.Y + R + 8.f * U), FVector2D(2.f * R, 5.f * U), Band(Len), 2.f * U);
+			P.Text(FString::FromInt(I + 1), FVector2D(C.X, C.Y + R + 24.f * U), HudFont(12.f * U, EWeight::Bold), InkDim(), 0.5f);
+		}
+		P.Alpha = 1.f;
+	}
+
+	/** The toss call: BAT and BOWL either side of the coin's countdown, the winner's choice lit once it lands. */
+	void DrawTossCall(FMatchFrame& F, float T, float Duration)
+	{
+		ASuperOverGameMode& G = F.G;
+		FPaint& P = F.P;
+		const float U = F.U;
+		const CricketSequence::FCardLook L = CricketSequence::CardLook(T, Duration);
+		if (L.Alpha <= 0.f) return;
+		const bool bLanded = T > 4.f;
+		const FVector2D C(0.5f * F.W, F.H * (1.f - F.Safe.B) - 0.12f * F.H);
+		P.Alpha = L.Alpha;
+		const FSlateFontInfo Fn = HudFont(17.f * U, EWeight::Black, 120);
+		P.Pill(TEXT("BAT"), C - FVector2D(110.f * U, 0.f), Fn, bLanded && G.bTossChoseBat ? Gold() : Glass(0.92f), bLanded && G.bTossChoseBat ? GoldInk() : Ink(), 26.f * U, 40.f * U, 4.f * U, Hair());
+		P.Pill(TEXT("BOWL"), C + FVector2D(110.f * U, 0.f), Fn, bLanded && !G.bTossChoseBat ? Gold() : Glass(0.92f), bLanded && !G.bTossChoseBat ? GoldInk() : Ink(), 26.f * U, 40.f * U, 4.f * U, Hair());
+		P.Circle(C, 24.f * U, Ink(), Hair(), U);
+		const int32 Count = FMath::Clamp(3 - int32(T / 1.2f), 1, 3);
+		P.Text(bLanded ? FString(TEXT("•")) : FString::FromInt(Count), C, HudFont(22.f * U, EWeight::Black), Hex(0x0B1426), 0.5f);
+		P.Alpha = 1.f;
+	}
+
+	/** The card a beat carries, if any, timed to the beat. */
+	void DrawBeatCard(FMatchFrame& F)
+	{
+		using namespace CricketSequence;
+		ASuperOverGameMode& G = F.G;
+		const FSegment* Beat = G.SeqSegment();
+		if (!Beat) return;
+		const float T = G.SeqTime() - Beat->Start;
+		const FCardLook L = CardLook(T, Beat->Duration);
+		switch (Beat->Card)
+		{
+		case ECard::EventStrip: DrawEventStrip(F, T, Beat->Duration); break;
+		case ECard::Dismissal: DrawSeqCard(F, G.CardDismissal, L); break;
+		case ECard::Batter: DrawSeqCard(F, G.CardBatter, L); break;
+		case ECard::Bowler: DrawSeqCard(F, G.CardBowler, L); break;
+		case ECard::Result: DrawResultBar(F, G.CardResult, L); break;
+		case ECard::ThisOver: DrawThisOver(F, L); break;
+		case ECard::TossCall: DrawTossCall(F, T, Beat->Duration); break;
+		case ECard::TossResult: DrawSeqCard(F, G.CardToss, L); break;
+		case ECard::PitchConditions:
+		{
+			ASuperOverGameMode::FSeqCard Pitch = G.CardToss;
+			Pitch.Title = TEXT("PITCH CONDITIONS");
+			Pitch.Subtitle.Reset();
+			Pitch.Team = -1;
+			DrawSeqCard(F, Pitch, L);
+			break;
+		}
+		default: break;
+		}
+	}
 }
 
 void SCricketMatchHUD::Construct(const FArguments& Args, ASuperOverGameMode* InGame, ASuperOverHUD* InHUD)
@@ -1215,7 +1477,14 @@ int32 SCricketMatchHUD::OnPaint(const FPaintArgs& Args, const FGeometry& Geometr
 	const EMode TM = G->TouchMode();
 	const bool bReplay = G->IsReplaying(), bReview = G->IsReviewing(), bCard = G->ShowingScorecard();
 	const bool bThird = G->bAwaitingThirdUmpire || (G->bReferredThis && G->DPhase == EDeliveryPhase::DeadBall && G->PhaseTime < G->ReplayDelay);
-	const bool bBroadcast = !bReplay && !bReview && !bCard && TM != EMode::FieldEdit;
+	// The broadcast sequence: close-ups and scene shots carry no score strip (only their card), and neither does the
+	// live event strip's moment, which takes the strip's place; the stingers cover everything.
+	const CricketSequence::FSegment* Beat = G->SeqSegment();
+	float StingLocal = 0.f;
+	const bool bStinger = G->SeqTime() >= 0.f && CricketSequence::StingerAt(G->Seq, G->SeqTime(), StingLocal) != CricketSequence::EStinger::None;
+	const bool bScene = G->InSequenceScene() || G->IntroPlaying() || bStinger || (Beat && Beat->Card == CricketSequence::ECard::EventStrip);
+	const bool bSequenceBall = G->Seq.IsValid() && !G->bSeqIntro && G->DPhase == EDeliveryPhase::DeadBall;
+	const bool bBroadcast = !bReplay && !bReview && !bCard && TM != EMode::FieldEdit && !bScene;
 	const bool bInPlay = M.Phase != EMatchPhase::InningsBreak && M.Phase != EMatchPhase::MatchComplete;
 	const FVector2D TopMid(0.5f * F.W, F.Safe.T * F.H + 0.03f * F.H + 20.f * U);
 
@@ -1297,7 +1566,8 @@ int32 SCricketMatchHUD::OnPaint(const FPaintArgs& Args, const FGeometry& Geometr
 	// Event banner, until the next ball is on its way: in from below, out with a fade.
 	const ASuperOverHUD* Hud = HUD.Get();
 	const float Since = Hud ? float(F.Now - Hud->BannerAt) : 100.f;
-	if (Since < 2.2f && !bReplay && !bReview && !bCard && G->DPhase != EDeliveryPhase::RunUp && G->DPhase != EDeliveryPhase::BallInPlay)
+	// (A ball with a broadcast sequence says it with the umpire, the event strip and the stingers instead.)
+	if (Since < 2.2f && !bReplay && !bReview && !bCard && !bSequenceBall && !G->IntroPlaying() && G->DPhase != EDeliveryPhase::RunUp && G->DPhase != EDeliveryPhase::BallInPlay)
 	{
 		const float In = FMath::Clamp(Since / 0.18f, 0.f, 1.f);
 		P.Alpha = FMath::Min(In, FMath::Clamp((2.2f - Since) / 0.35f, 0.f, 1.f));
@@ -1311,8 +1581,9 @@ int32 SCricketMatchHUD::OnPaint(const FPaintArgs& Args, const FGeometry& Geometr
 		P.Text(Hud->Banner, C - FVector2D(0.f, 4.f * U), Fn, Ink(), 0.5f);
 		P.Alpha = 1.f;
 	}
-	// Replay angle cuts land under a small lower-third stinger, never a fullscreen wipe: gameplay stays visible.
-	if (G->bReplayThis && G->DPhase == EDeliveryPhase::DeadBall)
+	// The highlights reel's angle cuts land under a small lower-third stinger (a live ball's replay has the broadcast
+	// sequence's full-screen stingers instead).
+	if (G->bReplayThis && G->DPhase == EDeliveryPhase::DeadBall && !bSequenceBall)
 	{
 		const int32 Angle = G->ReplayAngle();
 		float Start = 0.f;
@@ -1337,5 +1608,8 @@ int32 SCricketMatchHUD::OnPaint(const FPaintArgs& Args, const FGeometry& Geometr
 			P.Alpha = 1.f;
 		}
 	}
+	// The broadcast sequence: the beat's card, then the stingers over everything.
+	if (!bCard && !bReview) DrawBeatCard(F);
+	DrawStinger(F);
 	return P.Layer;
 }

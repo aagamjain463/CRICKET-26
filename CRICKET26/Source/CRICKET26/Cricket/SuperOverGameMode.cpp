@@ -195,6 +195,13 @@ void ASuperOverGameMode::StartPlay()
 	FParse::Value(FCommandLine::Get(), TEXT("CricketShotEvery="), ShotEvery);
 	FParse::Value(FCommandLine::Get(), TEXT("CricketUIShotEvery="), UIShotEvery);
 	FParse::Value(FCommandLine::Get(), TEXT("CricketSlowMo="), SlowMo);
+	// Broadcast sequence: -CricketNoIntros skips the toss and the intro cards; -CricketPacing=Full|Quick trims or
+	// lengthens the dead-ball beats (Broadcast, the reference's own timing, by default).
+	bIntros = !FParse::Param(FCommandLine::Get(), TEXT("CricketNoIntros"));
+	FString Pacing;
+	if (FParse::Value(FCommandLine::Get(), TEXT("CricketPacing="), Pacing))
+		SeqDirector.Pacing = Pacing == TEXT("Full") ? CricketSequence::EPacing::Full : Pacing == TEXT("Quick") ? CricketSequence::EPacing::Quick : CricketSequence::EPacing::Broadcast;
+	SeqDirector.Rng.Initialize(MatchSeed + 17);
 	// -CricketDevCam=X,Y,Z,LookX,LookY,LookZ,Fov (simulation metres): a fixed camera for inspecting bodies;
 	// -CricketDevCam=fielder: 7 m from whoever fields the ball (their body), on the pitch side; or a named review shot of the
 	// striker: face (head and shoulders) or kit (head to toe).
@@ -1614,6 +1621,7 @@ void ASuperOverGameMode::BuildScene()
 	// Fielders cycle the five faces not batting or bowling, so the striker, non-striker and bowler never meet their
 	// own double on the field; the keeper (fielder 0) stays the Anchor, whose keeper gear is fitted.
 	for (int32 I = 0; I < Fielders.Num(); ++I) AddBody(Fielders[I], Players[3 + I % (UE_ARRAY_COUNT(Players) - 3)]);
+	BuildSequenceProps(); // the toss coin and THIS OVER's length bands (SuperOverGameModeSequence.cpp)
 
 	Camera = W->SpawnActor<ACameraActor>(FVector::ZeroVector, FRotator::ZeroRotator);
 	Camera->GetCameraComponent()->SetConstraintAspectRatio(false);
@@ -2218,11 +2226,13 @@ void ASuperOverGameMode::Tick(float Dt)
 		FPlatformMisc::RequestExit(false); // capture done
 	}
 
+	// The pre-ball intro (toss, openers, a new batter, a new bowler) plays before the next ball can start.
+	UpdateIntro(Dt);
 	switch (DPhase)
 	{
 	case EDeliveryPhase::Waiting:
 		// A human batter calls for the ball with PLAY; a human bowler runs in with BOWL.
-		if (Match.Phase == EMatchPhase::ReadyForDelivery && !HumanBowls() && !HumanBats() && PhaseTime > BetweenBalls) BeginRunUp();
+		if (Match.Phase == EMatchPhase::ReadyForDelivery && !HumanBowls() && !HumanBats() && PhaseTime > BetweenBalls && !IntroPlaying()) BeginRunUp();
 		else if (bAutoPlay && PhaseTime > BetweenBalls + 1.3f)
 		{
 			if (Match.Phase == EMatchPhase::InningsBreak) { Match.StartSecondInnings(); if (IsIPLMatch()) IPLNewInningsSetup(); }
@@ -2260,7 +2270,10 @@ void ASuperOverGameMode::Tick(float Dt)
 		{
 			if (PhaseTime >= ReplayDelay + ReplayAngleDuration(0)) PlayClip(ReelClip + 1);
 		}
-		else if (PhaseTime > (bReviewThis ? ReviewFrom() + ReviewTime + 0.5f : AfterDeadBall + ReplayDelay - ReplayDelayMin + (bReplayThis ? ReplayTotalTime() : 0.f)))
+		else if (PhaseTime > (Seq.IsValid() && !bSeqIntro
+			// The broadcast sequence sets the dead ball's length (it holds the replay and any review in its slot).
+			? FMath::Max(Seq.Duration(), bReviewThis ? ReviewFrom() + ReviewTime : 0.f)
+			: bReviewThis ? ReviewFrom() + ReviewTime + 0.5f : AfterDeadBall + ReplayDelay - ReplayDelayMin + (bReplayThis ? ReplayTotalTime() : 0.f)))
 		{
 			DPhase = EDeliveryPhase::Waiting;
 			PhaseTime = 0.f;
@@ -2366,6 +2379,17 @@ void ASuperOverGameMode::HandleInput(APlayerController* PC, float Dt)
 		C.bProgress = false;
 	}
 	else if (C.bProgress && IsReplaying()) PhaseTime = ReplayDelay + ReplayTotalTime(); // skip the replay
+	else if (C.bProgress && IntroPlaying())
+	{
+		EndIntro(); // skip the intro straight to the delivery camera
+		C.bProgress = false;
+	}
+	else if (C.bProgress && DPhase == EDeliveryPhase::DeadBall && SeqTime() >= 0.f && !IsReviewing())
+	{
+		// A tap in the dead ball skips ahead: to the replay, then (after it) to the end of the sequence.
+		const float ReplayAt = Seq.ReplayStart();
+		PhaseTime = ReplayAt > PhaseTime ? ReplayAt : Seq.Duration();
+	}
 	if (C.bProgress && DPhase == EDeliveryPhase::Waiting)
 	{
 		if (Match.Phase == EMatchPhase::InningsBreak)
@@ -2512,10 +2536,12 @@ void ASuperOverGameMode::HandleInput(APlayerController* PC, float Dt)
 CricketTouch::EMode ASuperOverGameMode::TouchMode() const
 {
 	using CricketTouch::EMode;
+	// The broadcast sequence plays out first (the reference shows the pick after THIS OVER or the walk off); a tap skips it.
+	const bool bSequence = IntroPlaying() || (DPhase == EDeliveryPhase::DeadBall && SeqTime() >= 0.f && SeqTime() < Seq.Duration());
 	// IPL: a pending batter/bowler pick owns the touch layer until it is made.
-	if (IsAwaitingPick()) return EMode::Pick;
+	if (IsAwaitingPick() && !bSequence) return EMode::Pick;
 	if (HumanReviews()) return EMode::Review;
-	if (IsReplaying() || (DPhase == EDeliveryPhase::Waiting && Match.Phase != EMatchPhase::ReadyForDelivery)) return EMode::Progress;
+	if (IsReplaying() || bSequence || (DPhase == EDeliveryPhase::Waiting && Match.Phase != EMatchPhase::ReadyForDelivery)) return EMode::Progress;
 	if (HumanBats())
 	{
 		// Running takes over once the stroke is in (or the ball has passed the bat): no second shot, only calls.
@@ -2814,6 +2840,9 @@ void ASuperOverGameMode::FinishDelivery()
 	}
 	// Nothing of the last ball's presentation carries into this one's appeal or referral.
 	bReplayThis = bWicketThis = bReviewThis = bReferredThis = false;
+	Seq = CricketSequence::FSequence();
+	bSeqIntro = false;
+	SeqMoves.Reset();
 	// An LBW appeal: the umpire decides, and the ball is dead once given out, so no leg byes either way.
 	bAwaitingReview = bReviewTaken = false;
 	const FBallTracking& Tr = Result.Tracking;
@@ -2900,6 +2929,11 @@ void ASuperOverGameMode::ScoreDelivery(FDeliveryOutcome Outcome)
 	// IPL: the batting-order slot the engine is about to consume for the incoming batter, so the
 	// user's pick can reorder the tail before he faces.
 	const int32 IPLPreNext = (IsIPLMatch() && Match.Innings.IsValidIndex(Match.CurrentInnings)) ? Match.Cur().NextBatter : INDEX_NONE;
+	// The broadcast sequence needs the ball as it stood: the innings, the over's first log entry and the pair.
+	const int32 PreInnings = Match.CurrentInnings;
+	const int32 PreOverLogStart = Match.Innings.IsValidIndex(PreInnings) ? Match.Cur().OverLogStart : 0;
+	PreStrikerIdx = Match.Innings.IsValidIndex(PreInnings) ? Match.Cur().Striker : 0;
+	PreNonStrikerIdx = Match.Innings.IsValidIndex(PreInnings) ? Match.Cur().NonStriker : 1;
 	if (!Match.CompleteDelivery(Outcome, Events))
 	{
 		UE_LOG(LogCRICKET26, Error, TEXT("Rules rejected the simulated outcome (%s); delivery voided."), *Result.Summary);
@@ -2942,6 +2976,8 @@ void ASuperOverGameMode::ScoreDelivery(FDeliveryOutcome Outcome)
 	bReviewThis = Result.bPadImpact && Result.Tracking.Projected.Num() > 1 && Result.BallPath.Num() > 1;
 	DPhase = EDeliveryPhase::DeadBall;
 	PhaseTime = 0.f;
+	// The broadcast around the ball (Cricket 26 reference): signal, reactions, stinger, replay, walk off, THIS OVER.
+	BuildDeadBallSequence(Outcome, Events, PreInnings, PreOverLogStart);
 	// IPL: wicket/over/match-complete handling (batter and bowler picks, super-over decider, commit).
 	if (IsIPLMatch()) AfterIPLDelivery(Outcome, Events, IPLPreNext);
 }
@@ -3076,6 +3112,13 @@ void ASuperOverGameMode::UpdatePoses(float T, bool bLive, float Post, float Off,
 	// Striker: the whole body planned through the delivery (CricketBatter), the stroke built backwards from
 	// where the simulation put the bat so the sweet spot is on that point at the moment of contact. Setting
 	// off for a run, the bat goes to the bottom hand and the body to the jog.
+	// A broadcast beat that walks the striker (off, in, to celebrate) frees them: bat carried, idle and walk as the non-striker.
+	if (bStrikerFree)
+	{
+		PlaceBat(Bat, Carry(Striker, Off));
+		if (UCricketAnimInstance* Anim = AnimOf(Striker)) Anim->Pose.Batter.Weight = 0.f;
+	}
+	else
 	{
 		const EShotType Shot = Result.Shot.Shot;
 		const bool bPlayed = bLive && BatInput.IsShot();
@@ -3967,6 +4010,10 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 		}
 	}
 
+	// The broadcast sequence's beats move whoever they are about (walk off, run in to celebrate, walk in), from where
+	// the ball left them. Before the camera frames them and before the figures read their speed.
+	ApplySequenceMovement();
+
 	// Camera: the broadcast director observes gameplay and chooses the shot. Geometry and timing come
 	// from CricketBroadcast (isolated, tested); this block only feeds it the current frame.
 	using namespace CricketBroadcast;
@@ -4113,6 +4160,23 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	}
 	if (bFlow) Desired = FlowShot;
 
+	// The broadcast sequence's presentation beats (umpire, reactions, celebration, crowd, cards) own the camera
+	// between the live follow and the replay, and after it; a stinger straight into the next ball ends on the delivery shot.
+	FVector SeqLoc = FVector::ZeroVector, SeqLook = FVector::ZeroVector;
+	float SeqFov = 0.f, SeqFocus = 0.f, SeqAperture = 0.f;
+	bool bSeqCut = false;
+	const bool bSeqCam = !bFlow && SequenceCamera(SeqLoc, SeqLook, SeqFov, SeqFocus, SeqAperture, bSeqCut);
+	if (bSeqCam)
+	{
+		Desired = EBroadcastShot::Presentation;
+		bForce = true;
+	}
+	else if (const CricketSequence::FSegment* Beat = SeqSegment(); Beat && Beat->Kind == CricketSequence::ESegment::StingerOut && !bFlow && !IsReplaying())
+	{
+		Desired = EBroadcastShot::StandardDelivery;
+		bForce = true;
+	}
+
 	bool bDirectorCut = false;
 	const EBroadcastShot ActiveShot = BroadcastDirector.Update(Dt, Desired, bForce, BroadcastTuning, bDirectorCut, bReplay ? ReplayAngle() : INDEX_NONE);
 	LastSolvedShot = ActiveShot;
@@ -4159,6 +4223,14 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 		LookAt = BallPos;
 		WantFov = BroadcastTuning.ReplayWideFOV;
 	}
+	if (bSeqCam)
+	{
+		// The beat's own framing, set exactly every frame (its push-in and any walking subject are already smooth).
+		WantLoc = SeqLoc;
+		LookAt = SeqLook;
+		WantFov = SeqFov;
+		if (bSeqCut) bCutCamera = true;
+	}
 	if (bDevCamFielder && bLive && Fielders.IsValidIndex(Result.Fielding.Fielder) && !Ctx.Field[Result.Fielding.Fielder].bBowler)
 	{
 		// On the body's pelvis rather than the actor: a captured dive carries the body metres from its actor.
@@ -4195,10 +4267,11 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	// The director already decided cut-vs-blend from broadcast grammar; bCutCamera forces it.
 	const bool bCut = bCutCamera || bDirectorCut;
 	UCameraComponent* Cam = Camera->GetCameraComponent();
-	if (bCut)
+	if (bCut || bSeqCam)
 	{
-		RefreshCutFigures();
-		WantLoc = ApplyOcclusion(GetWorld(), LookAt, WantLoc);
+		if (bCut) RefreshCutFigures();
+		// A presentation shot stands among the players and inside the ground by construction: no occlusion pull-in.
+		if (bCut && !bSeqCam) WantLoc = ApplyOcclusion(GetWorld(), LookAt, WantLoc);
 		const FQuat WantRot = (LookAt - WantLoc).GetSafeNormal().Rotation().Quaternion();
 		BroadcastSmoother.Snap(WantLoc, WantRot, WantFov);
 		Camera->SetActorLocationAndRotation(WantLoc, WantRot.Rotator());
@@ -4212,14 +4285,31 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 		// dead zone so micro-jitter dies but the ball never sticks). Positions are static stands:
 		// only the head and the lens move, exactly like the reference truck.
 		const bool bDeliveryHold = ActiveShot == EBroadcastShot::StandardDelivery;
-		const float PosLambda = bDeliveryHold ? 1.f / FMath::Max(BroadcastTuning.Delivery.TrackingLag, 0.03f) : BroadcastTuning.Delivery.PositionDamping;
-		const float RotLambda = bDeliveryHold ? BroadcastTuning.Delivery.RotationDamping : 6.f;
-		const float FovLambda = bDeliveryHold ? 3.f * RotLambda : 5.f;
+		// The reference's travelling replay cameras (a dolly down the pitch, the tilt into the stands, the long lens on
+		// the ball) move with the ball, so their operator is quicker than the stand cameras'.
+		const bool bTravelling = ActiveShot == EBroadcastShot::ReplayBowlerTrack || ActiveShot == EBroadcastShot::ReplayStandTilt
+			|| ActiveShot == EBroadcastShot::ReplayLongLens || ActiveShot == EBroadcastShot::ReplayGroundLevel || ActiveShot == EBroadcastShot::ReplayCrane;
+		const float PosLambda = bDeliveryHold ? 1.f / FMath::Max(BroadcastTuning.Delivery.TrackingLag, 0.03f) : bTravelling ? 9.f : BroadcastTuning.Delivery.PositionDamping;
+		const float RotLambda = bDeliveryHold ? BroadcastTuning.Delivery.RotationDamping : bTravelling ? 10.f : 6.f;
+		const float FovLambda = bDeliveryHold ? 3.f * RotLambda : bTravelling ? 6.f : 5.f;
 		const float DeadCm = bDeliveryHold ? 4.f : BroadcastTuning.LookDeadZoneCm;
 		BroadcastSmoother.Update(WantLoc, LookAt, WantFov, Dt, PosLambda, RotLambda,
 			BroadcastTuning.MaxAngularVelocity, DeadCm, FovLambda);
 		Camera->SetActorLocationAndRotation(BroadcastSmoother.Location, BroadcastSmoother.Rotation.Rotator());
 		Cam->SetFieldOfView(BroadcastSmoother.FOV);
+	}
+	// Presentation close-ups focus on the player with the stands soft behind, as the reference's do (High and Epic only:
+	// depth of field is the dearest post effect on a phone).
+	{
+		FPostProcessSettings& PP = Cam->PostProcessSettings;
+		const bool bDof = bSeqCam && SeqFocus > 0.f && Quality >= 2;
+		PP.bOverride_DepthOfFieldFocalDistance = bDof;
+		PP.bOverride_DepthOfFieldFstop = bDof;
+		if (bDof)
+		{
+			PP.DepthOfFieldFocalDistance = SeqFocus;
+			PP.DepthOfFieldFstop = SeqAperture;
+		}
 	}
 	// CRICKET26.mp4 reference: no contact punch. The delivery holds its breath through contact
 	// (0.3 s ContactHold) and the lens never pops: a 2% FOV punch is a 10% jump on the 5 deg lens
@@ -4232,6 +4322,7 @@ void ASuperOverGameMode::UpdatePresentation(float Dt)
 	if (DeliveryU >= 0.f) LastCameraDebug += FString::Printf(TEXT(" U %.2f"), DeliveryU);
 	UpdateFigures(Dt);
 	UpdatePoses(T, bLive, Post, Off, Arm);
+	PoseSequenceBodies(); // the umpire's signal, celebrations and frustration over the poses just set
 	StrikerPosed = Striker->GetActorTransform();
 	bStrikerCut = T < StrikerPosedT || T > StrikerPosedT + 0.25f;
 	StrikerPosedT = T;

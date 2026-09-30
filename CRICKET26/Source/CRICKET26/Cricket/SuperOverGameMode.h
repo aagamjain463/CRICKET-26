@@ -15,6 +15,7 @@
 #include "CricketAudio.h"
 #include "CricketAudioDirector.h"
 #include "CricketBroadcast.h"
+#include "CricketBroadcastSequence.h"
 #include "CricketCommentaryDirector.h"
 #include "CricketControls.h"
 #include "CricketKeeper.h"
@@ -251,8 +252,52 @@ public:
 	bool ShowingScorecard() const
 	{
 		return (Match.Phase == EMatchPhase::InningsBreak || Match.Phase == EMatchPhase::MatchComplete) && !IsReplaying() && !IsReviewing()
-			&& (DPhase != EDeliveryPhase::DeadBall || PhaseTime >= ScorecardDelay);
+			&& (DPhase != EDeliveryPhase::DeadBall || PhaseTime >= FMath::Max(ScorecardDelay, bSeqIntro ? 0.f : Seq.Duration()));
 	}
+
+	// ---- Broadcast sequence (CricketBroadcastSequence, Docs/BROADCAST_SEQUENCE.md) ----
+	/**
+	 * What the broadcast shows around a ball, as the Cricket 26 reference does: the dead-ball sequence (umpire's signal,
+	 * reactions, celebration, crowd, stinger, replay, stinger, walk-off, THIS OVER), and before a ball the intro (toss,
+	 * openers, a new batter walking in, a new bowler). Built after the match is settled; it only moves bodies, the
+	 * camera and the graphics.
+	 */
+	CricketSequence::FSequence Seq;
+	CricketSequence::FDirector SeqDirector;
+	/** Seq is the pre-ball intro, clocked by SeqClock while waiting; otherwise the dead ball's, clocked by PhaseTime. */
+	bool bSeqIntro = false;
+	float SeqClock = 0.f;
+	/** -CricketNoIntros skips the toss and the intro cards (captures and soaks). */
+	bool bIntros = true;
+	float SeqTime() const
+	{
+		if (!Seq.IsValid()) return -1.f;
+		if (bSeqIntro) return DPhase == EDeliveryPhase::Waiting ? SeqClock : -1.f;
+		return DPhase == EDeliveryPhase::DeadBall && !bAwaitingReview && !bAwaitingThirdUmpire && !InReel() ? PhaseTime : -1.f;
+	}
+	const CricketSequence::FSegment* SeqSegment() const { const float T = SeqTime(); return T >= 0.f ? Seq.At(T) : nullptr; }
+	bool IntroPlaying() const { return bSeqIntro && Seq.IsValid() && DPhase == EDeliveryPhase::Waiting && SeqClock < Seq.Duration(); }
+	/** A presentation beat owns the camera now: not the live follow, the replay, a review or the scorecard. */
+	bool InSequenceScene() const;
+	/** A lower-third card's text, captured when its sequence is built (the match moves on underneath). */
+	struct FSeqCard
+	{
+		FString Title, Subtitle, Right, Footer;
+		TArray<FString> Labels, Values;
+		int32 Team = -1;
+	};
+	FSeqCard CardDismissal, CardBatter, CardBowler, CardResult, CardToss;
+	/** The event the stinger and the live strip name (WICKET, SIX, FOUR ...) and whose colours they carry. */
+	FString EventWord;
+	int32 EventTeam = 0;
+	/** THIS OVER: the finished over's balls as the log writes them, and where each pitched (m from the striker's stumps; <0 not pitched). */
+	TArray<FString> ThisOverLog;
+	TArray<float> ThisOverLengths;
+	/** The toss shown at the start: who won it and whether they chose to bat (always agreeing with who bats first). */
+	int32 TossWinner = 0;
+	bool bTossChoseBat = true;
+	/** Where the coin is during the toss (world cm) and its spin, for the HUD's call panel. */
+	FVector CoinAt = FVector::ZeroVector;
 
 	/** The on-screen touch controls, the only gameplay input on every platform (on desktop the mouse is the finger). */
 	CricketTouch::EMode TouchMode() const;
@@ -489,6 +534,42 @@ private:
 	FString LastCameraDebug;
 	EBroadcastShot LastSolvedShot = EBroadcastShot::StandardDelivery;
 	void ClearBroadcastReplay();
+	// Broadcast sequence runtime (SuperOverGameModeSequence.cpp).
+	UPROPERTY() TObjectPtr<AStaticMeshActor> Coin;
+	UPROPERTY() TArray<TObjectPtr<AStaticMeshActor>> LengthBands; // THIS OVER: the pitch's length zones, yorker to short
+	UPROPERTY() TArray<TObjectPtr<AStaticMeshActor>> OverMarkers;  // THIS OVER: where the over's balls pitched
+	TWeakObjectPtr<AStaticMeshActor> SeqHero, SeqMate, SeqFielder, SeqDismissed;
+	bool bSeqBattingWon = false;
+	int32 SeqLastIndex = INDEX_NONE;
+	int32 IntroInningsKey = INDEX_NONE, IntroBatterKey = INDEX_NONE, IntroBowlerKey = INDEX_NONE;
+	bool bTossShown = false;
+	/** The striker walks (off, in, to confer, to celebrate) instead of holding the batting stance. */
+	bool bStrikerFree = false;
+	/** A player a beat walks somewhere: from where they stood when it began, at a pace, then turned to FaceAt. */
+	struct FSeqMove
+	{
+		FVector From = FVector::ZeroVector, To = FVector::ZeroVector;
+		float Speed = 0.f, Start = 0.f; // cm/s; sequence time the walk began
+		TWeakObjectPtr<AActor> FaceAt;
+	};
+	TMap<AStaticMeshActor*, FSeqMove> SeqMoves; // actors live all match (UPROPERTY arrays hold them)
+	int32 SeqMoveIndex = INDEX_NONE;
+	FVector SeqTossFace = FVector(0.f, 1.f, 0.f);
+	/** The batting pair's order indices before the ball was scored, for the dismissal card. */
+	int32 PreStrikerIdx = 0, PreNonStrikerIdx = 1;
+	void BuildSequenceProps();
+	void BuildDeadBallSequence(const FDeliveryOutcome& Outcome, const TArray<ECricketEvent>& Events, int32 PreInnings, int32 PreOverLogStart);
+	void UpdateIntro(float Dt);
+	void EndIntro();
+	FSeqCard MakeBatterCard(int32 Team, int32 Batter) const;
+	FSeqCard MakeBowlerCard(int32 Team) const;
+	AStaticMeshActor* SeqActor(CricketSequence::ESubject Who) const;
+	/** Moves the players a beat asks to move (walk off, converge, walk in). Before the camera and UpdateFigures. */
+	void ApplySequenceMovement();
+	/** Arms and gaze for the beat: the umpire's signal, celebrations, frustration. After UpdatePoses. */
+	void PoseSequenceBodies();
+	/** The presentation camera for the beat on screen; false when the live or replay camera owns the frame. */
+	bool SequenceCamera(FVector& OutLoc, FVector& OutLook, float& OutFov, float& OutFocus, float& OutAperture, bool& bOutCut);
 	void BuildReplayPackageForResult(const FDeliveryOutcome& Outcome, bool bMilestone);
 	void RebuildReplayCast();
 	void RecordReplayFrame(float BallT, const FVector& BallPos, const FVector& BallVel);

@@ -1,5 +1,11 @@
 # Presentation Director
 
+> **Update:** in-match presentation (the umpire's signals, celebrations, walk offs, cards, the toss) is played by the broadcast sequence
+> (`CricketBroadcastSequence`, `SuperOverGameModeSequence.cpp`), built from the Cricket 26 reference. See `Docs/BROADCAST_SEQUENCE.md`.
+> The `UpdateScene`, `PoseScene`, `SceneCamera` and `StartToss` hooks named below are not in the game mode.
+> `CricketPresentation` is still used for the player of the match.
+
+
 The Presentation Director turns match moments into short broadcast scenes: who is on screen, which camera shots, what the players do, the lower-third graphic, and whether a replay follows. It never changes gameplay state. The match is fully decided (score, wickets, strike, milestones) before a scene is chosen, and a scene only moves bodies and the camera.
 
 ## Flow
